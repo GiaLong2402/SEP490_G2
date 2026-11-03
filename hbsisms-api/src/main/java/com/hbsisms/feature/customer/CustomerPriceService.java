@@ -23,7 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class CustomerPriceService {
 
-    static final String REF_TYPE_CUSTOMER_PRICE = "customer_price";
+    public static final String REF_TYPE_CUSTOMER_PRICE = "customer_price";
 
     private final CustomerRepository customerRepository;
     private final CustomerPriceRepository customerPriceRepository;
@@ -87,8 +87,7 @@ public class CustomerPriceService {
         price.setStatus(ApprovalStatus.PENDING);
         price.setEffectiveFrom(request.effectiveFrom());
         price.setEffectiveTo(request.effectiveTo());
-        price.setApprovedBy(null);
-        price.setApprovedAt(null);
+        // Giữ approvedAt nếu đã từng duyệt — khi từ chối đề xuất mới sẽ trả status về approved.
         CustomerPrice saved = customerPriceRepository.save(price);
 
         openApprovalTask(saved, customer, variant, proposed, actorUserId);

@@ -9,6 +9,9 @@ public interface CustomerPriceRepository extends JpaRepository<CustomerPrice, Lo
 
     Optional<CustomerPrice> findByCustomerIdAndVariantId(Long customerId, Long variantId);
 
+    @EntityGraph(attributePaths = "customer")
+    Optional<CustomerPrice> findWithCustomerById(Long id);
+
     @EntityGraph(attributePaths = {"variant", "variant.product"})
     List<CustomerPrice> findByCustomerIdOrderByIdAsc(Long customerId);
 }
