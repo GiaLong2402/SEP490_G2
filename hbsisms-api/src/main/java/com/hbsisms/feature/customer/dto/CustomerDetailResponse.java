@@ -7,7 +7,7 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Matches FE {@code CustomerDetail}. Temporary read endpoint so Address UI can be tested
+ * Matches FE {@code CustomerDetail}. Temporary read endpoint so Address/Price UI can be tested
  * before Duy finishes full Customer CRUD (list/create/update).
  */
 public record CustomerDetailResponse(
@@ -29,10 +29,13 @@ public record CustomerDetailResponse(
         Instant createdAt,
         Instant updatedAt,
         List<AddressResponse> addresses,
-        List<Object> prices,
+        List<CustomerPriceRowResponse> prices,
         List<Object> recentOrders) {
 
-    public static CustomerDetailResponse from(Customer customer, List<AddressResponse> addresses) {
+    public static CustomerDetailResponse from(
+            Customer customer,
+            List<AddressResponse> addresses,
+            List<CustomerPriceRowResponse> prices) {
         return new CustomerDetailResponse(
                 customer.getId(),
                 customer.getCode(),
@@ -52,7 +55,7 @@ public record CustomerDetailResponse(
                 customer.getCreatedAt(),
                 customer.getUpdatedAt(),
                 addresses,
-                List.of(),
+                prices,
                 List.of());
     }
 }

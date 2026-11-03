@@ -49,8 +49,16 @@ public class CustomerPrice {
     @OnDelete(action = OnDeleteAction.CASCADE)
     private ProductVariant variant;
 
+    /** Giá đang áp dụng (đã duyệt). Khi đang chờ duyệt, giá đề xuất nằm ở {@link #pendingPrice}. */
     @Column(nullable = false, precision = 14, scale = 2)
     private BigDecimal unitPrice;
+
+    /**
+     * Giá đề xuất đang chờ duyệt. Null khi không có đề xuất pending.
+     * Tránh ghi đè {@link #unitPrice} trước khi Chủ duyệt (khớp FE mock).
+     */
+    @Column(precision = 14, scale = 2)
+    private BigDecimal pendingPrice;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
