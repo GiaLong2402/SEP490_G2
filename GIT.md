@@ -21,6 +21,8 @@ main → tạo nhánh → commit → push nhánh → mở PR → review → merg
 ```
 
 Ruleset trên GitHub đã bảo vệ `main`: không push thẳng, bắt buộc PR và ít nhất 1 approval.
+**Repository admin** nằm trong Bypass list: vẫn phải mở PR, nhưng có thể tự merge PR của mình mà không cần approve.
+Thành viên khác (Write) vẫn cần **1 approve** trước khi merge (thường do admin/reviewer duyệt).
 
 ## Đặt tên nhánh
 
@@ -67,7 +69,8 @@ gh pr create --base main --title "feat(api): add login rate limiting" --body "##
 
 ## Pull Request
 
-- Ít nhất **1 người approve** trước khi merge
+- Thành viên (Write): ít nhất **1 approve** trước khi merge
+- Repository admin: được bypass — vẫn mở PR vào `main`, có thể tự merge PR của mình (GitHub không cho tự bấm Approve trên PR của chính mình)
 - Mô tả: mục đích, module ảnh hưởng, cách test
 - Ưu tiên **Squash and merge** để lịch sử `main` gọn
 - Không merge khi còn conflict
@@ -136,4 +139,5 @@ Conflict chỉ sửa trên nhánh feature, không sửa trực tiếp trên `mai
 - [ ] Đã kéo `main` mới nhất và xử lý conflict (nếu có)
 - [ ] Không có `.env` hoặc secret trong commit
 - [ ] Tự commit/push bằng tài khoản của mình (không nhờ commit hộ)
-- [ ] Đã mở PR vào `main` và có ít nhất 1 approve trước khi merge
+- [ ] Đã mở PR vào `main`
+- [ ] Đã có 1 approve trước khi merge (trừ Repository admin đang bypass PR của mình)
