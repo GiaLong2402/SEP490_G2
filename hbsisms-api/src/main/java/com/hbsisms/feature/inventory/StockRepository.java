@@ -63,4 +63,14 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
             where s.id = :id and s.qtyExpired + :delta >= 0
             """)
     int adjustQtyExpired(@Param("id") Long id, @Param("delta") int delta);
+
+    /** Khay bán được (không tính lô đã quá hạn) — dùng cho pricing preview. */
+    @Query("""
+            select coalesce(sum(s.qtyAvailable), 0)
+            from Stock s
+            where s.variant.id = :variantId
+              and (s.lot.expDate is null or s.lot.expDate >= :today)
+            """)
+    long sumAvailableByVariantExcludingExpired(
+            @Param("variantId") Long variantId, @Param("today") java.time.LocalDate today);
 }
