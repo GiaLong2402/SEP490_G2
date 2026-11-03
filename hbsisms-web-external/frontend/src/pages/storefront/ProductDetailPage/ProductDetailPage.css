@@ -1,0 +1,114 @@
+/* =========================================================
+   TRANG CHI TIẾT SẢN PHẨM — chỉ chứa bố cục chung.
+   Style của từng khối nằm cạnh file JSX trong ./components
+   ========================================================= */
+
+.product-detail {
+  position: relative;
+  overflow: hidden;
+  padding: 20px 0 48px;
+  /* Nền trắng hơi ngả xanh */
+  background: linear-gradient(180deg, #f7fbfd 0%, #ffffff 40%);
+}
+
+.product-detail__inner {
+  position: relative;
+  z-index: 1; /* nội dung nằm trên họa tiết */
+}
+
+.product-detail .breadcrumbs {
+  margin-bottom: 20px;
+}
+
+.product-missing {
+  padding: 64px 0;
+}
+
+/* Bố cục 2 cột: ảnh (nhỏ hơn) | khung mua hàng */
+.product-detail__top {
+  display: grid;
+  grid-template-columns: 0.9fr 1fr;
+  gap: 28px;
+  align-items: start;
+}
+
+/* ---------- Họa tiết trang trí ---------- */
+
+/* Cành phượng góc trên bên phải (đứng yên) */
+.product-detail__flowers {
+  top: -20px;
+  right: -80px;
+  width: 260px;
+}
+
+/* Sóng mờ sau breadcrumb */
+.product-detail__wave-top {
+  top: -40px;
+  left: -10%;
+  width: 60%;
+  opacity: 0.25;
+}
+
+/* Sóng mờ ngang giữa trang (dưới phần ảnh) */
+.product-detail__wave-mid {
+  top: 560px;
+  left: 0;
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  opacity: 0.35;
+}
+
+/* ---------- Sản phẩm liên quan ---------- */
+.product-related {
+  margin-top: 36px;
+  text-align: center;
+}
+
+.product-related h2 {
+  color: var(--color-brand);
+  font-size: 30px;
+  font-weight: 800;
+}
+
+/* Đường sóng nhỏ dưới tiêu đề */
+.product-related__wave {
+  width: 90px;
+  height: 18px;
+  margin: 2px auto 20px;
+  object-fit: cover;
+  object-position: bottom;
+}
+
+.product-related__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  text-align: left;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1023px) {
+  .product-detail__top {
+    grid-template-columns: 1fr;
+  }
+
+  .product-related__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .product-detail__wave-mid {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .product-related__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .product-detail__flowers {
+    width: 150px;
+    right: -60px;
+  }
+}

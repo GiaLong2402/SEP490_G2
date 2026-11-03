@@ -1,0 +1,131 @@
+/* Nền tối phủ toàn màn hình (z-index cao hơn header) */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.75);
+  animation: lightbox-fade 0.2s ease;
+}
+
+/* Khung ôm sát ảnh — các nút đặt chồng lên khung này */
+.lightbox__frame {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: lightbox-zoom 0.25s ease;
+}
+
+.lightbox__image {
+  display: block;
+  max-width: min(1000px, 92vw);
+  max-height: 86vh;
+}
+
+/* Nền mờ tối cho các nút nổi trên ảnh */
+.lightbox__counter,
+.lightbox__close,
+.lightbox__arrow {
+  position: absolute;
+  background: rgba(30, 30, 30, 0.55);
+  color: var(--color-white);
+  backdrop-filter: blur(4px);
+}
+
+/* "1 / 3" ở giữa phía trên */
+.lightbox__counter {
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 16px;
+  border-radius: 999px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+/* Nút X góc trên bên phải */
+.lightbox__close {
+  top: 16px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+/* Mũi tên trái / phải ở giữa chiều cao */
+.lightbox__arrow {
+  top: 50%;
+  transform: translateY(-50%);
+  width: 46px;
+  height: 46px;
+  border: none;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+.lightbox__arrow.is-prev { left: 16px; }
+.lightbox__arrow.is-next { right: 16px; }
+
+.lightbox__close:hover,
+.lightbox__arrow:hover {
+  background: rgba(30, 30, 30, 0.85);
+}
+
+/* Dải ảnh nhỏ ở dưới cùng */
+.lightbox__thumbs {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+}
+
+.lightbox__thumbs button {
+  width: 64px;
+  height: 56px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  overflow: hidden;
+  opacity: 0.6;
+  transition: opacity 0.2s ease, border-color 0.2s ease;
+}
+
+.lightbox__thumbs button:hover {
+  opacity: 1;
+}
+
+/* Ảnh đang xem: viền trắng, rõ nét */
+.lightbox__thumbs button.is-active {
+  border-color: var(--color-white);
+  opacity: 1;
+}
+
+.lightbox__thumbs img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@keyframes lightbox-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes lightbox-zoom {
+  from { transform: scale(0.95); }
+  to   { transform: scale(1); }
+}

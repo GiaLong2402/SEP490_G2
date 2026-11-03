@@ -1,0 +1,115 @@
+.product-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  height: 100%;
+}
+
+.product-card__media {
+  position: relative;
+  display: block;
+  aspect-ratio: 1 / 1;
+  /* Ảnh lùi vào trong viền card một chút, giống mẫu */
+  margin: 5px 5px 0;
+  border-radius: 6px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.product-card--standard .product-card__media {
+  aspect-ratio: 5 / 4;
+}
+
+.product-card--landscape .product-card__media {
+  aspect-ratio: 1.55 / 1;
+}
+
+.product-card--wide .product-card__media {
+  aspect-ratio: 2.4 / 1;
+}
+
+.product-card__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-card__badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+
+.product-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 12px 12px;
+  flex: 1;
+}
+
+.product-card--landscape .product-card__body {
+  padding: 10px 12px 12px;
+  gap: 2px;
+}
+
+.product-card__name {
+  color: var(--color-brand);
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.product-card__name:hover {
+  color: var(--color-accent);
+}
+
+.product-card__meta {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.product-card__footer {
+  margin-top: auto;
+  padding-top: 8px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.product-card__price {
+  color: var(--color-price);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.product-card__footer--stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* ---------- Hiệu ứng khi di chuột (dùng cho mọi card sản phẩm) ----------
+   Bước 1: khai báo transition ở trạng thái thường (chạy mượt trong 0.3s)
+   Bước 2: viết style mới trong :hover */
+.product-card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.product-card:hover {
+  transform: translateY(-6px); /* nhấc card lên 6px */
+  box-shadow: 0 12px 24px rgba(7, 54, 83, 0.15);
+}
+
+.product-card__media img {
+  transition: transform 0.4s ease;
+}
+
+.product-card:hover .product-card__media img {
+  transform: scale(1.08); /* ảnh to lên 8%, khung có overflow: hidden nên không tràn */
+}

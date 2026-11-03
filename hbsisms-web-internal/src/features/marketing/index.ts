@@ -1,0 +1,1 @@
+export { marketingRoutes } from './routes';

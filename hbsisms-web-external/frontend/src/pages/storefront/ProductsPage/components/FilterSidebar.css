@@ -1,0 +1,133 @@
+/* =========================================================
+   THANH BỘ LỌC (trang Sản phẩm)
+   ========================================================= */
+
+.filter-sidebar {
+  padding: 24px 20px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, #eaf6fb 0%, #f4fafd 100%);
+}
+
+.filter-sidebar__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.filter-sidebar__head h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-brand);
+  font-size: 26px;
+  font-weight: 800;
+}
+
+/* Nút "Đóng" chỉ hiện trên mobile */
+.filter-sidebar__close {
+  display: none;
+  border: none;
+  background: transparent;
+  color: var(--color-muted);
+}
+
+/* Mỗi nhóm lọc có đường kẻ ngăn cách ở dưới */
+.filter-sidebar__group {
+  margin: 0 0 18px;
+  padding: 0 0 18px;
+  border: none;
+  border-bottom: 1px solid #d3e4ec;
+}
+
+.filter-sidebar__group legend {
+  margin-bottom: 12px;
+  padding: 0;
+  color: var(--color-brand);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.filter-sidebar__option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  color: var(--color-text);
+  font-size: 16px;
+  cursor: pointer;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.filter-sidebar__option:hover {
+  color: var(--color-accent);
+  transform: translateX(3px);
+}
+
+/* Ô tròn / ô vuông to hơn, màu xanh ngọc khi được chọn
+   (accent-color là cách đơn giản nhất để đổi màu radio/checkbox) */
+.filter-sidebar__option input {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.filter-sidebar__clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 6px 0;
+  border: none;
+  background: transparent;
+  color: var(--color-accent);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.filter-sidebar__clear svg {
+  transition: transform 0.4s ease;
+}
+
+/* Icon xoay 1 vòng khi di chuột */
+.filter-sidebar__clear:hover svg {
+  transform: rotate(-360deg);
+}
+
+.filter-sidebar__backdrop {
+  display: none;
+}
+
+/* ---------- Mobile: bộ lọc trượt từ trái ra ---------- */
+@media (max-width: 900px) {
+  .filter-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 60;
+    width: min(320px, 90vw);
+    overflow: auto;
+    border-radius: 0;
+    transform: translateX(-105%);
+    transition: transform 0.25s ease;
+  }
+
+  .filter-sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .filter-sidebar__close {
+    display: inline-flex;
+  }
+
+  .filter-sidebar__backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    border: none;
+    background: rgba(15, 23, 42, 0.4);
+  }
+}

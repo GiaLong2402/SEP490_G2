@@ -1,0 +1,87 @@
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1.4;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn--pill {
+  border-radius: var(--radius-pill);
+  padding-inline: 22px;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn--full {
+  width: 100%;
+}
+
+/* Cam đậm — CTA chính (tương phản tốt hơn với chữ trắng) */
+.btn--primary {
+  background: var(--color-action-hover);
+  color: var(--color-white);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: #b93f00;
+}
+
+/* Cam outline — Thêm vào giỏ */
+.btn--outline {
+  background: var(--color-white);
+  color: var(--color-action-hover);
+  border-color: var(--color-action);
+}
+
+.btn--outline:hover:not(:disabled) {
+  background: #fff4ed;
+}
+
+/* Cam sáng nhấn */
+.btn--secondary {
+  background: var(--color-action);
+  color: var(--color-white);
+}
+
+.btn--secondary:hover:not(:disabled) {
+  background: var(--color-action-hover);
+}
+
+/* Navy — bộ lọc / đặt số lượng lớn */
+.btn--navy {
+  background: var(--color-brand);
+  color: var(--color-white);
+}
+
+.btn--navy:hover:not(:disabled) {
+  background: #052a41;
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--color-brand);
+  border-color: var(--color-border);
+}
+
+.btn--link {
+  min-height: auto;
+  padding: 0;
+  background: transparent;
+  color: var(--color-accent);
+  font-weight: 500;
+}
+
+.btn--link:hover:not(:disabled) {
+  text-decoration: underline;
+}

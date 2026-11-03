@@ -1,0 +1,1 @@
+export { stocktakeRoutes } from './routes';

@@ -1,0 +1,22 @@
+.stock-badge__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-success);
+}
+
+/* Kiểu nền đặc, chữ trắng (giống mẫu trang chủ) */
+.stock-badge--solid {
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--color-white);
+}
+
+.stock-badge--solid.badge--success {
+  background: #16a34a;
+}
+
+.stock-badge--solid.badge--danger {
+  background: var(--color-danger);
+}

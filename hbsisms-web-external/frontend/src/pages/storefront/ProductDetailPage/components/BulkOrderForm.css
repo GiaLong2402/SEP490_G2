@@ -1,0 +1,162 @@
+/* ---------- Nút "Đặt số lượng lớn" (nền xanh navy) ---------- */
+.bulk-order__toggle {
+  width: 100%;
+  min-height: 54px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-brand);
+  color: var(--color-white);
+  font-size: 17px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  transition: background 0.2s ease;
+}
+
+.bulk-order__toggle:hover {
+  background: #052a41;
+}
+
+/* ---------- Khung form (viền xanh ngọc) ---------- */
+.bulk-order__panel {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 18px;
+  border: 2px solid var(--color-accent);
+  border-radius: 8px;
+  background: var(--color-white);
+  animation: bulk-slide-down 0.25s ease;
+}
+
+/* Form trượt xuống khi mở */
+@keyframes bulk-slide-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.bulk-order__hint {
+  color: var(--color-text);
+  font-size: 15px;
+}
+
+.bulk-order__product {
+  margin-top: -8px;
+  color: var(--color-brand);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* Hàng 2 cột */
+.bulk-order__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.bulk-order__field {
+  display: grid;
+  gap: 6px;
+  color: var(--color-brand);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.bulk-order__field input,
+.bulk-order__field textarea {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid #d6e4ec;
+  border-radius: 6px;
+  background: var(--color-white);
+  color: var(--color-text);
+  font-weight: 400;
+  transition: border-color 0.15s ease;
+}
+
+.bulk-order__field input:focus,
+.bulk-order__field textarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.bulk-order__field textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+/* Ô nhập số khay có chữ "khay" dính bên phải */
+.bulk-order__input-suffix {
+  display: flex;
+}
+
+.bulk-order__input-suffix input {
+  border-radius: 6px 0 0 6px;
+}
+
+.bulk-order__input-suffix span {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 16px;
+  border: 1px solid #d6e4ec;
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  background: #f1f7fa;
+  color: var(--color-muted);
+  font-weight: 400;
+}
+
+.bulk-order__submit {
+  min-height: 48px;
+  border: none;
+  border-radius: 6px;
+  background: var(--color-action);
+  color: var(--color-white);
+  font-size: 17px;
+  font-weight: 600;
+  transition: background 0.2s ease;
+}
+
+.bulk-order__submit:hover:not(:disabled) {
+  background: var(--color-action-hover);
+}
+
+.bulk-order__submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.bulk-order__success {
+  color: var(--color-success);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Dòng lưu ý có icon chữ "i" màu xanh */
+.bulk-order__note {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.bulk-order__note svg {
+  flex-shrink: 0;
+  color: #1d8fe1;
+}
+
+.field-error {
+  color: var(--color-danger);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+@media (max-width: 560px) {
+  .bulk-order__row {
+    grid-template-columns: 1fr;
+  }
+}

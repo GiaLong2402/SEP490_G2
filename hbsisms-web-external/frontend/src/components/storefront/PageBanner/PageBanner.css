@@ -1,0 +1,87 @@
+.page-banner {
+  position: relative;
+  overflow: hidden;
+  /* Nền trắng -> xanh biển nhạt từ trái sang phải */
+  background: linear-gradient(90deg, #f4fafd 0%, #e6f5fb 55%, #cfeef8 100%);
+}
+
+.page-banner__content {
+  position: relative;
+  z-index: 1;
+  padding-block: 40px 52px;
+}
+
+.page-banner h1 {
+  margin-bottom: 10px;
+  color: var(--color-brand);
+  font-size: clamp(32px, 4vw, 52px);
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.page-banner .breadcrumbs ol {
+  font-size: 17px;
+}
+
+/* ---------- Họa tiết trang trí ---------- */
+
+/* Thuyền + chim + sóng ở bên phải.
+   right: 16% để thuyền cách xa cành phượng, không bị dính vào nhau */
+.page-banner__boat {
+  right: 16%;
+  bottom: -10px;
+  width: 400px;
+  opacity: 0.9;
+}
+
+/* Sóng mảnh chạy ngang dưới đáy */
+.page-banner__wave {
+  left: 0;
+  bottom: -40px;
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  object-position: bottom;
+}
+
+/* Cành phượng góc trên bên phải */
+.page-banner__flowers {
+  top: -30px;
+  right: -70px;
+  width: 260px;
+  transform-origin: top right;
+}
+
+/* Chỉ chuyển động khi di chuột vào banner */
+.page-banner:hover .page-banner__boat {
+  animation: banner-boat 2s ease-in-out infinite;
+}
+
+.page-banner:hover .page-banner__flowers {
+  animation: banner-flowers 2s ease-in-out infinite;
+}
+
+/* Thuyền nhấp nhô nhẹ */
+@keyframes banner-boat {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-8px) rotate(-2deg); }
+}
+
+/* Hoa đung đưa nhẹ */
+@keyframes banner-flowers {
+  0%, 100% { transform: rotate(0deg); }
+  50%      { transform: rotate(-5deg); }
+}
+
+@media (max-width: 767px) {
+  .page-banner__boat {
+    width: 220px;
+    right: -20px;
+    opacity: 0.5;
+  }
+
+  .page-banner__flowers {
+    width: 150px;
+    right: -60px;
+  }
+}

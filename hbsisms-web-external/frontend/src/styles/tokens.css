@@ -1,0 +1,55 @@
+/* =========================================================
+   Design tokens — Hòa Bình (màu, font, khoảng cách dùng chung)
+   Dùng biến CSS này mọi nơi để đổi màu/spacing 1 chỗ là đủ.
+   ========================================================= */
+
+:root {
+  /* Màu thương hiệu */
+  --color-brand: #073653;
+  --color-accent: #12b8d0;
+  --color-action: #ff650d;
+  --color-action-hover: #d94b00;
+  --color-price: #ff650d;
+
+  --color-white: #ffffff;
+  --color-surface: #eff8fc;
+  --color-muted: #64748b;
+  --color-text: #334155;
+  --color-border: #e2e8f0;
+  --color-success: #15803d;
+  --color-footer-text: #dcebf3;
+  --color-danger: #dc2626;
+  --color-peach: #fff1e8;
+
+  /* Font */
+  --font-ui: 'Be Vietnam Pro', Arial, sans-serif;
+  --font-script: 'Dancing Script', cursive; /* chữ viết tay: slogan, tagline */
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Layout — ~92% viewport, max 1280px, cùng trục với header/section */
+  --container-max: 1280px;
+  --container-width: 92%;
+  --container-pad: 16px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-pill: 999px;
+  --header-height: 120px;
+
+  /* Shadow nhẹ */
+  --shadow-card: 0 1px 3px rgba(7, 54, 83, 0.08);
+}
+
+@media (min-width: 768px) {
+  :root {
+    --container-pad: 0;
+  }
+}

@@ -1,0 +1,1 @@
+export { posRoutes } from './routes';

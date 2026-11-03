@@ -1,0 +1,12 @@
+target/
+.env
+.env.*.bak
+!.mvn/wrapper/maven-wrapper.properties
+
+### IDE ###
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath

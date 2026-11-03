@@ -1,0 +1,125 @@
+/* =========================================================
+   TRANG SẢN PHẨM
+   - Banner: components/storefront/PageBanner
+   - Bộ lọc: ./components/FilterSidebar
+   ========================================================= */
+
+.products-page {
+  padding-bottom: 48px;
+}
+
+/* Bố cục 2 cột: bộ lọc 250px | danh sách sản phẩm */
+.products-layout {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  gap: 28px;
+  align-items: start;
+  margin-top: 24px;
+}
+
+/* ---------- Tiêu đề + sắp xếp ---------- */
+.products-main__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.products-main__head h2 {
+  margin-bottom: 2px;
+  color: var(--color-brand);
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.products-main__head p {
+  color: var(--color-muted);
+  font-size: 16px;
+}
+
+.products-sort select {
+  min-height: 46px;
+  min-width: 210px;
+  padding: 0 14px;
+  border: 1px solid #d6e4ec;
+  border-radius: 8px;
+  background: var(--color-white);
+  color: var(--color-brand);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.products-sort select:hover {
+  border-color: var(--color-accent);
+}
+
+/* ---------- Lưới sản phẩm ---------- */
+.products-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.products-empty {
+  padding: 48px 16px;
+  text-align: center;
+  color: var(--color-muted);
+  border: 1px dashed var(--color-border);
+  border-radius: 12px;
+}
+
+/* Nút "Bộ lọc" trên mobile (desktop ẩn) */
+.products-filter-toggle {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-white);
+  color: var(--color-brand);
+  font-weight: 600;
+  justify-self: start;
+}
+
+/* Ẩn chữ nhưng screen reader vẫn đọc được */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1023px) {
+  .products-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .products-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .products-filter-toggle {
+    display: inline-flex;
+  }
+
+  .products-main__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 560px) {
+  .products-grid {
+    grid-template-columns: 1fr;
+  }
+}

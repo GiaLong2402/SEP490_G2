@@ -1,0 +1,39 @@
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 32px;
+}
+
+.pagination__arrow,
+.pagination__page {
+  min-width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d6eaf2;
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-brand);
+  font-weight: 600;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.pagination__arrow:hover:not(:disabled),
+.pagination__page:hover {
+  background: #dff3f9;
+}
+
+/* Trang đang xem: nền xanh ngọc, chữ trắng */
+.pagination__page.is-active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-white);
+}
+
+.pagination__arrow:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

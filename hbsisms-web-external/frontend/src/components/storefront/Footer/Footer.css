@@ -1,0 +1,285 @@
+.site-footer {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-brand);
+  color: var(--color-footer-text);
+  margin-top: 0;
+}
+
+.site-footer__flowers {
+  top: -30px;
+  left: -80px;
+  width: 190px;
+  opacity: 1;
+}
+
+.site-footer__boat {
+  right: -20px;
+  bottom: 10px;
+  width: 420px;
+  opacity: 0.7;
+}
+
+.site-footer__grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 1fr 1.05fr;
+  gap: 28px;
+  padding-block: 40px 28px;
+}
+
+/* Logo footer: con cá nằm trên, chữ to bên dưới (giống mẫu) */
+.site-footer__logo {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.site-footer__logo .brand-logo__text strong {
+  font-size: 30px;
+}
+
+.site-footer__logo .brand-logo__text small {
+  color: white;
+  font-size: 11px;
+}
+
+.site-footer__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.site-footer__brand > p {
+  max-width: 280px;
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.site-footer__place {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: white;
+  font-size: 14px;
+}
+
+.site-footer h3 {
+  color: white;
+  font-size: 16px;
+  margin-bottom: 14px;
+}
+
+.site-footer ul {
+  display: grid;
+  gap: 10px;
+}
+
+.site-footer a {
+  color: var(--color-footer-text);
+  font-size: 14px;
+}
+
+.site-footer a:hover {
+  color: white;
+}
+
+.site-footer__socials {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.site-footer__social {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: white;
+  border: 2px solid white;
+}
+
+.site-footer__social:hover {
+  animation: social-bounce 0.6s ease;
+}
+
+.site-footer__social img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.site-footer__help-title {
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.site-footer__help-text {
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+
+.site-footer__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 18px;
+  border: 1.5px solid rgba(220, 235, 243, 0.75);
+  border-radius: var(--radius-pill);
+  color: white !important;
+  font-weight: 600;
+  font-size: 14px;
+  background: transparent;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.site-footer__cta:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: white;
+}
+
+.site-footer__bottom {
+  position: relative;
+  z-index: 1;
+  border-top: 1px solid rgba(220, 235, 243, 0.18);
+  padding-block: 14px;
+  font-size: 13px;
+}
+
+.site-footer__bottom-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.site-footer__tagline-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Cắt lấy phần sóng ở đáy ảnh song-line */
+.site-footer__tagline-wave {
+  width: 150px;
+  height: 34px;
+  object-fit: cover;
+  object-position: bottom;
+}
+
+.site-footer__tagline {
+  font-family: var(--font-script);
+  font-size: 26px;
+  line-height: 1.2;
+  color: white;
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .site-footer__grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    padding-block: 32px 24px;
+  }
+
+  .site-footer__boat {
+    width: 130px;
+    opacity: 0.28;
+  }
+
+  .site-footer__flowers {
+    width: 56px;
+    opacity: 0.35;
+  }
+}
+
+@media (max-width: 600px) {
+  .site-footer__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =========================================================
+   HIỆU ỨNG (ANIMATION) CỦA FOOTER
+   - transition: chạy mượt khi đổi trạng thái (ví dụ khi hover)
+   - @keyframes: tự định nghĩa 1 chuyển động, rồi gọi bằng "animation"
+   ========================================================= */
+
+/* Link: trượt sang phải 4px khi di chuột */
+.site-footer ul a {
+  display: inline-block;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.site-footer ul a:hover {
+  transform: translateX(4px);
+}
+
+/* Icon Facebook / Zalo: nảy lên khi di chuột */
+@keyframes social-bounce {
+  0%   { transform: translateY(0) scale(1); }
+  40%  { transform: translateY(-6px) scale(1.12); }
+  70%  { transform: translateY(1px) scale(0.98); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+/* Icon định vị "Hải Phòng": nhún nhẹ khi di chuột vào */
+.site-footer__place:hover svg {
+  animation: pin-bob 0.8s ease-in-out infinite;
+}
+
+@keyframes pin-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+
+/* Logo cá: lắc nhẹ khi di chuột vào cột thương hiệu */
+.site-footer__brand .brand-logo__mark {
+  transition: transform 0.4s ease;
+}
+
+.site-footer__brand:hover .brand-logo__mark {
+  transform: rotate(-8deg) scale(1.08);
+}
+
+/* Nút "Liên hệ ngay": mũi tên chạy sang phải */
+.site-footer__cta-arrow {
+  display: inline-block;
+  margin-left: 6px;
+  transition: transform 0.2s ease;
+}
+
+.site-footer__cta:hover .site-footer__cta-arrow {
+  transform: translateX(4px);
+}
+
+/* Con tàu: khi di chuột vào footer thì nhấp nhô + nghiêng như đang trên sóng
+   Muốn tàu lắc mạnh hơn: tăng -10px / -3deg. Muốn chậm hơn: tăng 2s */
+.site-footer:hover .site-footer__boat {
+  animation: footer-boat 2s ease-in-out infinite;
+}
+
+@keyframes footer-boat {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-10px) rotate(-3deg); }
+}
+
+/* Hoa phượng: khi di chuột vào footer thì đung đưa quanh góc trên bên trái */
+.site-footer__flowers {
+  transform-origin: top left;
+}
+
+.site-footer:hover .site-footer__flowers {
+  animation: footer-flowers 2s ease-in-out infinite;
+}
+
+@keyframes footer-flowers {
+  0%, 100% { transform: rotate(0deg); }
+  50%      { transform: rotate(6deg); }
+}

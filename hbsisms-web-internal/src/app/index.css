@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #0b6e8a;
+  --primary-hover: #095b72;
+  --primary-soft: #e4f1f5;
+  --sidebar: #08485f;
+  --sidebar-active: #0b6e8a;
+  --canvas: #f4f8fa;
+  --card: #ffffff;
+  --row-alt: #eef3f5;
+  --thead: #eaf1f4;
+  --overlay: rgba(8, 34, 45, 0.45);
+  --ink: #12303d;
+  --ink-muted: #4a6572;
+  --ink-faint: #6c8794;
+  --line: #e3eaee;
+  --field: #cbd8de;
+  --coral: #f26b5b;
+  --green-fg: #1e8a57;
+  --green-bg: #e3f3ec;
+  --amber-fg: #9a6a0f;
+  --amber-bg: #fbefd6;
+  --red-fg: #b3382a;
+  --red-bg: #fbe7e4;
+  --blue-fg: #2a6fdb;
+  --blue-bg: #e6eefb;
+  --neutral-fg: #4a6572;
+  --neutral-bg: #eef3f5;
+}
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body {
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: Inter, -apple-system, 'Segoe UI', Roboto, system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 18px;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+  dialog::backdrop { background: var(--overlay); }
+}
+
+@layer components {
+  .field-control {
+    @apply h-[34px] w-full rounded-sm border border-field bg-card px-2.5 text-body text-ink placeholder:text-ink-faint
+      focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-rowalt disabled:text-ink-faint;
+  }
+  .num { @apply whitespace-nowrap font-mono text-small tabular-nums; }
+}
+
+/* In hóa đơn POS: chỉ giữ lại phần hóa đơn. */
+@media print {
+  body * { visibility: hidden; }
+  .print-receipt, .print-receipt * { visibility: visible; }
+  .print-receipt { position: fixed; left: 0; top: 0; width: 100%; color: #000; }
+  dialog::backdrop { background: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

@@ -1,0 +1,33 @@
+.cart-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--color-action);
+  color: var(--color-white);
+  font-weight: 600;
+  transition: background 0.15s ease;
+}
+
+.cart-btn:hover:not(:disabled) {
+  background: var(--color-action-hover);
+}
+
+.cart-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cart-btn--icon {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+
+.cart-btn--full {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+}

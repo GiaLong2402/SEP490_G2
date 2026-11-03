@@ -1,0 +1,155 @@
+/* Khung trắng có viền bao toàn bộ phần tab */
+.info-tabs {
+  margin-top: 32px;
+  padding: 8px 28px 24px;
+  border: 1px solid #dbe8ef;
+  border-radius: var(--radius-md);
+  background: var(--color-white);
+}
+
+/* ---------- Thanh tab ---------- */
+.info-tabs__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.info-tabs__list button {
+  min-height: 48px;
+  margin-bottom: -1px;
+  padding: 0 4px;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 16px;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.info-tabs__list button:hover {
+  color: var(--color-accent);
+}
+
+/* Tab đang chọn: chữ đậm + gạch chân xanh ngọc */
+.info-tabs__list button.is-active {
+  color: var(--color-brand);
+  font-weight: 700;
+  border-bottom-color: var(--color-accent);
+}
+
+/* ---------- Nội dung ---------- */
+.info-tabs__panel {
+  padding-top: 20px;
+  animation: tab-fade 0.25s ease;
+}
+
+/* Nội dung hiện dần khi đổi tab */
+@keyframes tab-fade {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.info-tabs__panel h2 {
+  color: var(--color-brand);
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.info-tabs__desc {
+  max-width: 48ch;
+  margin: 4px 0 14px;
+  color: var(--color-muted);
+}
+
+/* 2 cột: bảng thông tin | khung lưu ý */
+.info-tabs__grid {
+  display: grid;
+  grid-template-columns: 1fr 0.75fr;
+  gap: 28px;
+  align-items: end;
+}
+
+/* ---------- Bảng thông tin ---------- */
+.info-tabs__table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #dbe8ef;
+  font-size: 15px;
+}
+
+.info-tabs__table th,
+.info-tabs__table td {
+  padding: 9px 18px;
+  border-bottom: 1px solid #dbe8ef;
+  text-align: left;
+  color: var(--color-text);
+  font-weight: 400;
+}
+
+/* Cột trái nền xanh nhạt */
+.info-tabs__table th {
+  width: 45%;
+  background: #eef6fa;
+  border-right: 1px solid #dbe8ef;
+}
+
+/* ---------- Khung "Lưu ý khi nhận hàng" ---------- */
+.info-tabs__note {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  min-height: 160px;
+  padding: 24px 24px 48px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #eef7fb 0%, #e3f1f8 100%);
+}
+
+/* Vòng tròn có dấu chấm than */
+.info-tabs__note-icon {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #cdeefa;
+  color: var(--color-accent);
+  font-size: 30px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.info-tabs__note h3 {
+  margin: 10px 0 10px;
+  color: var(--color-brand);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.info-tabs__note p {
+  color: var(--color-muted);
+  font-size: 15px;
+}
+
+.info-tabs__note-wave {
+  left: 0;
+  bottom: -30px;
+  width: 100%;
+  height: 90px;
+  object-fit: cover;
+  object-position: bottom;
+  opacity: 0.8;
+}
+
+@media (max-width: 900px) {
+  .info-tabs {
+    padding-inline: 16px;
+  }
+
+  .info-tabs__grid {
+    grid-template-columns: 1fr;
+  }
+}

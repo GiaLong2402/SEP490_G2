@@ -1,0 +1,44 @@
+.simple-page {
+  padding-block: 28px 48px;
+}
+
+.simple-page h1 {
+  color: var(--color-brand);
+  font-size: 32px;
+  margin: 16px 0 12px;
+}
+
+.simple-page p {
+  color: var(--color-text);
+  max-width: 65ch;
+  margin-bottom: 12px;
+}
+
+.simple-page__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  align-items: center;
+  margin-top: 16px;
+}
+
+.simple-page__grid img {
+  width: 100%;
+  border-radius: 12px;
+  object-fit: cover;
+  aspect-ratio: 4 / 3;
+}
+
+.simple-page__card {
+  margin-top: 20px;
+  padding: 20px;
+  background: var(--color-surface);
+  border-radius: 12px;
+  max-width: 560px;
+}
+
+@media (max-width: 767px) {
+  .simple-page__grid {
+    grid-template-columns: 1fr;
+  }
+}

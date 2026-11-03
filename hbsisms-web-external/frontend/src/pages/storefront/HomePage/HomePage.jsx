@@ -1,0 +1,384 @@
+import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import ProductCard from '@/components/storefront/ProductCard/ProductCard'
+import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons/Icons'
+import { HOME_CATEGORIES } from '@/constants/categories'
+import { ROUTES } from '@/constants/routes'
+import { DEMO_PRODUCTS } from '@/data/demoProducts'
+import { getDefaultVariant } from '@/utils/productFilters'
+
+import heroSeafood from '@/assets/banners/hero-seafood.png'
+import collectionSoChe from '@/assets/banners/collection-so-che.png'
+import collectionCheBien from '@/assets/banners/collection-che-bien.png'
+import bannerChaMuc from '@/assets/banners/banner-cha-muc.png'
+import categoryCa from '@/assets/banners/category-ca.png'
+import storePacking from '@/assets/about/store-packing.png'
+import hoaPhuong from '@/assets/decorations/hoa-phuong.png'
+import songLine from '@/assets/decorations/song-line.png'
+import songThuyen from '@/assets/decorations/song-thuyen.png'
+import benefitSoChe from '@/assets/icons/benefit-so-che.png'
+import benefitDongKhay from '@/assets/icons/benefit-dong-khay.png'
+import benefitGiaoHang from '@/assets/icons/benefit-giao-hang.png'
+
+import './HomePage.css'
+
+/* ---------- Dữ liệu tĩnh của trang chủ ---------- */
+
+// Muốn thêm slide: chỉ cần thêm 1 object vào mảng này
+const HERO_SLIDES = [
+  {
+    id: 1,
+    image: heroSeafood,
+    titleLine1: 'Hải sản ngon,',
+    titleLine2: 'bữa nhà thêm trọn vị',
+    description: 'Sơ chế gọn gàng, đóng khay tiện lợi tại Hòa Bình.',
+  },
+  {
+    id: 2,
+    image: bannerChaMuc,
+    titleLine1: 'Chả mực Hòa Bình,',
+    titleLine2: 'vàng giòn đậm vị',
+    description: 'Món ngon chế biến sẵn cho bữa cơm gia đình.',
+  },
+]
+
+/*
+  Icon PNG trong src/assets/icons.
+  scale: chỉnh nhẹ nếu họa tiết trong vòng tròn nhìn nhỏ hơn icon khác.
+*/
+const BENEFITS = [
+  {
+    image: benefitSoChe,
+    scale: 1.08,
+    title: 'Chăm chút từ khâu sơ chế',
+    description: 'Làm sạch, cắt khúc, phi lê... tiện lợi cho bữa ăn gia đình.',
+  },
+  {
+    image: benefitDongKhay,
+    scale: 1.18,
+    title: 'Đóng khay rõ khối lượng',
+    description: 'Sản phẩm được đóng khay, ghi rõ trọng lượng, dễ dàng lựa chọn.',
+  },
+  {
+    image: benefitGiaoHang,
+    scale: 1.14,
+    title: 'Đặt hàng thuận tiện',
+    description: 'Chọn sản phẩm yêu thích, đặt hàng nhanh chóng.',
+  },
+]
+
+// Ảnh tròn cho từng danh mục (key = id danh mục)
+const CATEGORY_IMAGES = {
+  tom: '/images/demo-products/product-tom-su.png',
+  ca: categoryCa,
+  muc: '/images/demo-products/product-muc-ong.png',
+  'che-bien': '/images/demo-products/product-cha-muc.png',
+}
+
+const COLLECTIONS = [
+  {
+    id: 'so-che',
+    title: 'Hải sản sơ chế',
+    description: 'Gọn khâu chuẩn bị, tiện bữa cơm nhà',
+    linkText: 'Xem sản phẩm',
+    to: `${ROUTES.PRODUCTS}?category=muc`,
+    image: collectionSoChe,
+  },
+  {
+    id: 'che-bien',
+    title: 'Hải sản chế biến',
+    description: 'Thêm lựa chọn cho bữa ăn gia đình',
+    linkText: 'Khám phá ngay',
+    to: `${ROUTES.PRODUCTS}?category=che-bien`,
+    image: collectionCheBien,
+  },
+]
+
+const FEATURED_TABS = [
+  { id: 'all', label: 'Tất cả' },
+  { id: 'tom', label: 'Tôm' },
+  { id: 'ca', label: 'Cá' },
+  { id: 'muc', label: 'Mực' },
+  { id: 'che-bien', label: 'Chế biến' },
+]
+
+export default function HomePage() {
+  const [slideIndex, setSlideIndex] = useState(0)
+  const [tab, setTab] = useState('all')
+
+  const slide = HERO_SLIDES[slideIndex]
+
+  const featured = useMemo(() => {
+    if (tab === 'all') return DEMO_PRODUCTS
+    return DEMO_PRODUCTS.filter((p) => p.categoryId === tab)
+  }, [tab])
+
+  function prevSlide() {
+    setSlideIndex((i) => (i - 1 + HERO_SLIDES.length) % HERO_SLIDES.length)
+  }
+
+  function nextSlide() {
+    setSlideIndex((i) => (i + 1) % HERO_SLIDES.length)
+  }
+
+  return (
+    <div className="home-page">
+      {/* ===== 1. Hero banner (full màn hình) ===== */}
+      <section
+        className="home-hero"
+        aria-roledescription="carousel"
+        aria-label="Banner trang chủ"
+      >
+        <img
+          key={slide.id}
+          className="home-hero__image"
+          src={slide.image}
+          alt=""
+          fetchPriority="high"
+        />
+        <div className="home-hero__overlay" />
+        <img
+          className="decoration home-hero__wave"
+          src={songLine}
+          alt=""
+          aria-hidden="true"
+        />
+
+        <div className="container home-hero__inner">
+          <div className="home-hero__content">
+            <p className="home-hero__eyebrow">
+              HẢI SẢN HÒA BÌNH
+              <span className="home-hero__eyebrow-line" aria-hidden="true" />
+            </p>
+            <h1>
+              <span className="home-hero__title-white">{slide.titleLine1}</span>
+              <span className="home-hero__title-cyan">{slide.titleLine2}</span>
+            </h1>
+            <p className="home-hero__desc">{slide.description}</p>
+
+            <div className="home-hero__actions">
+              <Link to={ROUTES.PRODUCTS} className="home-btn-orange">
+                Khám phá sản phẩm <span aria-hidden="true">→</span>
+              </Link>
+              <p className="home-hero__script">
+                Hải Phòng
+                <br />
+                vị biển quê hương
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className="home-hero__arrow is-prev"
+          aria-label="Slide trước"
+          onClick={prevSlide}
+        >
+          <ChevronLeftIcon />
+        </button>
+        <button
+          type="button"
+          className="home-hero__arrow is-next"
+          aria-label="Slide sau"
+          onClick={nextSlide}
+        >
+          <ChevronRightIcon />
+        </button>
+
+        <div className="home-hero__dots" role="tablist" aria-label="Chọn slide">
+          {HERO_SLIDES.map((s, index) => (
+            <button
+              key={s.id}
+              type="button"
+              role="tab"
+              aria-selected={index === slideIndex}
+              aria-label={`Slide ${index + 1}`}
+              className={index === slideIndex ? 'is-active' : ''}
+              onClick={() => setSlideIndex(index)}
+            />
+          ))}
+        </div>
+      </section>
+
+      {/* ===== 2. Ba lợi ích (dính liền dưới hero) ===== */}
+      <section className="home-benefits" aria-label="Lợi ích">
+        <div className="container home-benefits__grid">
+          {BENEFITS.map((item) => (
+            <div key={item.title} className="home-benefits__item">
+              <span
+                className="home-benefits__icon"
+                aria-hidden="true"
+                style={{ '--benefit-icon-scale': item.scale }}
+              >
+                <img src={item.image} alt="" />
+              </span>
+              <div>
+                <h3>{item.title}</h3>
+                <p>{item.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ===== 3. Danh mục dạng ảnh tròn ===== */}
+      <section className="home-categories">
+        <img
+          className="decoration home-categories__flowers"
+          src={hoaPhuong}
+          alt=""
+          aria-hidden="true"
+        />
+        <img
+          className="decoration home-categories__wave"
+          src={songLine}
+          alt=""
+          aria-hidden="true"
+        />
+
+        <div className="container">
+          <div className="home-section-head">
+            <h2>Bạn đang tìm món gì?</h2>
+            <Link to={ROUTES.PRODUCTS} className="home-link-more">
+              Xem tất cả danh mục <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+
+          <div className="home-categories__grid">
+            {HOME_CATEGORIES.map((cat) => (
+              <Link
+                key={cat.id}
+                to={`${ROUTES.PRODUCTS}?category=${cat.id}`}
+                className="home-cat-card"
+              >
+                <span className="home-cat-card__image">
+                  <img src={CATEGORY_IMAGES[cat.id]} alt="" />
+                </span>
+                <span className="home-cat-card__name">{cat.name}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ===== 4. Hai banner bộ sưu tập ===== */}
+      <section className="home-collections container" aria-label="Bộ sưu tập">
+        {COLLECTIONS.map((item) => (
+          <Link
+            key={item.id}
+            to={item.to}
+            className={`home-collection home-collection--${item.id}`}
+          >
+            <img className="home-collection__image" src={item.image} alt="" />
+            <div className="home-collection__text">
+              <h3>{item.title}</h3>
+              <p>{item.description}</p>
+              <span className="home-collection__link">
+                {item.linkText} <span aria-hidden="true">→</span>
+              </span>
+            </div>
+          </Link>
+        ))}
+      </section>
+
+      {/* ===== 5. Sản phẩm nổi bật ===== */}
+      <section className="home-featured container">
+        <div className="home-section-head">
+          <div className="home-featured__title">
+            <h2>Sản phẩm nổi bật</h2>
+            <div className="home-tabs" role="tablist" aria-label="Lọc theo danh mục">
+              {FEATURED_TABS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === t.id}
+                  className={tab === t.id ? 'is-active' : ''}
+                  onClick={() => setTab(t.id)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Link to={ROUTES.PRODUCTS} className="home-link-more">
+            Xem tất cả <span aria-hidden="true">→</span>
+          </Link>
+        </div>
+
+        <div className="home-featured__grid">
+          {featured.map((product) => (
+            <ProductCard
+              key={product.id}
+              product={product}
+              variant={getDefaultVariant(product)}
+              cartVariant="icon"
+              imageRatio="landscape"
+            />
+          ))}
+        </div>
+      </section>
+
+      {/* ===== 6. Câu chuyện cửa hàng ===== */}
+      <section className="home-story container">
+        <div className="home-story__panel">
+          <div className="home-story__media">
+            <img
+              src={storePacking}
+              alt="Nhân viên Hòa Bình đóng khay hải sản"
+              loading="lazy"
+            />
+          </div>
+
+          <div className="home-story__body">
+            <img
+              className="decoration home-story__flowers"
+              src={hoaPhuong}
+              alt=""
+              aria-hidden="true"
+            />
+            <img
+              className="decoration home-story__boat"
+              src={songThuyen}
+              alt=""
+              aria-hidden="true"
+            />
+
+            <p className="home-story__eyebrow">
+              CÂU CHUYỆN HÒA BÌNH
+              <span className="home-story__eyebrow-line" aria-hidden="true" />
+            </p>
+            <h2>Hòa Bình – Hải sản từ Hải Phòng</h2>
+            <p className="home-story__desc">
+              Chăm chút từ sơ chế đến đóng khay,
+              <br />
+              giúp bạn chuẩn bị bữa ăn thuận tiện hơn.
+            </p>
+            <Link to={ROUTES.ABOUT} className="home-btn-orange">
+              Tìm hiểu cửa hàng <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== 7. Banner món ăn cuối trang ===== */}
+      <section className="home-promo container">
+        <div className="home-promo__banner">
+          <img src={bannerChaMuc} alt="" loading="lazy" />
+          <div className="home-promo__shade" />
+          <div className="home-promo__content">
+            <h2>
+              <span className="is-white">Đậm vị biển,</span>
+              <span className="is-cyan">ấm bữa cơm nhà</span>
+            </h2>
+            <p>Khám phá những món ngon từ Hòa Bình.</p>
+            <Link to={ROUTES.PRODUCTS} className="home-btn-orange">
+              Xem sản phẩm <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}

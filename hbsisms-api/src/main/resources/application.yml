@@ -1,0 +1,61 @@
+spring:
+  application:
+    name: hbsisms-api
+  # Load local secrets from .env (KEY=value) when present; real env vars still win.
+  config:
+    import: optional:file:.env[.properties]
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/hbsisms}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Code-first: entity classes are the schema source of truth.
+      # Safe default is validate; set JPA_DDL_AUTO=update for local dev (see .env.example).
+      ddl-auto: ${JPA_DDL_AUTO:validate}
+    properties:
+      hibernate:
+        default_schema: hbsisms
+        hbm2ddl.create_namespaces: true
+        jdbc.time_zone: UTC
+
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /api/v1
+  error:
+    include-message: never
+    include-stacktrace: never
+
+springdoc:
+  # Disable in production (SWAGGER_ENABLED=false).
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:true}
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:true}
+    persist-authorization: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+app:
+  security:
+    jwt:
+      # HS256 secret, at least 32 bytes. Generate with: openssl rand -base64 48
+      secret: ${JWT_SECRET}
+      issuer: hbsisms-api
+      access-token-ttl: ${JWT_TTL:PT8H}
+    cors:
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+    login:
+      max-failed-attempts: 5
+      lock-duration: PT15M
+  seed:
+    # Creates the default roles and, if no user exists yet, an 'admin' account with this password.
+    admin-password: ${SEED_ADMIN_PASSWORD:}

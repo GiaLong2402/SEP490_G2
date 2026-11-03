@@ -1,0 +1,14 @@
+# Test-only values. The datasource itself comes from Testcontainers (@ServiceConnection).
+spring:
+  datasource:
+    password: unused-overridden-by-testcontainers
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+
+app:
+  security:
+    jwt:
+      secret: test-only-secret-that-is-at-least-32-bytes-long
+  seed:
+    admin-password: Admin@12345

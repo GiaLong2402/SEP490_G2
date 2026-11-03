@@ -1,0 +1,245 @@
+/* =========================================================
+   DROPDOWN THÔNG BÁO (chuông trên header)
+   Nút chuông dùng style chung .site-bell trong Header.css
+   ========================================================= */
+
+/* Khung bọc: làm mốc để dropdown canh vị trí theo nút chuông */
+.notif {
+  position: relative;
+}
+
+/* Chuông đang mở: giữ màu như lúc hover */
+.site-bell.is-open {
+  color: var(--color-accent);
+  background: var(--color-surface);
+}
+
+/* ---------- Khung dropdown ---------- */
+.notif__panel {
+  position: absolute;
+  top: calc(100% + 12px); /* nằm ngay dưới chuông, cách 12px */
+  right: -80px;
+  z-index: 60;
+  width: 480px;
+  /* Viền dày + rõ hơn (xanh nhạt hệ thống), bo góc mềm */
+  border: 2px solid #bfdbe7;
+  border-radius: 14px;
+  background: var(--color-white);
+  box-shadow: 0 16px 40px rgba(7, 54, 83, 0.18);
+  animation: notif-drop 0.2s ease;
+}
+
+/* Mũi nhọn nhỏ chỉ lên nút chuông */
+.notif__panel::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  right: 93px;
+  width: 14px;
+  height: 14px;
+  border-top: 2px solid #bfdbe7; /* cùng màu + độ dày với viền khung */
+  border-left: 2px solid #bfdbe7;
+  background: var(--color-white);
+  transform: rotate(45deg);
+}
+
+/* Hiệu ứng xổ xuống */
+@keyframes notif-drop {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- Tiêu đề ---------- */
+/* Tiêu đề: [Thông báo  3 mới] ........ [Đánh dấu tất cả đã đọc]
+   gap: 32px => luôn có khoảng trắng tối thiểu 32px giữa 2 cụm */
+.notif__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 20px 22px 12px;
+}
+
+.notif__head h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-brand);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+/* Nhãn "3 mới" màu cam */
+.notif__new {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-action);
+  color: var(--color-white);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.notif__mark-all {
+  flex-shrink: 0;
+  white-space: nowrap; /* không bị bẻ thành 2 dòng */
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-accent);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.notif__mark-all:hover {
+  text-decoration: underline;
+}
+
+/* ---------- Tab ---------- */
+.notif__tabs {
+  display: flex;
+  gap: 8px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.notif__tabs button {
+  margin-bottom: -1px;
+  padding: 10px 16px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 15px;
+  transition: color 0.2s ease;
+}
+
+.notif__tabs button:hover {
+  color: var(--color-brand);
+}
+
+.notif__tabs button.is-active {
+  color: var(--color-brand);
+  font-weight: 700;
+  border-bottom-color: var(--color-accent);
+}
+
+/* ---------- Danh sách ---------- */
+.notif__list {
+  display: grid;
+  gap: 6px;
+  max-height: 420px; /* dài hơn thì hiện thanh cuộn */
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+
+.notif__item {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  transition: background 0.2s ease;
+}
+
+.notif__item:hover {
+  background: #f4f9fc;
+}
+
+/* Chưa đọc: nền xanh nhạt */
+.notif__item.is-unread {
+  background: var(--color-surface);
+}
+
+.notif__item.is-unread:hover {
+  background: #e3f3fa;
+}
+
+.notif__icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  transition: transform 0.2s ease;
+}
+
+.notif__item:hover .notif__icon {
+  transform: scale(1.08);
+}
+
+.notif__text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.notif__text strong {
+  color: var(--color-brand);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.notif__text span {
+  color: var(--color-muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.notif__text small {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+/* Chấm tròn xanh ngọc bên phải = chưa đọc */
+.notif__dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+/* ---------- Trạng thái trống / chưa đăng nhập ---------- */
+.notif__empty {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 24px 20px 28px;
+  color: var(--color-muted);
+  font-size: 15px;
+  text-align: center;
+}
+
+.notif__login {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 22px;
+  border-radius: var(--radius-pill);
+  background: var(--color-action);
+  color: var(--color-white);
+  font-weight: 600;
+}
+
+.notif__login:hover {
+  background: var(--color-action-hover);
+}
+
+/* ---------- Mobile: khung rộng gần hết màn hình ---------- */
+@media (max-width: 600px) {
+  .notif__panel {
+    position: fixed;
+    top: 70px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+
+  .notif__panel::before {
+    display: none;
+  }
+}

@@ -1,0 +1,1 @@
+export { damageRoutes } from './routes';

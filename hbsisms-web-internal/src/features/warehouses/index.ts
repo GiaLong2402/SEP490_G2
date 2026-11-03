@@ -1,0 +1,1 @@
+export { warehouseRoutes } from './routes';
