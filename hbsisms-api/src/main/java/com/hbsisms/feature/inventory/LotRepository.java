@@ -1,0 +1,6 @@
+package com.hbsisms.feature.inventory;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface LotRepository extends JpaRepository<Lot, Long> {
+}
