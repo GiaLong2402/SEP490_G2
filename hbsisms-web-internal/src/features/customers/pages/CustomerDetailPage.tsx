@@ -77,6 +77,16 @@ export default function CustomerDetailPage() {
     { key: 'pending', header: 'Đề xuất', align: 'right', cell: (p) => (p.status === 'pending' ? <span className="num text-amber-fg">{money(p.pendingPrice)}</span> : '—') },
     { key: 'effective', header: 'Hiệu lực', hideOnMobile: true, cell: (p) => (p.effectiveFrom || p.effectiveTo ? `${date(p.effectiveFrom)} → ${date(p.effectiveTo)}` : 'Không giới hạn') },
     { key: 'status', header: 'Trạng thái', cell: (p) => <StatusChip meta={approvalStatusMeta} value={p.status} /> },
+    {
+      key: 'note',
+      header: 'Ghi chú duyệt',
+      hideOnMobile: true,
+      cell: (p) => (
+        <span className="text-ink-muted">
+          {p.status === 'pending' || !p.decisionNote?.trim() ? '—' : p.decisionNote}
+        </span>
+      ),
+    },
   ];
   const orderColumns: Column<CustomerOrderRow>[] = [
     { key: 'code', header: 'Mã đơn', cell: (o) => <Link to={`/orders/${o.id}`} className="num text-primary hover:underline">{o.code}</Link> },

@@ -23,9 +23,11 @@ public record CustomerPriceRowResponse(
         String sku,
         String productName,
         String packLabel,
-        BigDecimal listPrice) {
+        BigDecimal listPrice,
+        /** Ghi chú duyệt/từ chối gần nhất (từ approval_task) — staff xem trên tab Giá riêng. */
+        String decisionNote) {
 
-    public static CustomerPriceRowResponse from(CustomerPrice price) {
+    public static CustomerPriceRowResponse from(CustomerPrice price, String decisionNote) {
         ProductVariant variant = price.getVariant();
         return new CustomerPriceRowResponse(
                 price.getId(),
@@ -42,6 +44,7 @@ public record CustomerPriceRowResponse(
                 variant.getSku(),
                 variant.getProduct().getName(),
                 variant.getPackLabel(),
-                variant.getListPrice());
+                variant.getListPrice(),
+                decisionNote);
     }
 }

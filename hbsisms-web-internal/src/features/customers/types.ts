@@ -10,6 +10,8 @@ export interface CustomerPriceRow extends CustomerPrice {
   listPrice: number;
   /** Giá đề xuất đang chờ duyệt; giá đang áp dụng vẫn là unitPrice. */
   pendingPrice: number | null;
+  /** Ghi chú duyệt/từ chối gần nhất — staff xem trên tab Giá riêng. */
+  decisionNote?: string | null;
 }
 
 export interface CustomerOrderRow {

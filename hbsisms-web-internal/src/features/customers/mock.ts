@@ -10,7 +10,18 @@ function toDetail(id: number) {
     addresses: db.addresses.filter((a) => a.customerId === id),
     prices: db.customerPrices
       .filter((p) => p.customerId === id)
-      .map((p) => ({ ...p, ...variantLabel(p.variantId), listPrice: db.variants.find((v) => v.id === p.variantId)?.listPrice ?? 0 })),
+      .map((p) => {
+        const decided = [...db.approvals]
+          .filter((a) => a.refType === 'customer_price' && a.refId === p.id && a.status !== 'pending' && a.decidedAt)
+          .sort((a, b) => (b.decidedAt ?? '').localeCompare(a.decidedAt ?? ''))[0];
+        return {
+          ...p,
+          ...variantLabel(p.variantId),
+          listPrice: db.variants.find((v) => v.id === p.variantId)?.listPrice ?? 0,
+          // Chờ duyệt: ẩn note cũ. Đã quyết định: hiện note lần gần nhất nếu có.
+          decisionNote: p.status === 'pending' ? null : (decided?.note ?? null),
+        };
+      }),
     recentOrders: db.orders
       .filter((o) => o.customerId === id)
       .sort((a, b) => b.placedAt.localeCompare(a.placedAt))
