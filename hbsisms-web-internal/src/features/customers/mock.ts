@@ -66,6 +66,28 @@ mock('POST', '/customers/:id/addresses', ({ params, body }) => {
   });
 });
 
+mock('PUT', '/customers/:id/addresses/:addressId', ({ params, body }) => {
+  const customerId = Number(params.id);
+  const address = db.addresses.find((a) => a.id === Number(params.addressId) && a.customerId === customerId);
+  if (!address) fail(404, 'Không tìm thấy địa chỉ');
+  if (body.isDefault) db.addresses.filter((a) => a.customerId === customerId).forEach((a) => (a.isDefault = false));
+  const distanceKm = body.distanceKm === null || body.distanceKm === undefined ? null : Number(body.distanceKm);
+  Object.assign(address, {
+    ...body,
+    distanceKm,
+    latitude: null,
+    longitude: null,
+    inDeliveryRadius: distanceKm !== null && distanceKm <= configInt('delivery_radius_km', 8),
+  });
+});
+
+mock('DELETE', '/customers/:id/addresses/:addressId', ({ params }) => {
+  const customerId = Number(params.id);
+  const index = db.addresses.findIndex((a) => a.id === Number(params.addressId) && a.customerId === customerId);
+  if (index < 0) fail(404, 'Không tìm thấy địa chỉ');
+  db.addresses.splice(index, 1);
+});
+
 // Giữ giá cũ đến khi duyệt, tránh lỗi ghi đè do UNIQUE (customer_id, variant_id) — xem spec mục 5 #6.
 mock('POST', '/customers/:id/prices', ({ params, body, userId }) => {
   const customerId = Number(params.id);

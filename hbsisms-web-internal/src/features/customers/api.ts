@@ -13,5 +13,7 @@ export const customersApi = {
   update: (id: ID, body: CustomerInput) => api.put<CustomerDetail>(`/customers/${id}`, body),
   addresses: (id: ID) => api.get<CustomerAddress[]>(`/customers/${id}/addresses`),
   addAddress: (id: ID, body: AddressInput) => api.post<void>(`/customers/${id}/addresses`, body),
+  updateAddress: (id: ID, addressId: ID, body: AddressInput) => api.put<void>(`/customers/${id}/addresses/${addressId}`, body),
+  deleteAddress: (id: ID, addressId: ID) => api.delete<void>(`/customers/${id}/addresses/${addressId}`),
   proposePrice: (id: ID, body: PriceProposal) => api.post<void>(`/customers/${id}/prices`, body),
 };

@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { MapPin, Pencil, Plus } from 'lucide-react';
+import { MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { useVariantOptions } from '@/features/products';
 import { useAction } from '@/shared/api/useAction';
+import type { CustomerAddress, ID } from '@/shared/domain/entities';
 import { approvalStatusMeta, customerTypeMeta, orderStateMeta } from '@/shared/domain/enums';
 import { date, dateTime, money } from '@/shared/lib/format';
-import { Button, Card, Checkbox, Chip, DataTable, ErrorState, Field, InfoList, Input, Meter, Modal, PageHeader, PageLoading, Select, StatusChip, Tabs, type Column } from '@/shared/ui';
+import { Button, Card, Checkbox, Chip, ConfirmDialog, DataTable, ErrorState, Field, IconButton, InfoList, Input, Meter, Modal, PageHeader, PageLoading, Select, StatusChip, Tabs, type Column } from '@/shared/ui';
 import { customersApi } from '../api';
 import { CustomerFormModal } from '../components/CustomerFormModal';
 import { useCustomer } from '../hooks';
@@ -14,6 +15,20 @@ import type { AddressInput, CustomerOrderRow, CustomerPriceRow } from '../types'
 type Tab = 'address' | 'prices' | 'orders';
 const emptyAddress: AddressInput = { kind: 'shipping', recipientName: '', phone: '', line1: '', ward: '', district: '', province: 'Quảng Ninh', distanceKm: null, isDefault: false };
 
+function toAddressInput(a: CustomerAddress): AddressInput {
+  return {
+    kind: a.kind,
+    recipientName: a.recipientName,
+    phone: a.phone,
+    line1: a.line1,
+    ward: a.ward,
+    district: a.district,
+    province: a.province ?? 'Quảng Ninh',
+    distanceKm: a.distanceKm,
+    isDefault: a.isDefault,
+  };
+}
+
 export default function CustomerDetailPage() {
   const id = Number(useParams().id);
   const { data: customer, isLoading, error, refetch } = useCustomer(id);
@@ -21,13 +36,28 @@ export default function CustomerDetailPage() {
   const [tab, setTab] = useState<Tab>('address');
   const [editing, setEditing] = useState(false);
   const [addressOpen, setAddressOpen] = useState(false);
+  const [editingAddressId, setEditingAddressId] = useState<ID | null>(null);
+  const [deletingAddress, setDeletingAddress] = useState<CustomerAddress | null>(null);
   const [address, setAddress] = useState<AddressInput>(emptyAddress);
   const [addressTouched, setAddressTouched] = useState(false);
   const [priceOpen, setPriceOpen] = useState(false);
   const [price, setPrice] = useState({ variantId: '', unitPrice: '', effectiveFrom: '', effectiveTo: '' });
   const [priceTouched, setPriceTouched] = useState(false);
 
-  const addAddress = useAction(() => customersApi.addAddress(id, address), { success: 'Đã thêm địa chỉ', onDone: () => setAddressOpen(false) });
+  const closeAddressModal = () => {
+    setAddressOpen(false);
+    setEditingAddressId(null);
+  };
+
+  const addAddress = useAction(() => customersApi.addAddress(id, address), { success: 'Đã thêm địa chỉ', onDone: closeAddressModal });
+  const updateAddress = useAction(
+    () => customersApi.updateAddress(id, editingAddressId!, address),
+    { success: 'Đã cập nhật địa chỉ', onDone: closeAddressModal },
+  );
+  const deleteAddress = useAction(
+    () => customersApi.deleteAddress(id, deletingAddress!.id),
+    { success: 'Đã xóa địa chỉ', onDone: () => setDeletingAddress(null) },
+  );
   const proposePrice = useAction(
     () => customersApi.proposePrice(id, { variantId: Number(price.variantId), unitPrice: Number(price.unitPrice), effectiveFrom: price.effectiveFrom || null, effectiveTo: price.effectiveTo || null }),
     { success: 'Đã gửi đề xuất giá để Chủ cửa hàng duyệt', onDone: () => setPriceOpen(false) },
@@ -36,6 +66,8 @@ export default function CustomerDetailPage() {
   if (isLoading) return <PageLoading />;
   if (error || !customer) return <ErrorState error={error} onRetry={refetch} />;
   const isB2b = customer.customerType === 'b2b';
+  const isEditingAddress = editingAddressId !== null;
+  const addressSaving = addAddress.isPending || updateAddress.isPending;
 
   const priceColumns: Column<CustomerPriceRow>[] = [
     { key: 'sku', header: 'SKU', cell: (p) => <span className="num">{p.sku}</span> },
@@ -81,7 +113,17 @@ export default function CustomerDetailPage() {
           {tab === 'address' && (
             <div className="p-4">
               <div className="mb-3 flex justify-end">
-                <Button icon={<Plus size={14} />} onClick={() => { setAddress(emptyAddress); setAddressTouched(false); setAddressOpen(true); }}>Thêm địa chỉ</Button>
+                <Button
+                  icon={<Plus size={14} />}
+                  onClick={() => {
+                    setEditingAddressId(null);
+                    setAddress(emptyAddress);
+                    setAddressTouched(false);
+                    setAddressOpen(true);
+                  }}
+                >
+                  Thêm địa chỉ
+                </Button>
               </div>
               {customer.addresses.length === 0 && <p className="py-6 text-center text-ink-muted">Chưa có địa chỉ giao hàng</p>}
               <ul className="grid gap-3 md:grid-cols-2">
@@ -89,7 +131,7 @@ export default function CustomerDetailPage() {
                   <li key={a.id} className="rounded-md border border-line p-3">
                     <div className="flex items-start gap-2">
                       <MapPin size={15} className="mt-0.5 shrink-0 text-ink-faint" aria-hidden />
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="font-medium">{a.line1}</div>
                         <div className="text-ink-muted">{[a.ward, a.district, a.province].filter(Boolean).join(', ')}</div>
                         <div className="mt-0.5 text-small text-ink-faint">{a.recipientName} · {a.phone}</div>
@@ -97,6 +139,22 @@ export default function CustomerDetailPage() {
                           {a.isDefault && <Chip tone="blue">Mặc định</Chip>}
                           <Chip tone={a.inDeliveryRadius ? 'green' : 'amber'}>{a.inDeliveryRadius ? 'Trong bán kính' : 'Ngoài bán kính'}{a.distanceKm !== null ? ` · ${a.distanceKm} km` : ''}</Chip>
                         </div>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <IconButton
+                          label={`Sửa địa chỉ ${a.line1}`}
+                          onClick={() => {
+                            setEditingAddressId(a.id);
+                            setAddress(toAddressInput(a));
+                            setAddressTouched(false);
+                            setAddressOpen(true);
+                          }}
+                        >
+                          <Pencil size={14} />
+                        </IconButton>
+                        <IconButton label={`Xóa địa chỉ ${a.line1}`} onClick={() => setDeletingAddress(a)}>
+                          <Trash2 size={14} />
+                        </IconButton>
                       </div>
                     </div>
                   </li>
@@ -120,13 +178,15 @@ export default function CustomerDetailPage() {
 
       <Modal
         open={addressOpen}
-        title="Thêm địa chỉ"
-        onClose={() => setAddressOpen(false)}
+        title={isEditingAddress ? 'Sửa địa chỉ' : 'Thêm địa chỉ'}
+        onClose={closeAddressModal}
         onSubmit={() => {
           setAddressTouched(true);
-          if (address.line1.trim()) addAddress.mutate();
+          if (!address.line1.trim()) return;
+          if (isEditingAddress) updateAddress.mutate();
+          else addAddress.mutate();
         }}
-        footer={<><Button onClick={() => setAddressOpen(false)}>Hủy bỏ</Button><Button type="submit" variant="primary" loading={addAddress.isPending}>Lưu</Button></>}
+        footer={<><Button onClick={closeAddressModal}>Hủy bỏ</Button><Button type="submit" variant="primary" loading={addressSaving}>Lưu</Button></>}
       >
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Địa chỉ" required className="sm:col-span-2" error={addressTouched && !address.line1.trim() ? 'Vui lòng nhập địa chỉ' : undefined}><Input value={address.line1} onChange={(e) => setAddress({ ...address, line1: e.target.value })} /></Field>
@@ -138,6 +198,17 @@ export default function CustomerDetailPage() {
           <div className="self-end pb-2"><Checkbox label="Đặt làm mặc định" checked={address.isDefault} onChange={(e) => setAddress({ ...address, isDefault: e.target.checked })} /></div>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={!!deletingAddress}
+        danger
+        title="Xóa địa chỉ?"
+        message={deletingAddress ? `Xóa địa chỉ “${deletingAddress.line1}”? Thao tác này không thể hoàn tác.` : ''}
+        confirmLabel="Xóa địa chỉ"
+        loading={deleteAddress.isPending}
+        onConfirm={() => deleteAddress.mutate()}
+        onClose={() => setDeletingAddress(null)}
+      />
 
       <Modal
         open={priceOpen}
