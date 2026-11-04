@@ -74,6 +74,7 @@ public class ProductService {
         String code = requireCode(request.code());
         String name = requireName(request.name());
         assertCodeAvailable(code, null);
+        assertCanPublish(null, request.isPublished());
         Category category = resolveCategory(request.categoryId());
         String slug = uniqueSlug(Strings.slugify(name), null);
 
@@ -94,6 +95,7 @@ public class ProductService {
         String code = requireCode(request.code());
         String name = requireName(request.name());
         assertCodeAvailable(code, id);
+        assertCanPublish(id, request.isPublished());
         Category category = resolveCategory(request.categoryId());
 
         String slug = Strings.trimToNull(product.getSlug());
@@ -170,6 +172,19 @@ public class ProductService {
                 : productRepository.existsByCodeIgnoreCaseAndIdNot(code, excludeId);
         if (taken) {
             throw ApiException.conflict("Mã " + code + " đã tồn tại");
+        }
+    }
+
+    /**
+     * B2C publish requires at least one active variant. Create always fails when published
+     * because the product has no variants yet.
+     */
+    private void assertCanPublish(Long productId, Boolean isPublished) {
+        if (!Boolean.TRUE.equals(isPublished)) {
+            return;
+        }
+        if (productId == null || !productVariantRepository.existsByProduct_IdAndActiveTrue(productId)) {
+            throw ApiException.badRequest("Không thể hiển thị cổng B2C khi chưa có quy cách đang bán");
         }
     }
 
