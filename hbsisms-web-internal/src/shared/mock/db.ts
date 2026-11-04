@@ -39,7 +39,7 @@ export interface MockDb {
   receipts: (T.GoodsReceipt & { items: { name: string; qty: number; unit: string }[] })[];
   stocktakes: T.Stocktake[];
   stocktakeLines: T.StocktakeLine[];
-  damageReports: (T.DamageReport & { locationId: T.ID | null })[];
+  damageReports: T.DamageReport[];
   requests: T.SalesRequest[];
   quotes: T.Quote[];
   quoteLines: T.QuoteLine[];

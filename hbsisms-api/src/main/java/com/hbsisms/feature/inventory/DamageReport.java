@@ -44,6 +44,11 @@ public class DamageReport {
     @JoinColumn(name = "lot_id")
     private Lot lot;
 
+    /** Bin where damaged stock sits; required to deduct the correct stock row after approval. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "location_id")
+    private Location location;
+
     @Column(nullable = false)
     private int qty;
 

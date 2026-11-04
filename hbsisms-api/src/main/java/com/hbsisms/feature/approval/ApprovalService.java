@@ -9,6 +9,7 @@ import com.hbsisms.feature.approval.dto.ApprovalListItemResponse;
 import com.hbsisms.feature.catalog.CustomerPrice;
 import com.hbsisms.feature.catalog.CustomerPriceRepository;
 import com.hbsisms.feature.customer.CustomerPriceService;
+import com.hbsisms.feature.inventory.DamageReportService;
 import com.hbsisms.feature.inventory.StocktakeService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
@@ -17,7 +18,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** List việc duyệt + quyết định (giá B2B, kiểm kê, …). */
+/** List việc duyệt + quyết định (giá B2B, kiểm kê, báo hỏng, …). */
 @Service
 @Transactional(readOnly = true)
 public class ApprovalService {
@@ -28,16 +29,19 @@ public class ApprovalService {
     private final CustomerPriceRepository customerPriceRepository;
     private final StocktakeService stocktakeService;
     private final UserRepository userRepository;
+    private final DamageReportService damageReportService;
 
     public ApprovalService(
             ApprovalTaskRepository approvalTaskRepository,
             CustomerPriceRepository customerPriceRepository,
             StocktakeService stocktakeService,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            DamageReportService damageReportService) {
         this.approvalTaskRepository = approvalTaskRepository;
         this.customerPriceRepository = customerPriceRepository;
         this.stocktakeService = stocktakeService;
         this.userRepository = userRepository;
+        this.damageReportService = damageReportService;
     }
 
     public PageResponse<ApprovalListItemResponse> search(
@@ -69,6 +73,8 @@ public class ApprovalService {
             applyCustomerPrice(task.getRefId(), approved, actor);
         } else if (StocktakeService.REF_TYPE.equals(task.getRefType())) {
             stocktakeService.applyApprovalDecision(task.getRefId(), approved, actor.getId());
+        } else if (DamageReportService.REF_TYPE.equals(task.getRefType())) {
+            damageReportService.applyDecision(task.getRefId(), approved, actor, request.note());
         } else {
             throw ApiException.badRequest(
                     "Loại duyệt \"" + task.getRefType() + "\" chưa được hỗ trợ trên API");
@@ -115,6 +121,9 @@ public class ApprovalService {
         }
         if (StocktakeService.REF_TYPE.equals(task.getRefType())) {
             return "/stocktakes/" + task.getRefId();
+        }
+        if (DamageReportService.REF_TYPE.equals(task.getRefType())) {
+            return "/damage";
         }
         return null;
     }

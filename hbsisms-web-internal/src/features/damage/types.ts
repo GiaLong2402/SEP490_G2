@@ -13,7 +13,6 @@ export interface DamageListItem extends DamageReport {
 export interface DamageInput {
   variantId: ID;
   lotId: ID;
-  /** Schema chưa có cột này; xem spec mục 5 #5. */
   locationId: ID;
   qty: number;
   reason: string;

@@ -178,11 +178,33 @@ public class StockService {
         return requireStock(stock.getId());
     }
 
+    /**
+     * Deduct damaged trays across buckets (quarantine → available → expired), matching FE mock
+     * behaviour so a report can cover on-hand beyond {@code qty_available} alone.
+     */
     @Transactional
     public Stock damage(StockMutation cmd) {
         requirePositiveQty(cmd.qty());
         Stock stock = requireExistingStock(cmd.variantId(), cmd.lotId(), cmd.locationId());
-        int balance = applyAvailableDelta(stock.getId(), -cmd.qty());
+        int onHand = stock.getQtyQuarantine() + stock.getQtyAvailable() + stock.getQtyExpired();
+        if (cmd.qty() > onHand) {
+            throw ApiException.conflict("Không đủ tồn kho để trừ hỏng");
+        }
+        int left = cmd.qty();
+        int takeQ = Math.min(left, stock.getQtyQuarantine());
+        if (takeQ > 0) {
+            applyQuarantineDelta(stock.getId(), -takeQ);
+            left -= takeQ;
+        }
+        int takeA = Math.min(left, stock.getQtyAvailable());
+        if (takeA > 0) {
+            applyAvailableDelta(stock.getId(), -takeA);
+            left -= takeA;
+        }
+        if (left > 0) {
+            applyExpiredDelta(stock.getId(), -left);
+        }
+        int balance = requireStock(stock.getId()).getQtyAvailable();
         appendLedger(
                 stock,
                 null,
@@ -303,6 +325,13 @@ public class StockService {
         int updated = stockRepository.adjustQtyHeld(stockId, delta);
         if (updated == 0) {
             throw ApiException.conflict("Không đủ tồn đang giữ");
+        }
+    }
+
+    private void applyQuarantineDelta(long stockId, int delta) {
+        int updated = stockRepository.adjustQtyQuarantine(stockId, delta);
+        if (updated == 0) {
+            throw ApiException.conflict("Không đủ tồn cách ly");
         }
     }
 

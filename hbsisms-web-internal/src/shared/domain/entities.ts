@@ -83,7 +83,7 @@ export interface StocktakeLine {
 }
 
 export interface DamageReport {
-  id: ID; code: string; variantId: ID; lotId: ID | null; qty: number; reason: string | null; status: E.ApprovalStatus;
+  id: ID; code: string; variantId: ID; lotId: ID | null; locationId: ID | null; qty: number; reason: string | null; status: E.ApprovalStatus;
   reportedBy: ID | null; reviewedBy: ID | null; reportedAt: ISODateTime; reviewedAt: ISODateTime | null; note: string | null;
 }
 
