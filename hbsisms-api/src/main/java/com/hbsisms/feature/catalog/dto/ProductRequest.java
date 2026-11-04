@@ -3,6 +3,7 @@ package com.hbsisms.feature.catalog.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.util.List;
 
 /** Body of POST/PUT /products — matches FE {@code ProductInput}. */
 public record ProductRequest(
@@ -22,6 +23,12 @@ public record ProductRequest(
 
         @Size(max = 160, message = "Xuất xứ tối đa 160 ký tự")
         String origin,
+
+        @Size(max = 500, message = "URL ảnh chính tối đa 500 ký tự")
+        String imageUrl,
+
+        /** Null on update = keep existing gallery; empty list clears it. */
+        List<String> gallery,
 
         @NotNull(message = "Trạng thái hiển thị cổng B2C là bắt buộc")
         Boolean isPublished,

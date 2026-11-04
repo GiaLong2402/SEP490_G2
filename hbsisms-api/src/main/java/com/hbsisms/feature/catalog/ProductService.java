@@ -79,9 +79,7 @@ public class ProductService {
         String slug = uniqueSlug(Strings.slugify(name), null);
 
         Product product = new Product();
-        apply(product, code, name, slug, category, request);
-        product.setImageUrl(null);
-        product.setGallery(List.of());
+        apply(product, code, name, slug, category, request, true);
         Product saved = productRepository.save(product);
         return toResponse(productRepository.findWithCategoryById(saved.getId()).orElse(saved));
     }
@@ -103,7 +101,7 @@ public class ProductService {
             slug = uniqueSlug(Strings.slugify(name), id);
         }
 
-        apply(product, code, name, slug, category, request);
+        apply(product, code, name, slug, category, request, false);
         Product saved = productRepository.save(product);
         return toResponse(productRepository.findWithCategoryById(saved.getId()).orElse(saved));
     }
@@ -122,7 +120,13 @@ public class ProductService {
     }
 
     private void apply(
-            Product product, String code, String name, String slug, Category category, ProductRequest request) {
+            Product product,
+            String code,
+            String name,
+            String slug,
+            Category category,
+            ProductRequest request,
+            boolean creating) {
         product.setCode(code);
         product.setName(name);
         product.setSlug(slug);
@@ -130,8 +134,41 @@ public class ProductService {
         product.setDescription(Strings.trimToNull(request.description()));
         product.setStorageNote(Strings.trimToNull(request.storageNote()));
         product.setOrigin(Strings.trimToNull(request.origin()));
+        product.setImageUrl(normalizeImageUrl(request.imageUrl()));
+        if (creating) {
+            product.setGallery(cleanGallery(request.gallery()));
+        } else if (request.gallery() != null) {
+            product.setGallery(cleanGallery(request.gallery()));
+        }
         product.setPublished(Boolean.TRUE.equals(request.isPublished()));
         product.setActive(Boolean.TRUE.equals(request.isActive()));
+    }
+
+    private static String normalizeImageUrl(String imageUrl) {
+        String trimmed = Strings.trimToNull(imageUrl);
+        if (trimmed != null && trimmed.length() > 500) {
+            throw ApiException.badRequest("URL ảnh chính tối đa 500 ký tự");
+        }
+        return trimmed;
+    }
+
+    /** Trims entries, drops blanks; each URL max 500 chars. Never null — returns empty list. */
+    private static List<String> cleanGallery(List<String> gallery) {
+        if (gallery == null || gallery.isEmpty()) {
+            return List.of();
+        }
+        List<String> cleaned = new ArrayList<>();
+        for (String raw : gallery) {
+            String url = Strings.trimToNull(raw);
+            if (url == null) {
+                continue;
+            }
+            if (url.length() > 500) {
+                throw ApiException.badRequest("Mỗi URL gallery tối đa 500 ký tự");
+            }
+            cleaned.add(url);
+        }
+        return cleaned;
     }
 
     private Category resolveCategory(Long categoryId) {

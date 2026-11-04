@@ -40,6 +40,27 @@ export default function ProductDetailPage() {
           <DataTable columns={columns} rows={product.variants} rowKey={(v) => v.id} emptyText="Sản phẩm chưa có quy cách" />
         </Card>
         <Card title="Thông tin">
+          {product.imageUrl ? (
+            <img
+              src={product.imageUrl}
+              alt={product.name}
+              className="mb-3 h-40 w-full rounded-md border border-line object-cover"
+            />
+          ) : (
+            <p className="mb-3 text-small text-ink-faint">Chưa có ảnh chính</p>
+          )}
+          {product.gallery && product.gallery.length > 0 ? (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {product.gallery.map((url) => (
+                <img
+                  key={url}
+                  src={url}
+                  alt=""
+                  className="h-16 w-16 rounded border border-line object-cover"
+                />
+              ))}
+            </div>
+          ) : null}
           <InfoList
             items={[
               ['Mã', <span className="num">{product.code}</span>],
@@ -47,6 +68,7 @@ export default function ProductDetailPage() {
               ['Xuất xứ', product.origin],
               ['Cổng B2C', product.isPublished ? 'Đang hiển thị' : 'Ẩn'],
               ['Kinh doanh', product.isActive ? 'Đang bán' : 'Ngừng bán'],
+              ['Gallery', product.gallery?.length ? `${product.gallery.length} ảnh` : '—'],
             ]}
           />
           {product.description && <p className="mt-3 border-t border-line pt-3 text-ink-muted">{product.description}</p>}

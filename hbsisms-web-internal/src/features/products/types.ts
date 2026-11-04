@@ -19,6 +19,9 @@ export interface ProductInput {
   description: string | null;
   storageNote: string | null;
   origin: string | null;
+  imageUrl: string | null;
+  /** Mỗi phần tử là một URL; gửi [] để xóa hết gallery. */
+  gallery: string[];
   isPublished: boolean;
   isActive: boolean;
 }
