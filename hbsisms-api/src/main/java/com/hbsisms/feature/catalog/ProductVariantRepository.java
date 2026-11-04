@@ -14,4 +14,7 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     @Override
     @EntityGraph(attributePaths = "product")
     List<ProductVariant> findAll(Sort sort);
+
+    @EntityGraph(attributePaths = "product")
+    List<ProductVariant> findByProduct_IdOrderByIdAsc(Long productId);
 }

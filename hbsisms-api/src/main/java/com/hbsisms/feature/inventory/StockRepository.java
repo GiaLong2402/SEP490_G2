@@ -98,4 +98,12 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
             """)
     long sumAvailableByVariantExcludingExpired(
             @Param("variantId") Long variantId, @Param("today") java.time.LocalDate today);
+
+    /** Tổng khay khả dụng theo variant (dùng cho danh sách / chi tiết sản phẩm). */
+    @Query("""
+            select coalesce(sum(s.qtyAvailable), 0)
+            from Stock s
+            where s.variant.id = :variantId
+            """)
+    long sumQtyAvailableByVariantId(@Param("variantId") Long variantId);
 }
