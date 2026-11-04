@@ -5,6 +5,7 @@ import com.hbsisms.common.text.Strings;
 import com.hbsisms.feature.inventory.dto.RawMaterialRequest;
 import com.hbsisms.feature.inventory.dto.RawMaterialResponse;
 import java.math.BigDecimal;
+import java.util.Locale;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,10 +20,21 @@ public class RawMaterialService {
         this.rawMaterialRepository = rawMaterialRepository;
     }
 
-    public List<RawMaterialResponse> list() {
+    public List<RawMaterialResponse> list(String q, Boolean activeOnly, Boolean lowStock) {
+        String needle = Strings.trimToNull(q);
+        String pattern = needle == null ? null : needle.toLowerCase(Locale.ROOT);
         return rawMaterialRepository.findAllByOrderByCodeAsc().stream()
+                .filter(m -> pattern == null
+                        || m.getCode().toLowerCase(Locale.ROOT).contains(pattern)
+                        || m.getName().toLowerCase(Locale.ROOT).contains(pattern))
+                .filter(m -> activeOnly == null || m.isActive() == activeOnly)
+                .filter(m -> !Boolean.TRUE.equals(lowStock) || isLowStock(m))
                 .map(RawMaterialResponse::from)
                 .toList();
+    }
+
+    public RawMaterialResponse get(Long id) {
+        return RawMaterialResponse.from(require(id));
     }
 
     @Transactional
@@ -39,15 +51,24 @@ public class RawMaterialService {
 
     @Transactional
     public RawMaterialResponse update(Long id, RawMaterialRequest request) {
-        RawMaterial material = rawMaterialRepository
-                .findById(id)
-                .orElseThrow(() -> ApiException.notFound("Không tìm thấy nguyên liệu"));
+        RawMaterial material = require(id);
         String code = normalizeCode(request.code());
         if (rawMaterialRepository.existsByCodeIgnoreCaseAndIdNot(code, id)) {
             throw ApiException.conflict("Mã " + code + " đã tồn tại");
         }
         apply(material, request, code);
         return RawMaterialResponse.from(rawMaterialRepository.save(material));
+    }
+
+    private RawMaterial require(Long id) {
+        return rawMaterialRepository
+                .findById(id)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy nguyên liệu"));
+    }
+
+    static boolean isLowStock(RawMaterial material) {
+        BigDecimal reorder = material.getReorderLevel();
+        return reorder != null && material.getQtyOnHand().compareTo(reorder) < 0;
     }
 
     private static void apply(RawMaterial material, RawMaterialRequest request, String code) {

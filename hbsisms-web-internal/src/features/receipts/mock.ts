@@ -16,7 +16,22 @@ function checkRawMaterial(body: any, id: number | null) {
   return code;
 }
 
-mock('GET', '/raw-materials', () => db.rawMaterials);
+mock('GET', '/raw-materials', ({ query }) => {
+  const q = String(query.q ?? '').trim().toLowerCase();
+  return db.rawMaterials.filter((m) => {
+    if (q && !m.code.toLowerCase().includes(q) && !m.name.toLowerCase().includes(q)) return false;
+    if (query.activeOnly === 'true' && !m.isActive) return false;
+    if (query.activeOnly === 'false' && m.isActive) return false;
+    if (query.lowStock === 'true' && !(m.reorderLevel !== null && m.qtyOnHand < m.reorderLevel)) return false;
+    return true;
+  });
+});
+
+mock('GET', '/raw-materials/:id', ({ params }) => {
+  const row = db.rawMaterials.find((m) => m.id === Number(params.id));
+  if (!row) fail(404, 'Không tìm thấy nguyên liệu');
+  return row;
+});
 
 mock('POST', '/raw-materials', ({ body, userId }) => {
   const row = { ...body, code: checkRawMaterial(body, null), id: nextId(db.rawMaterials), qtyOnHand: 0 };

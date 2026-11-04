@@ -22,8 +22,16 @@ export default function ReceiptsPage() {
   const [params, setParams] = useSearchParams();
   const [tab, setTab] = useState<'receipts' | 'raw'>('receipts');
   const list = useListParams(['receiptType'] as const);
+  const [rawQ, setRawQ] = useState('');
+  const [rawStatus, setRawStatus] = useState('');
   const { data, isLoading, error, refetch } = useReceipts({ q: list.q, page: list.page, receiptType: list.filters.receiptType });
-  const raw = useRawMaterials();
+  const raw = useRawMaterials({
+    q: rawQ,
+    activeOnly: rawStatus === 'active' ? true : rawStatus === 'inactive' ? false : undefined,
+    lowStock: rawStatus === 'low' ? true : undefined,
+  });
+  /** Full active catalog for receipt lines (not affected by raw-tab filters). */
+  const rawCatalog = useRawMaterials({ activeOnly: true });
   const variants = useVariantOptions().data ?? [];
   const locations = useLocations().data ?? [];
 
@@ -99,7 +107,17 @@ export default function ReceiptsPage() {
             {data && <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onChange={list.setPage} />}
           </>
         ) : (
-          <DataTable columns={rawColumns} rows={raw.data} rowKey={(m) => m.id} loading={raw.isLoading} error={raw.error} onRetry={raw.refetch} emptyText="Chưa có nguyên liệu" />
+          <>
+            <FilterBar>
+              <SearchBox value={rawQ} onChange={setRawQ} placeholder="Tìm mã, tên nguyên liệu..." />
+              <FilterSelect label="Tình trạng" value={rawStatus} onChange={setRawStatus}>
+                <option value="active">Đang dùng</option>
+                <option value="inactive">Ngừng dùng</option>
+                <option value="low">Cần đặt thêm</option>
+              </FilterSelect>
+            </FilterBar>
+            <DataTable columns={rawColumns} rows={raw.data} rowKey={(m) => m.id} loading={raw.isLoading} error={raw.error} onRetry={raw.refetch} emptyText="Chưa có nguyên liệu" />
+          </>
         )}
       </Card>
 
@@ -154,7 +172,7 @@ export default function ReceiptsPage() {
                   const patch = (p: Partial<RawRow>) => setRawRows(rawRows.map((x) => (x.key === r.key ? { ...x, ...p } : x)));
                   return (
                     <tr key={r.key}>
-                      <td className="py-1 pr-2"><Select aria-label={`Nguyên liệu dòng ${i + 1}`} value={r.rawMaterialId} onChange={(e) => patch({ rawMaterialId: e.target.value })}><option value="">Chọn...</option>{raw.data?.filter((m) => m.isActive || String(m.id) === r.rawMaterialId).map((m) => <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)}</Select></td>
+                      <td className="py-1 pr-2"><Select aria-label={`Nguyên liệu dòng ${i + 1}`} value={r.rawMaterialId} onChange={(e) => patch({ rawMaterialId: e.target.value })}><option value="">Chọn...</option>{rawCatalog.data?.filter((m) => m.isActive || String(m.id) === r.rawMaterialId).map((m) => <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)}</Select></td>
                       <td className="pr-2"><Input aria-label={`Số lượng dòng ${i + 1}`} type="number" min={0} step="0.1" className="text-right" value={r.qty} onChange={(e) => patch({ qty: e.target.value })} /></td>
                       <td><IconButton label={`Xóa dòng ${i + 1}`} disabled={rawRows.length === 1} onClick={() => setRawRows(rawRows.filter((x) => x.key !== r.key))}><Trash2 size={14} /></IconButton></td>
                     </tr>
