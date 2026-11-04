@@ -4,6 +4,7 @@ import type { AddressInput, CustomerDetail, CustomerInput, CustomerListItem, Pri
 
 export interface CustomerQuery extends ListQuery {
   type?: string;
+  isActive?: boolean;
 }
 
 export const customersApi = {
@@ -11,6 +12,7 @@ export const customersApi = {
   get: (id: ID) => api.get<CustomerDetail>(`/customers/${id}`),
   create: (body: CustomerInput) => api.post<CustomerDetail>('/customers', body),
   update: (id: ID, body: CustomerInput) => api.put<CustomerDetail>(`/customers/${id}`, body),
+  setActive: (id: ID, isActive: boolean) => api.patch<CustomerDetail>(`/customers/${id}/active`, { isActive }),
   addresses: (id: ID) => api.get<CustomerAddress[]>(`/customers/${id}/addresses`),
   addAddress: (id: ID, body: AddressInput) => api.post<void>(`/customers/${id}/addresses`, body),
   updateAddress: (id: ID, addressId: ID, body: AddressInput) => api.put<void>(`/customers/${id}/addresses/${addressId}`, body),

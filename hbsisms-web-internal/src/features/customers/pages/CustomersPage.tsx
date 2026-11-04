@@ -9,10 +9,17 @@ import { useCustomers } from '../hooks';
 import type { CustomerListItem } from '../types';
 
 export default function CustomersPage() {
-  const list = useListParams(['type'] as const);
+  const list = useListParams(['type', 'active'] as const);
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
-  const { data, isLoading, error, refetch } = useCustomers({ q: list.q, page: list.page, type: list.filters.type });
+  const isActiveFilter =
+    list.filters.active === 'true' ? true : list.filters.active === 'false' ? false : undefined;
+  const { data, isLoading, error, refetch } = useCustomers({
+    q: list.q,
+    page: list.page,
+    type: list.filters.type,
+    isActive: isActiveFilter,
+  });
 
   const columns: Column<CustomerListItem>[] = [
     { key: 'code', header: 'Mã', cell: (c) => <Link to={`/customers/${c.id}`} className="num text-primary hover:underline">{c.code}</Link> },
@@ -32,6 +39,10 @@ export default function CustomersPage() {
         <FilterBar>
           <SearchBox value={list.q} onChange={list.setQ} placeholder="Tìm tên, mã, SĐT, MST..." />
           <FilterSelect label="Loại" value={list.filters.type} onChange={(v) => list.setFilter('type', v)}>{enumOptions(customerTypeMeta)}</FilterSelect>
+          <FilterSelect label="Trạng thái" value={list.filters.active} onChange={(v) => list.setFilter('active', v)}>
+            <option value="true">Hoạt động</option>
+            <option value="false">Ngừng</option>
+          </FilterSelect>
         </FilterBar>
         <DataTable columns={columns} rows={data?.items} rowKey={(c) => c.id} loading={isLoading} error={error} onRetry={refetch} emptyText="Không có khách hàng phù hợp" />
         {data && <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onChange={list.setPage} />}

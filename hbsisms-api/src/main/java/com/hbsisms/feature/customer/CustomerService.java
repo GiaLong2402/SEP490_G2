@@ -94,6 +94,19 @@ public class CustomerService {
         return toDetail(saved);
     }
 
+    /**
+     * Khóa ({@code active=false}) hoặc mở khóa khách. Idempotent.
+     * <p>Contract bán hàng: khách đã khóa không được tạo đơn mới / báo giá — sales phải kiểm tra
+     * {@code isActive} trước khi tạo {@code SalesOrder} hoặc quote.
+     */
+    @Transactional
+    public CustomerDetailResponse setActive(Long id, boolean active) {
+        Customer customer = requireCustomer(id);
+        customer.setActive(active);
+        Customer saved = customerRepository.save(customer);
+        return toDetail(saved);
+    }
+
     private CustomerDetailResponse toDetail(Customer customer) {
         Long id = customer.getId();
         List<AddressResponse> addresses = addressRepository

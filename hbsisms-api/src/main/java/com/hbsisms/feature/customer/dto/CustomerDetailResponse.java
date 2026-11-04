@@ -7,8 +7,7 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Matches FE {@code CustomerDetail}. List/search + detail read owned by Duy;
- * create/update/lock are later tasks. {@code recentOrders} stays empty until sales module lands.
+ * Matches FE {@code CustomerDetail}. {@code recentOrders} stays empty until sales module lands.
  */
 public record CustomerDetailResponse(
         Long id,

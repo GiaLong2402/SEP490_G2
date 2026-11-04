@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Lock, LockOpen, MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { useVariantOptions } from '@/features/products';
 import { useAction } from '@/shared/api/useAction';
@@ -43,6 +43,7 @@ export default function CustomerDetailPage() {
   const [priceOpen, setPriceOpen] = useState(false);
   const [price, setPrice] = useState({ variantId: '', unitPrice: '', effectiveFrom: '', effectiveTo: '' });
   const [priceTouched, setPriceTouched] = useState(false);
+  const [lockConfirm, setLockConfirm] = useState(false);
 
   const closeAddressModal = () => {
     setAddressOpen(false);
@@ -61,6 +62,13 @@ export default function CustomerDetailPage() {
   const proposePrice = useAction(
     () => customersApi.proposePrice(id, { variantId: Number(price.variantId), unitPrice: Number(price.unitPrice), effectiveFrom: price.effectiveFrom || null, effectiveTo: price.effectiveTo || null }),
     { success: 'Đã gửi đề xuất giá để Chủ cửa hàng duyệt', onDone: () => setPriceOpen(false) },
+  );
+  const setActive = useAction(
+    (active: boolean) => customersApi.setActive(id, active),
+    {
+      success: (detail) => (detail.isActive ? 'Đã mở khóa khách hàng' : 'Đã khóa khách hàng'),
+      onDone: () => setLockConfirm(false),
+    },
   );
 
   if (isLoading) return <PageLoading />;
@@ -113,8 +121,21 @@ export default function CustomerDetailPage() {
     <>
       <PageHeader
         breadcrumb={<><Link to="/customers" className="hover:underline">Khách hàng</Link> / {customer.code}</>}
-        title={<span className="flex items-center gap-2">{customer.name} <StatusChip meta={customerTypeMeta} value={customer.customerType} /></span>}
-        actions={<Button icon={<Pencil size={14} />} onClick={() => setEditing(true)}>Sửa</Button>}
+        title={<span className="flex items-center gap-2">{customer.name} <StatusChip meta={customerTypeMeta} value={customer.customerType} /> <Chip tone={customer.isActive ? 'green' : 'neutral'}>{customer.isActive ? 'Hoạt động' : 'Ngừng'}</Chip></span>}
+        actions={
+          <>
+            {customer.isActive ? (
+              <Button variant="danger" icon={<Lock size={14} />} onClick={() => setLockConfirm(true)} loading={setActive.isPending}>
+                Khóa khách
+              </Button>
+            ) : (
+              <Button icon={<LockOpen size={14} />} onClick={() => setLockConfirm(true)} loading={setActive.isPending}>
+                Mở khóa
+              </Button>
+            )}
+            <Button icon={<Pencil size={14} />} onClick={() => setEditing(true)}>Sửa</Button>
+          </>
+        }
       />
       <div className="grid items-start gap-4 lg:grid-cols-[320px_1fr]">
         <div className="space-y-4">
@@ -253,6 +274,21 @@ export default function CustomerDetailPage() {
           <Field label="Đến ngày"><Input type="date" value={price.effectiveTo} onChange={(e) => setPrice({ ...price, effectiveTo: e.target.value })} /></Field>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={lockConfirm}
+        danger={customer.isActive}
+        title={customer.isActive ? 'Khóa khách hàng?' : 'Mở khóa khách hàng?'}
+        message={
+          customer.isActive
+            ? `Khóa “${customer.name}”? Khách đã khóa không thể tạo đơn mới cho đến khi được mở lại.`
+            : `Mở khóa “${customer.name}”? Khách sẽ lại được phép tạo đơn mới.`
+        }
+        confirmLabel={customer.isActive ? 'Khóa khách' : 'Mở khóa'}
+        loading={setActive.isPending}
+        onConfirm={() => setActive.mutate(!customer.isActive)}
+        onClose={() => setLockConfirm(false)}
+      />
     </>
   );
 }

@@ -79,6 +79,10 @@ public class Customer extends AuditableEntity {
     @Column(nullable = false, precision = 14, scale = 2)
     private BigDecimal currentDebt = BigDecimal.ZERO;
 
+    /**
+     * {@code false} = khách đã khóa. Module bán hàng phải từ chối tạo đơn mới / báo giá
+     * khi khách không còn hoạt động.
+     */
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 

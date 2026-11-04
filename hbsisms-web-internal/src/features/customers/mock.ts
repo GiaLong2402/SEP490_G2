@@ -34,9 +34,14 @@ function toDetail(id: number) {
 const normalize = (body: any) => (body.customerType === 'b2b' ? body : { ...body, creditLimit: 0, netDays: 0, taxCode: null });
 
 mock('GET', '/customers', ({ query }) => {
+  const activeFilter =
+    query.isActive === undefined || query.isActive === ''
+      ? null
+      : query.isActive === true || query.isActive === 'true';
   const rows = db.customers
     .filter((c) => matches(query.q, c.name, c.code, c.phone, c.taxCode))
     .filter((c) => !query.type || c.customerType === query.type)
+    .filter((c) => activeFilter === null || c.isActive === activeFilter)
     .sort((a, b) => a.name.localeCompare(b.name, 'vi'))
     .map((c) => ({ ...c, orderCount: db.orders.filter((o) => o.customerId === c.id).length }));
   return paginate(rows, query);
@@ -62,6 +67,15 @@ mock('PUT', '/customers/:id', ({ params, body, userId }) => {
   if (body.customerType === 'b2c' && customer.currentDebt > 0) fail(409, 'Khách đang có công nợ, không thể chuyển sang B2C');
   Object.assign(customer, normalize(body), { updatedAt: new Date().toISOString() });
   audit(userId, 'update', 'customer', customer.id);
+  return toDetail(customer.id);
+});
+
+mock('PATCH', '/customers/:id/active', ({ params, body, userId }) => {
+  const customer = db.customers.find((c) => c.id === Number(params.id));
+  if (!customer) fail(404, 'Không tìm thấy khách hàng');
+  customer.isActive = !!body.isActive;
+  customer.updatedAt = new Date().toISOString();
+  audit(userId, body.isActive ? 'unlock' : 'lock', 'customer', customer.id);
   return toDetail(customer.id);
 });
 

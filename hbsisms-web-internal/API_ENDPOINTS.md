@@ -39,6 +39,7 @@ Tổng cộng 97 endpoint, sinh từ `src/features/*/mock.ts`. Kiểu dữ liệ
 | GET | `/customers/:id` |
 | POST | `/customers` |
 | PUT | `/customers/:id` |
+| PATCH | `/customers/:id/active` |
 | GET | `/customers/:id/addresses` |
 | POST | `/customers/:id/addresses` |
 | POST | `/customers/:id/prices` |

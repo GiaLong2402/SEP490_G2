@@ -192,6 +192,47 @@ class CustomerServiceTest {
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
+    @Test
+    void setActiveLocksCustomer() {
+        Customer existing = sample("KH-001", CustomerType.B2C, "An");
+        ReflectionTestUtils.setField(existing, "id", 3L);
+        when(customerRepository.findWithAccountById(3L)).thenReturn(Optional.of(existing));
+        when(customerRepository.save(any(Customer.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(addressRepository.findByCustomerIdOrderByDefaultAddressDescIdAsc(3L)).thenReturn(List.of());
+        when(customerPriceRepository.findByCustomerIdOrderByIdAsc(3L)).thenReturn(List.of());
+
+        CustomerDetailResponse detail = customerService.setActive(3L, false);
+
+        assertThat(detail.isActive()).isFalse();
+        ArgumentCaptor<Customer> captor = ArgumentCaptor.forClass(Customer.class);
+        verify(customerRepository).save(captor.capture());
+        assertThat(captor.getValue().isActive()).isFalse();
+    }
+
+    @Test
+    void setActiveUnlocksCustomer() {
+        Customer existing = sample("KH-001", CustomerType.B2C, "An");
+        ReflectionTestUtils.setField(existing, "id", 3L);
+        existing.setActive(false);
+        when(customerRepository.findWithAccountById(3L)).thenReturn(Optional.of(existing));
+        when(customerRepository.save(any(Customer.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(addressRepository.findByCustomerIdOrderByDefaultAddressDescIdAsc(3L)).thenReturn(List.of());
+        when(customerPriceRepository.findByCustomerIdOrderByIdAsc(3L)).thenReturn(List.of());
+
+        CustomerDetailResponse detail = customerService.setActive(3L, true);
+
+        assertThat(detail.isActive()).isTrue();
+    }
+
+    @Test
+    void setActiveNotFound() {
+        when(customerRepository.findWithAccountById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> customerService.setActive(99L, false))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
     private static CustomerRequest b2cRequest(String name, String phone, boolean active) {
         return new CustomerRequest(
                 CustomerType.B2C, name, null, phone, null, null, null, BigDecimal.ZERO, (short) 0, active, null);
