@@ -13,6 +13,7 @@ import com.hbsisms.feature.approval.ApprovalTaskRepository;
 import com.hbsisms.feature.catalog.CustomerPriceRepository;
 import com.hbsisms.feature.customer.dto.CustomerDetailResponse;
 import com.hbsisms.feature.customer.dto.CustomerListItemResponse;
+import com.hbsisms.feature.customer.dto.CustomerRequest;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -95,6 +96,111 @@ class CustomerServiceTest {
         assertThatThrownBy(() -> customerService.getDetail(99L))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void createB2cAssignsCodeAndZeroDebt() {
+        when(customerRepository.findCodesByPrefix("KH-")).thenReturn(List.of("KH-001"));
+        when(customerRepository.save(any(Customer.class))).thenAnswer(invocation -> {
+            Customer c = invocation.getArgument(0);
+            ReflectionTestUtils.setField(c, "id", 42L);
+            return c;
+        });
+        when(addressRepository.findByCustomerIdOrderByDefaultAddressDescIdAsc(42L)).thenReturn(List.of());
+        when(customerPriceRepository.findByCustomerIdOrderByIdAsc(42L)).thenReturn(List.of());
+
+        CustomerDetailResponse detail = customerService.create(b2cRequest("Phạm Thị Dung", "0912000111", true));
+
+        ArgumentCaptor<Customer> captor = ArgumentCaptor.forClass(Customer.class);
+        verify(customerRepository).save(captor.capture());
+        assertThat(captor.getValue().getCode()).isEqualTo("KH-002");
+        assertThat(captor.getValue().getCurrentDebt()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(captor.getValue().getCustomerType()).isEqualTo(CustomerType.B2C);
+        assertThat(detail.id()).isEqualTo(42L);
+        assertThat(detail.code()).isEqualTo("KH-002");
+    }
+
+    @Test
+    void createB2bKeepsCreditTerms() {
+        when(customerRepository.findCodesByPrefix("KH-B")).thenReturn(List.of());
+        when(customerRepository.save(any(Customer.class))).thenAnswer(invocation -> {
+            Customer c = invocation.getArgument(0);
+            ReflectionTestUtils.setField(c, "id", 7L);
+            return c;
+        });
+        when(addressRepository.findByCustomerIdOrderByDefaultAddressDescIdAsc(7L)).thenReturn(List.of());
+        when(customerPriceRepository.findByCustomerIdOrderByIdAsc(7L)).thenReturn(List.of());
+
+        CustomerDetailResponse detail = customerService.create(b2bRequest(
+                "Nhà hàng Cảng Xanh",
+                "0933000222",
+                "0200555666",
+                new BigDecimal("10000000"),
+                (short) 15));
+
+        ArgumentCaptor<Customer> captor = ArgumentCaptor.forClass(Customer.class);
+        verify(customerRepository).save(captor.capture());
+        assertThat(captor.getValue().getCode()).isEqualTo("KH-B001");
+        assertThat(captor.getValue().getCreditLimit()).isEqualByComparingTo("10000000");
+        assertThat(captor.getValue().getNetDays()).isEqualTo((short) 15);
+        assertThat(captor.getValue().getTaxCode()).isEqualTo("0200555666");
+        assertThat(detail.code()).isEqualTo("KH-B001");
+    }
+
+    @Test
+    void createB2cRejectsCreditLimit() {
+        assertThatThrownBy(() -> customerService.create(new CustomerRequest(
+                        CustomerType.B2C,
+                        "Test",
+                        null,
+                        "0912000111",
+                        null,
+                        null,
+                        null,
+                        new BigDecimal("1000"),
+                        (short) 0,
+                        true,
+                        null)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void updateB2bToB2cWithDebtConflicts() {
+        Customer existing = sample("KH-B001", CustomerType.B2B, "Nợ");
+        ReflectionTestUtils.setField(existing, "id", 5L);
+        existing.setCurrentDebt(new BigDecimal("3500000"));
+        when(customerRepository.findWithAccountById(5L)).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> customerService.update(5L, b2cRequest("Nợ", "0912000111", true)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.CONFLICT));
+    }
+
+    @Test
+    void createRejectsInvalidPhone() {
+        assertThatThrownBy(() -> customerService.create(b2cRequest("A", "123", true)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void createB2bRejectsInvalidTaxCode() {
+        assertThatThrownBy(() -> customerService.create(b2bRequest(
+                        "DN", "0933000222", "ABC", BigDecimal.ZERO, (short) 0)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    private static CustomerRequest b2cRequest(String name, String phone, boolean active) {
+        return new CustomerRequest(
+                CustomerType.B2C, name, null, phone, null, null, null, BigDecimal.ZERO, (short) 0, active, null);
+    }
+
+    private static CustomerRequest b2bRequest(
+            String name, String phone, String taxCode, BigDecimal creditLimit, short netDays) {
+        return new CustomerRequest(
+                CustomerType.B2B, name, null, phone, taxCode, "Anh Tuấn", "0933000223", creditLimit, netDays, true, null);
     }
 
     private static Customer sample(String code, CustomerType type, String name) {

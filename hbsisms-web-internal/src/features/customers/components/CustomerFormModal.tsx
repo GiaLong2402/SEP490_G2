@@ -4,7 +4,33 @@ import { Button, Checkbox, Field, Input, Modal, Select, Textarea } from '@/share
 import { customersApi } from '../api';
 import type { CustomerDetail, CustomerInput } from '../types';
 
-const empty: CustomerInput = { customerType: 'b2c', name: '', email: '', phone: '', taxCode: '', contactName: '', contactPhone: '', creditLimit: 0, netDays: 15, isActive: true, note: '' };
+const empty: CustomerInput = { customerType: 'b2c', name: '', email: '', phone: '', taxCode: '', contactName: '', contactPhone: '', creditLimit: 0, netDays: 0, isActive: true, note: '' };
+
+/** B2C không gửi MST / hạn mức / NET — khớp rule API (400 nếu gửi). */
+function toRequestBody(form: CustomerInput): CustomerInput {
+  if (form.customerType === 'b2b') {
+    return {
+      ...form,
+      email: form.email?.trim() || null,
+      phone: form.phone?.trim() || null,
+      taxCode: form.taxCode?.trim() || null,
+      contactName: form.contactName?.trim() || null,
+      contactPhone: form.contactPhone?.trim() || null,
+      note: form.note?.trim() || null,
+    };
+  }
+  return {
+    ...form,
+    email: form.email?.trim() || null,
+    phone: form.phone?.trim() || null,
+    taxCode: null,
+    contactName: null,
+    contactPhone: null,
+    creditLimit: 0,
+    netDays: 0,
+    note: form.note?.trim() || null,
+  };
+}
 
 export function CustomerFormModal({ open, customer, onClose, onSaved }: { open: boolean; customer?: CustomerDetail; onClose: () => void; onSaved?: (id: number) => void }) {
   const [form, setForm] = useState<CustomerInput>(empty);
@@ -15,7 +41,10 @@ export function CustomerFormModal({ open, customer, onClose, onSaved }: { open: 
     setForm(customer ? { customerType: customer.customerType, name: customer.name, email: customer.email, phone: customer.phone, taxCode: customer.taxCode, contactName: customer.contactName, contactPhone: customer.contactPhone, creditLimit: customer.creditLimit, netDays: customer.netDays, isActive: customer.isActive, note: customer.note } : empty);
   }, [open, customer]);
   const set = <K extends keyof CustomerInput>(key: K, value: CustomerInput[K]) => setForm((f) => ({ ...f, [key]: value }));
-  const save = useAction(() => (customer ? customersApi.update(customer.id, form) : customersApi.create(form)), {
+  const save = useAction(() => {
+    const body = toRequestBody(form);
+    return customer ? customersApi.update(customer.id, body) : customersApi.create(body);
+  }, {
     success: 'Đã lưu khách hàng',
     onDone: (saved) => {
       onClose();
@@ -42,7 +71,17 @@ export function CustomerFormModal({ open, customer, onClose, onSaved }: { open: 
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Loại khách" required>
-          <Select value={form.customerType} onChange={(e) => set('customerType', e.target.value as CustomerInput['customerType'])}>
+          <Select
+            value={form.customerType}
+            onChange={(e) => {
+              const customerType = e.target.value as CustomerInput['customerType'];
+              setForm((f) =>
+                customerType === 'b2b'
+                  ? { ...f, customerType, netDays: f.netDays || 15 }
+                  : { ...f, customerType, taxCode: '', contactName: '', contactPhone: '', creditLimit: 0, netDays: 0 },
+              );
+            }}
+          >
             <option value="b2c">B2C (khách lẻ)</option>
             <option value="b2b">B2B (doanh nghiệp)</option>
           </Select>

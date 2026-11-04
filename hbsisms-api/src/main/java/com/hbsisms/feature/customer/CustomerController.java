@@ -4,16 +4,23 @@ import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
 import com.hbsisms.feature.customer.dto.CustomerDetailResponse;
 import com.hbsisms.feature.customer.dto.CustomerListItemResponse;
+import com.hbsisms.feature.customer.dto.CustomerRequest;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Customer read APIs (Duy): list/search + detail.
- * Create/update/lock belong to later tasks; address/price write remain with Khôi.
+ * Customer APIs (Duy): list/search, detail, create/update.
+ * Address/price write remain with Khôi.
  */
 @RestController
 @RequestMapping("/customers")
@@ -39,5 +46,16 @@ public class CustomerController {
     @GetMapping("/{id}")
     public CustomerDetailResponse get(@PathVariable Long id) {
         return customerService.getDetail(id);
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public CustomerDetailResponse create(@Valid @RequestBody CustomerRequest request) {
+        return customerService.create(request);
+    }
+
+    @PutMapping("/{id}")
+    public CustomerDetailResponse update(@PathVariable Long id, @Valid @RequestBody CustomerRequest request) {
+        return customerService.update(id, request);
     }
 }
