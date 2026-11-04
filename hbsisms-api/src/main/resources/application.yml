@@ -60,3 +60,9 @@ app:
   seed:
     # Creates the default roles and, if no user exists yet, an 'admin' account with this password.
     admin-password: ${SEED_ADMIN_PASSWORD:}
+  inventory:
+    expire-job:
+      # Daily move of past-HSD available trays → qty_expired (task 38).
+      enabled: ${EXPIRE_JOB_ENABLED:true}
+      cron: ${EXPIRE_JOB_CRON:0 5 0 * * *}
+      zone: ${EXPIRE_JOB_ZONE:Asia/Ho_Chi_Minh}
