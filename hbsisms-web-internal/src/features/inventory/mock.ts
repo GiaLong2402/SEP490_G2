@@ -45,6 +45,22 @@ mock('GET', '/inventory/summary', () => {
   };
 });
 
+mock('GET', '/inventory/alerts', () => {
+  const rows = variantRows();
+  return {
+    available: rows.reduce((s, r) => s + r.available, 0),
+    lowStockThreshold: configInt('low_stock_threshold', 15),
+    expiryWarningDays: configInt('expiry_warning_days', 5),
+    lowStock: rows.filter((r) => r.isLow).map((r) => ({ sku: r.sku, productName: r.productName, available: r.available })),
+    nearExpiry: nearExpiryRows().map((l) => ({
+      lotCode: l.lotCode,
+      productName: l.productName,
+      daysLeft: l.daysLeft ?? 0,
+      qty: l.available + l.held + l.quarantine + l.expired,
+    })),
+  };
+});
+
 mock('GET', '/inventory/variants', ({ query }) => {
   const rows = variantRows()
     .filter((r) => matches(query.q, r.sku, r.productName))

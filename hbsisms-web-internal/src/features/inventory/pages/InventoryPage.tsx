@@ -29,11 +29,12 @@ function isAdjustQtyValid(qtyDelta: string, available: number) {
 export default function InventoryPage() {
   const [params, setParams] = useSearchParams();
   const tab = (params.get('tab') as Tab) ?? 'variants';
+  const lowOnly = params.get('lowOnly') === '1' || params.get('lowOnly') === 'true';
   const list = useListParams(['locationId', 'entryType', 'from', 'to'] as const);
   const summary = useInventorySummary().data;
   const locations = useLocations().data ?? [];
   const query = { q: list.q, page: list.page, locationId: list.filters.locationId };
-  const variants = useVariantStock(query, tab === 'variants');
+  const variants = useVariantStock({ ...query, lowOnly: lowOnly || undefined }, tab === 'variants');
   const lots = useLots(query, tab === 'lots');
   const expiry = useNearExpiry({ q: list.q, page: list.page }, tab === 'expiry');
   const ledger = useLedger(
@@ -68,7 +69,11 @@ export default function InventoryPage() {
     setAdjusting(row);
   };
 
-  const setTab = (next: Tab) => setParams({ tab: next });
+  const setTab = (next: Tab) => {
+    const nextParams: Record<string, string> = { tab: next };
+    if (next === 'variants' && lowOnly) nextParams.lowOnly = '1';
+    setParams(nextParams);
+  };
 
   const lotActions = (l: LotStockRow) => (
     <span className="inline-flex items-center gap-1">
@@ -117,8 +122,20 @@ export default function InventoryPage() {
       <StatGrid>
         <StatCard label="Khả dụng (khay)" value={num(summary?.available)} />
         <StatCard label="Đang giữ cho đơn" value={num(summary?.held)} />
-        <StatCard label="Quy cách tồn thấp" value={num(summary?.lowStockVariants)} hint={summary ? `Dưới ${summary.lowStockThreshold} khay` : undefined} tone={summary?.lowStockVariants ? 'danger' : undefined} />
-        <StatCard label="Lô sắp hết hạn" value={num(summary?.nearExpiryLots)} hint={summary ? `Trong ${summary.expiryWarningDays} ngày tới` : undefined} tone={summary?.nearExpiryLots ? 'warning' : undefined} />
+        <StatCard
+          label="Quy cách tồn thấp"
+          value={num(summary?.lowStockVariants)}
+          hint={summary ? `Dưới ${summary.lowStockThreshold} khay · bấm để lọc` : undefined}
+          tone={summary?.lowStockVariants ? 'danger' : undefined}
+          to="/inventory?tab=variants&lowOnly=1"
+        />
+        <StatCard
+          label="Lô sắp hết hạn"
+          value={num(summary?.nearExpiryLots)}
+          hint={summary ? `Trong ${summary.expiryWarningDays} ngày tới · bấm để xem` : undefined}
+          tone={summary?.nearExpiryLots ? 'warning' : undefined}
+          to="/inventory?tab=expiry"
+        />
       </StatGrid>
       <Card flush>
         <Tabs label="Góc nhìn tồn kho" value={tab} onChange={setTab} tabs={[{ key: 'variants', label: 'Theo quy cách' }, { key: 'lots', label: 'Theo lô' }, { key: 'expiry', label: `Sắp hết hạn${summary ? ` (${summary.nearExpiryLots})` : ''}` }, { key: 'ledger', label: 'Sổ kho' }]} />
@@ -127,6 +144,22 @@ export default function InventoryPage() {
           {(tab === 'variants' || tab === 'lots') && (
             <FilterSelect label="Vị trí" value={list.filters.locationId} onChange={(v) => list.setFilter('locationId', v)}>
               {locations.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
+            </FilterSelect>
+          )}
+          {tab === 'variants' && (
+            <FilterSelect
+              label="Tồn"
+              value={lowOnly ? 'low' : ''}
+              onChange={(v) => {
+                const next = new URLSearchParams(params);
+                next.set('tab', 'variants');
+                if (v === 'low') next.set('lowOnly', '1');
+                else next.delete('lowOnly');
+                next.delete('page');
+                setParams(next);
+              }}
+            >
+              <option value="low">Chỉ tồn thấp</option>
             </FilterSelect>
           )}
           {tab === 'ledger' && (

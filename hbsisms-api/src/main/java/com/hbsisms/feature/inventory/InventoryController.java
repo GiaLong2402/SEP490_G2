@@ -3,6 +3,7 @@ package com.hbsisms.feature.inventory;
 import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
 import com.hbsisms.feature.inventory.dto.AdjustStockRequest;
+import com.hbsisms.feature.inventory.dto.InventoryAlertsResponse;
 import com.hbsisms.feature.inventory.dto.InventorySummaryResponse;
 import com.hbsisms.feature.inventory.dto.LedgerRowResponse;
 import com.hbsisms.feature.inventory.dto.LocationOptionResponse;
@@ -50,6 +51,12 @@ public class InventoryController {
     @GetMapping("/inventory/summary")
     public InventorySummaryResponse summary() {
         return inventoryQueryService.summary();
+    }
+
+    /** Low-stock variants + near-expiry lots (task 32). */
+    @GetMapping("/inventory/alerts")
+    public InventoryAlertsResponse alerts() {
+        return inventoryQueryService.alerts();
     }
 
     @GetMapping("/inventory/variants")

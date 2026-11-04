@@ -3,11 +3,15 @@ package com.hbsisms.feature.inventory;
 import com.hbsisms.common.text.Strings;
 import com.hbsisms.common.web.PageResponse;
 import com.hbsisms.feature.catalog.ProductVariant;
+import com.hbsisms.feature.inventory.dto.InventoryAlertsResponse;
 import com.hbsisms.feature.inventory.dto.InventorySummaryResponse;
 import com.hbsisms.feature.inventory.dto.LedgerRowResponse;
 import com.hbsisms.feature.inventory.dto.LocationOptionResponse;
 import com.hbsisms.feature.inventory.dto.LotStockRowResponse;
+import com.hbsisms.feature.inventory.dto.LowStockAlertResponse;
+import com.hbsisms.feature.inventory.dto.NearExpiryAlertResponse;
 import com.hbsisms.feature.inventory.dto.VariantStockRowResponse;
+import com.hbsisms.feature.system.AppConfigService;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
@@ -26,43 +30,65 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class InventoryQueryService {
 
-    /** Temporary defaults until app_config reader is wired for inventory. */
-    public static final int DEFAULT_LOW_STOCK_THRESHOLD = 15;
-
-    public static final int DEFAULT_EXPIRY_WARNING_DAYS = 5;
-
     private final StockRepository stockRepository;
     private final StockLedgerRepository stockLedgerRepository;
     private final LocationRepository locationRepository;
     private final WarehouseRepository warehouseRepository;
+    private final AppConfigService appConfigService;
 
     public InventoryQueryService(
             StockRepository stockRepository,
             StockLedgerRepository stockLedgerRepository,
             LocationRepository locationRepository,
-            WarehouseRepository warehouseRepository) {
+            WarehouseRepository warehouseRepository,
+            AppConfigService appConfigService) {
         this.stockRepository = stockRepository;
         this.stockLedgerRepository = stockLedgerRepository;
         this.locationRepository = locationRepository;
         this.warehouseRepository = warehouseRepository;
+        this.appConfigService = appConfigService;
     }
 
     public InventorySummaryResponse summary() {
-        List<VariantStockRowResponse> variants = variantRows(null, null, false);
-        List<LotStockRowResponse> nearExpiry = nearExpiryRows();
+        int lowStockThreshold = appConfigService.lowStockThreshold();
+        int expiryWarningDays = appConfigService.expiryWarningDays();
+        List<VariantStockRowResponse> variants = variantRows(null, null, false, lowStockThreshold);
+        List<LotStockRowResponse> nearExpiry = nearExpiryRows(expiryWarningDays);
         return new InventorySummaryResponse(
                 variants.stream().mapToInt(VariantStockRowResponse::available).sum(),
                 variants.stream().mapToInt(VariantStockRowResponse::held).sum(),
                 variants.stream().mapToInt(VariantStockRowResponse::quarantine).sum(),
                 nearExpiry.size(),
                 (int) variants.stream().filter(VariantStockRowResponse::isLow).count(),
-                DEFAULT_LOW_STOCK_THRESHOLD,
-                DEFAULT_EXPIRY_WARNING_DAYS);
+                lowStockThreshold,
+                expiryWarningDays);
+    }
+
+    public InventoryAlertsResponse alerts() {
+        int lowStockThreshold = appConfigService.lowStockThreshold();
+        int expiryWarningDays = appConfigService.expiryWarningDays();
+        List<VariantStockRowResponse> variants = variantRows(null, null, false, lowStockThreshold);
+        List<LotStockRowResponse> nearExpiry = nearExpiryRows(expiryWarningDays);
+        return new InventoryAlertsResponse(
+                variants.stream().mapToInt(VariantStockRowResponse::available).sum(),
+                lowStockThreshold,
+                expiryWarningDays,
+                variants.stream()
+                        .filter(VariantStockRowResponse::isLow)
+                        .map(v -> new LowStockAlertResponse(v.sku(), v.productName(), v.available()))
+                        .toList(),
+                nearExpiry.stream()
+                        .map(l -> new NearExpiryAlertResponse(
+                                l.lotCode(),
+                                l.productName(),
+                                l.daysLeft() == null ? 0 : l.daysLeft(),
+                                l.available() + l.held() + l.quarantine() + l.expired()))
+                        .toList());
     }
 
     public PageResponse<VariantStockRowResponse> variants(
             String q, Long locationId, boolean lowOnly, int page, int pageSize) {
-        return paginate(variantRows(q, locationId, lowOnly), page, pageSize);
+        return paginate(variantRows(q, locationId, lowOnly, appConfigService.lowStockThreshold()), page, pageSize);
     }
 
     public PageResponse<LotStockRowResponse> lots(String q, Long locationId, int page, int pageSize) {
@@ -76,7 +102,7 @@ public class InventoryQueryService {
     }
 
     public PageResponse<LotStockRowResponse> nearExpiry(String q, int page, int pageSize) {
-        List<LotStockRowResponse> rows = nearExpiryRows().stream()
+        List<LotStockRowResponse> rows = nearExpiryRows(appConfigService.expiryWarningDays()).stream()
                 .filter(r -> matches(q, r.lotCode(), r.sku(), r.productName()))
                 .toList();
         return paginate(rows, page, pageSize);
@@ -131,16 +157,17 @@ public class InventoryQueryService {
                 .toList();
     }
 
-    private List<LotStockRowResponse> nearExpiryRows() {
+    private List<LotStockRowResponse> nearExpiryRows(int expiryWarningDays) {
         return lotRows().stream()
                 .filter(r -> r.daysLeft() != null
-                        && r.daysLeft() <= DEFAULT_EXPIRY_WARNING_DAYS
+                        && r.daysLeft() <= expiryWarningDays
                         && r.available() + r.held() + r.quarantine() + r.expired() > 0)
                 .sorted(byFefo())
                 .toList();
     }
 
-    private List<VariantStockRowResponse> variantRows(String q, Long locationId, boolean lowOnly) {
+    private List<VariantStockRowResponse> variantRows(
+            String q, Long locationId, boolean lowOnly, int lowStockThreshold) {
         List<Stock> stocks = stockRepository.findAllWithDetails();
         Map<Long, List<Stock>> byVariant = stocks.stream()
                 .collect(Collectors.groupingBy(s -> s.getVariant().getId(), LinkedHashMap::new, Collectors.toList()));
@@ -176,7 +203,7 @@ public class InventoryQueryService {
                     held,
                     quarantine,
                     expired,
-                    available < DEFAULT_LOW_STOCK_THRESHOLD,
+                    available < lowStockThreshold,
                     visibleLots);
             if (lowOnly && !row.isLow()) {
                 continue;

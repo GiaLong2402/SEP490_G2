@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import type { Tone } from '@/shared/domain/enums';
 
 const toneClass: Record<Tone, string> = {
@@ -47,15 +48,37 @@ export function PageHeader({ title, subtitle, actions, breadcrumb }: { title: Re
   );
 }
 
-export function StatCard({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: ReactNode; tone?: 'danger' | 'warning' }) {
+export function StatCard({
+  label,
+  value,
+  hint,
+  tone,
+  to,
+}: {
+  label: string;
+  value: ReactNode;
+  hint?: ReactNode;
+  tone?: 'danger' | 'warning';
+  /** Optional link — e.g. jump from alert stats to filtered inventory. */
+  to?: string;
+}) {
   const valueClass = tone === 'danger' ? 'text-red-fg' : tone === 'warning' ? 'text-amber-fg' : 'text-ink';
-  return (
-    <div className="rounded-md border border-line bg-card p-4 shadow-card">
+  const body = (
+    <>
       <div className="text-small text-ink-muted">{label}</div>
       <div className={`mt-1 text-display tabular-nums ${valueClass}`}>{value}</div>
       {hint && <div className="mt-0.5 text-small text-ink-faint">{hint}</div>}
-    </div>
+    </>
   );
+  const cls = 'rounded-md border border-line bg-card p-4 shadow-card';
+  if (to) {
+    return (
+      <Link to={to} className={`${cls} block transition hover:border-primary/40 hover:bg-rowalt`}>
+        {body}
+      </Link>
+    );
+  }
+  return <div className={cls}>{body}</div>;
 }
 
 export function StatGrid({ children, cols = 4 }: { children: ReactNode; cols?: 3 | 4 | 5 }) {
