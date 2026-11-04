@@ -57,6 +57,12 @@ export interface MoveInput {
   qty: number;
 }
 
+export interface AdjustInput {
+  stockId: ID;
+  qtyDelta: number;
+  note: string;
+}
+
 /** Vị trí kèm nhãn sẵn để hiển thị trong ô chọn. */
 export interface LocationOption extends Location {
   label: string;

@@ -231,6 +231,25 @@ public class StockService {
                 actorId));
     }
 
+    /** Adjust by stock row id — used by {@code POST /inventory/adjusts}. */
+    @Transactional
+    public Stock adjustByStockId(long stockId, int qtyDelta, String note, Long actorId) {
+        Stock source = stockRepository
+                .findWithDetailsById(stockId)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy dòng tồn"));
+        return adjust(
+                StockMutation.of(
+                        source.getVariant().getId(),
+                        source.getLot().getId(),
+                        source.getLocation().getId(),
+                        Math.abs(qtyDelta),
+                        null,
+                        null,
+                        note,
+                        actorId),
+                qtyDelta);
+    }
+
     private Stock getOrCreateStock(long variantId, long lotId, long locationId) {
         return stockRepository
                 .findByVariant_IdAndLot_IdAndLocation_Id(variantId, lotId, locationId)

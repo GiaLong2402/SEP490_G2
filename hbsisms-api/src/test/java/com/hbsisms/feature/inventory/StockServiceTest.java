@@ -212,6 +212,48 @@ class StockServiceTest {
     }
 
     @Test
+    void adjustByStockId_notFound() {
+        when(stockRepository.findWithDetailsById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> stockService.adjustByStockId(99L, -1, "Lý do", 1L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+                    assertThat(ex.getMessage()).isEqualTo("Không tìm thấy dòng tồn");
+                });
+        verify(stockLedgerRepository, never()).save(any());
+    }
+
+    @Test
+    void adjustByStockId_zeroDelta_rejected() {
+        when(stockRepository.findWithDetailsById(1L)).thenReturn(Optional.of(stock(1L, 5)));
+
+        assertThatThrownBy(() -> stockService.adjustByStockId(1L, 0, "Không đổi", 1L))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(stockRepository, never()).adjustQtyAvailable(anyLong(), anyInt());
+    }
+
+    @Test
+    void adjustByStockId_decreasesAndWritesLedger() {
+        Stock source = stock(1L, 10);
+        when(stockRepository.findWithDetailsById(1L)).thenReturn(Optional.of(source));
+        when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 10L, 100L))
+                .thenReturn(Optional.of(source));
+        when(stockRepository.adjustQtyAvailable(1L, -2)).thenReturn(1);
+        when(stockRepository.findById(1L)).thenReturn(Optional.of(stock(1L, 8)));
+
+        stockService.adjustByStockId(1L, -2, "Hao hụt", 1L);
+
+        ArgumentCaptor<StockLedger> captor = ArgumentCaptor.forClass(StockLedger.class);
+        verify(stockLedgerRepository).save(captor.capture());
+        assertThat(captor.getValue().getEntryType()).isEqualTo(LedgerEntryType.ADJUST);
+        assertThat(captor.getValue().getQtyDelta()).isEqualTo(-2);
+        assertThat(captor.getValue().getNote()).isEqualTo("Hao hụt");
+    }
+
+    @Test
     void hold_reducesAvailableAndIncreasesHeld() {
         Stock stock = stock(1L, 8);
         when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 10L, 100L))

@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { ArrowRightLeft, PackagePlus } from 'lucide-react';
+import { ArrowRightLeft, PackagePlus, SlidersHorizontal } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useAction } from '@/shared/api/useAction';
 import { ledgerEntryMeta } from '@/shared/domain/enums';
 import { date, dateTime, num } from '@/shared/lib/format';
-import { Button, Card, Chip, DataTable, Field, FilterBar, FilterSelect, IconButton, Input, LinkButton, Modal, PageHeader, Pagination, SearchBox, Select, StatCard, StatGrid, StatusChip, Tabs, enumOptions, useListParams, type Column } from '@/shared/ui';
+import { Button, Card, Chip, DataTable, Field, FilterBar, FilterSelect, IconButton, Input, LinkButton, Modal, PageHeader, Pagination, SearchBox, Select, StatCard, StatGrid, StatusChip, Tabs, Textarea, enumOptions, useListParams, type Column } from '@/shared/ui';
 import { inventoryApi } from '../api';
 import { useInventorySummary, useLedger, useLocations, useLots, useNearExpiry, useVariantStock } from '../hooks';
 import type { LedgerRow, LotStockRow, VariantStockRow } from '../types';
@@ -19,17 +19,27 @@ function ExpiryChip({ daysLeft }: { daysLeft: number | null }) {
   return <Chip tone="green">Còn {daysLeft} ngày</Chip>;
 }
 
+function isAdjustQtyValid(qtyDelta: string, available: number) {
+  if (!Number.isInteger(Number(qtyDelta)) || Number(qtyDelta) === 0) return false;
+  const delta = Number(qtyDelta);
+  if (delta < 0 && Math.abs(delta) > available) return false;
+  return true;
+}
+
 export default function InventoryPage() {
   const [params, setParams] = useSearchParams();
   const tab = (params.get('tab') as Tab) ?? 'variants';
-  const list = useListParams(['locationId', 'entryType'] as const);
+  const list = useListParams(['locationId', 'entryType', 'from', 'to'] as const);
   const summary = useInventorySummary().data;
   const locations = useLocations().data ?? [];
   const query = { q: list.q, page: list.page, locationId: list.filters.locationId };
   const variants = useVariantStock(query, tab === 'variants');
   const lots = useLots(query, tab === 'lots');
   const expiry = useNearExpiry({ q: list.q, page: list.page }, tab === 'expiry');
-  const ledger = useLedger({ q: list.q, page: list.page, entryType: list.filters.entryType }, tab === 'ledger');
+  const ledger = useLedger(
+    { q: list.q, page: list.page, entryType: list.filters.entryType, from: list.filters.from, to: list.filters.to },
+    tab === 'ledger',
+  );
 
   const [moving, setMoving] = useState<LotStockRow | null>(null);
   const [moveForm, setMoveForm] = useState({ toLocationId: '', qty: '' });
@@ -37,13 +47,35 @@ export default function InventoryPage() {
   const moveValid = moving && Number(moveForm.toLocationId) > 0 && Number.isInteger(Number(moveForm.qty)) && Number(moveForm.qty) > 0 && Number(moveForm.qty) <= moving.available;
   const move = useAction(() => inventoryApi.move({ stockId: moving!.stockId, toLocationId: Number(moveForm.toLocationId), qty: Number(moveForm.qty) }), { success: 'Đã chuyển vị trí', onDone: () => setMoving(null) });
 
+  const [adjusting, setAdjusting] = useState<LotStockRow | null>(null);
+  const [adjustForm, setAdjustForm] = useState({ qtyDelta: '', note: '' });
+  const [adjustTouched, setAdjustTouched] = useState(false);
+  const adjustValid = adjusting && isAdjustQtyValid(adjustForm.qtyDelta, adjusting.available) && adjustForm.note.trim().length > 0;
+  const adjust = useAction(
+    () => inventoryApi.adjust({ stockId: adjusting!.stockId, qtyDelta: Number(adjustForm.qtyDelta), note: adjustForm.note.trim() }),
+    { success: 'Đã điều chỉnh tồn', onDone: () => setAdjusting(null) },
+  );
+
   const openMove = (row: LotStockRow) => {
     setMoveForm({ toLocationId: '', qty: String(row.available) });
     setMoveTouched(false);
     setMoving(row);
   };
 
+  const openAdjust = (row: LotStockRow) => {
+    setAdjustForm({ qtyDelta: '', note: '' });
+    setAdjustTouched(false);
+    setAdjusting(row);
+  };
+
   const setTab = (next: Tab) => setParams({ tab: next });
+
+  const lotActions = (l: LotStockRow) => (
+    <span className="inline-flex items-center gap-1">
+      <IconButton label={`Điều chỉnh tồn lô ${l.lotCode}`} onClick={() => openAdjust(l)}><SlidersHorizontal size={14} /></IconButton>
+      {l.available > 0 && <IconButton label={`Chuyển vị trí lô ${l.lotCode}`} onClick={() => openMove(l)}><ArrowRightLeft size={14} /></IconButton>}
+    </span>
+  );
 
   const lotColumns: Column<LotStockRow>[] = [
     { key: 'lot', header: 'Mã lô', cell: (l) => <span className="num">{l.lotCode}</span> },
@@ -54,7 +86,7 @@ export default function InventoryPage() {
     { key: 'avail', header: 'Khả dụng', align: 'right', cell: (l) => <span className="num">{num(l.available)}</span> },
     { key: 'held', header: 'Đang giữ', align: 'right', cell: (l) => <span className="num">{num(l.held)}</span> },
     { key: 'q', header: 'Cách ly', align: 'right', hideOnMobile: true, cell: (l) => <span className="num">{num(l.quarantine)}</span> },
-    { key: 'move', header: '', align: 'right', cell: (l) => l.available > 0 && <IconButton label={`Chuyển vị trí lô ${l.lotCode}`} onClick={() => openMove(l)}><ArrowRightLeft size={14} /></IconButton> },
+    { key: 'actions', header: '', align: 'right', cell: (l) => lotActions(l) },
   ];
   const variantColumns: Column<VariantStockRow>[] = [
     { key: 'sku', header: 'SKU', cell: (v) => <span className="num">{v.sku}</span> },
@@ -97,7 +129,25 @@ export default function InventoryPage() {
               {locations.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
             </FilterSelect>
           )}
-          {tab === 'ledger' && <FilterSelect label="Loại" value={list.filters.entryType} onChange={(v) => list.setFilter('entryType', v)}>{enumOptions(ledgerEntryMeta)}</FilterSelect>}
+          {tab === 'ledger' && (
+            <>
+              <FilterSelect label="Loại" value={list.filters.entryType} onChange={(v) => list.setFilter('entryType', v)}>{enumOptions(ledgerEntryMeta)}</FilterSelect>
+              <Input
+                type="date"
+                aria-label="Từ ngày"
+                className="w-full sm:w-[160px]"
+                value={list.filters.from}
+                onChange={(e) => list.setFilter('from', e.target.value)}
+              />
+              <Input
+                type="date"
+                aria-label="Đến ngày"
+                className="w-full sm:w-[160px]"
+                value={list.filters.to}
+                onChange={(e) => list.setFilter('to', e.target.value)}
+              />
+            </>
+          )}
         </FilterBar>
         {tab === 'variants' && (
           <DataTable
@@ -127,7 +177,7 @@ export default function InventoryPage() {
                         <td className="num text-right">{num(l.available)}</td>
                         <td className="num text-right">{num(l.held)}</td>
                         <td className="num text-right">{num(l.quarantine)}</td>
-                        <td className="text-right">{l.available > 0 && <IconButton label={`Chuyển vị trí lô ${l.lotCode}`} onClick={() => openMove(l)}><ArrowRightLeft size={14} /></IconButton>}</td>
+                        <td className="text-right">{lotActions(l)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -163,6 +213,37 @@ export default function InventoryPage() {
             </Field>
             <Field label="Số khay" required error={moveTouched && !(Number(moveForm.qty) > 0 && Number(moveForm.qty) <= moving.available && Number.isInteger(Number(moveForm.qty))) ? `Nhập số nguyên từ 1 đến ${moving.available}` : undefined}>
               <Input type="number" min={1} max={moving.available} value={moveForm.qty} onChange={(e) => setMoveForm({ ...moveForm, qty: e.target.value })} />
+            </Field>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!adjusting}
+        title={`Điều chỉnh tồn · ${adjusting?.lotCode ?? ''}`}
+        onClose={() => setAdjusting(null)}
+        onSubmit={() => {
+          setAdjustTouched(true);
+          if (adjustValid) adjust.mutate();
+        }}
+        footer={<><Button onClick={() => setAdjusting(null)}>Hủy bỏ</Button><Button type="submit" variant="primary" loading={adjust.isPending}>Điều chỉnh</Button></>}
+      >
+        {adjusting && (
+          <div className="space-y-3">
+            <p className="text-ink-muted">{adjusting.productName} ({adjusting.sku}), vị trí <span className="num">{adjusting.locationCode}</span>, khả dụng {num(adjusting.available)} khay. Nhập số âm để trừ, số dương để cộng.</p>
+            <Field
+              label="Số khay (+/−)"
+              required
+              error={adjustTouched && !isAdjustQtyValid(adjustForm.qtyDelta, adjusting.available)
+                ? (Number(adjustForm.qtyDelta) === 0 || !Number.isInteger(Number(adjustForm.qtyDelta))
+                  ? 'Nhập số nguyên khác 0'
+                  : `Không trừ quá ${adjusting.available} khay`)
+                : undefined}
+            >
+              <Input type="number" step={1} value={adjustForm.qtyDelta} onChange={(e) => setAdjustForm({ ...adjustForm, qtyDelta: e.target.value })} placeholder="-2 hoặc 3" />
+            </Field>
+            <Field label="Lý do" required error={adjustTouched && !adjustForm.note.trim() ? 'Vui lòng nhập lý do điều chỉnh' : undefined}>
+              <Textarea value={adjustForm.note} onChange={(e) => setAdjustForm({ ...adjustForm, note: e.target.value })} placeholder="Ví dụ: Hao hụt kiểm kê tay" />
             </Field>
           </div>
         )}
