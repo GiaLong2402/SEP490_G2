@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAction } from '@/shared/api/useAction';
-import { Button, Checkbox, Field, Input, Modal, Select, Textarea } from '@/shared/ui';
+import { Button, Field, Input, Modal, Select, Textarea } from '@/shared/ui';
 import { productsApi } from '../api';
 import { useCategories } from '../hooks';
 import type { CategoryListItem } from '../types';
@@ -44,10 +44,8 @@ export function CategoryFormModal({ open, category, onClose, onSaved }: { open: 
   };
 
   const save = useAction(
-    () => {
-      const body = { code: form.code.trim(), name: form.name.trim(), description: form.description.trim() || null, parentId: form.parentId ? Number(form.parentId) : null, sortOrder: Number(form.sortOrder), isActive: form.isActive };
-      return category ? productsApi.updateCategory(category.id, body) : productsApi.createCategory(body);
-    },
+    (body: { code: string; name: string; description: string | null; parentId: number | null; sortOrder: number; isActive: boolean }) =>
+      category ? productsApi.updateCategory(category.id, body) : productsApi.createCategory(body),
     {
       success: (saved) => `Đã lưu loại ${saved.name}`,
       onDone: (saved) => {
@@ -64,7 +62,16 @@ export function CategoryFormModal({ open, category, onClose, onSaved }: { open: 
       onClose={onClose}
       onSubmit={() => {
         setTouched(true);
-        if (!errors.name && !errors.code && !errors.sortOrder) save.mutate();
+        if (errors.name || errors.code || errors.sortOrder) return;
+        // Build body at submit time so isActive matches what the user just chose.
+        save.mutate({
+          code: form.code.trim(),
+          name: form.name.trim(),
+          description: form.description.trim() || null,
+          parentId: form.parentId ? Number(form.parentId) : null,
+          sortOrder: Number(form.sortOrder),
+          isActive: form.isActive,
+        });
       }}
       footer={<><Button onClick={onClose}>Hủy bỏ</Button><Button type="submit" variant="primary" loading={save.isPending}>Lưu</Button></>}
     >
@@ -87,10 +94,23 @@ export function CategoryFormModal({ open, category, onClose, onSaved }: { open: 
         <Field label="Mô tả" className="sm:col-span-2">
           <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </Field>
-        <div className="sm:col-span-2">
-          <Checkbox label="Đang sử dụng" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />
-          {category && !form.isActive && category.productCount > 0 && <p className="mt-1 text-small text-ink-faint">{category.productCount} sản phẩm vẫn giữ loại này, nhưng loại sẽ không còn trong ô chọn khi tạo sản phẩm mới.</p>}
-        </div>
+        <Field
+          label="Trạng thái"
+          className="sm:col-span-2"
+          hint={
+            category && !form.isActive && category.productCount > 0
+              ? `${category.productCount} sản phẩm vẫn giữ loại này, nhưng loại sẽ không còn trong ô chọn khi tạo sản phẩm mới.`
+              : undefined
+          }
+        >
+          <Select
+            value={form.isActive ? 'true' : 'false'}
+            onChange={(e) => setForm({ ...form, isActive: e.target.value === 'true' })}
+          >
+            <option value="true">Đang dùng</option>
+            <option value="false">Ngừng dùng</option>
+          </Select>
+        </Field>
       </div>
     </Modal>
   );

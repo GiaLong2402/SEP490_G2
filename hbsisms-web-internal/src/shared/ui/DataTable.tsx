@@ -46,7 +46,7 @@ export function DataTable<T>({ columns, rows, rowKey, loading, error, onRetry, e
           <tr className="bg-thead text-ink-muted">
             {expandable && <th className="w-9" aria-label="Mở rộng" />}
             {columns.map((c) => (
-              <th key={c.key} scope="col" style={{ width: c.width }} className={`h-[34px] whitespace-nowrap px-3 text-micro font-semibold uppercase tracking-wide ${alignClass(c.align)} ${mobile(c)}`}>
+              <th key={c.key} scope="col" style={c.width ? { width: c.width, minWidth: c.width } : undefined} className={`h-[34px] whitespace-nowrap px-3 text-micro font-semibold uppercase tracking-wide ${alignClass(c.align)} ${mobile(c)}`}>
                 {c.header}
               </th>
             ))}
