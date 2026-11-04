@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, MapPin, Pencil, Plus, Trash2, Warehouse } from 'lucide-react';
 import { useAction } from '@/shared/api/useAction';
@@ -44,11 +44,6 @@ export default function WarehousesPage() {
   const [locationForm, setLocationForm] = useState<{ warehouse: WarehouseDetail; location?: WarehouseLocation } | null>(null);
   const [deleting, setDeleting] = useState<WarehouseLocation | null>(null);
   const remove = useAction(() => warehousesApi.deleteLocation(deleting!.id), { success: 'Đã xóa vị trí', onDone: () => setDeleting(null) });
-
-  useEffect(() => {
-    if (!data?.length) return;
-    setExpandedIds((prev) => (prev.size === 0 ? new Set([data[0].id]) : prev));
-  }, [data]);
 
   if (isLoading) return <PageLoading />;
   if (error || !data) return <ErrorState error={error} onRetry={refetch} />;
@@ -118,14 +113,14 @@ export default function WarehousesPage() {
                     type="button"
                     aria-expanded={open}
                     onClick={() => toggle(warehouse.id)}
-                    className="flex min-w-0 flex-1 items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-canvas"
+                    className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-canvas"
                   >
                     <ChevronDown
                       size={18}
-                      className={`mt-1 shrink-0 text-ink-muted transition-transform ${open ? '' : '-rotate-90'}`}
+                      className={`shrink-0 text-ink-muted transition-transform ${open ? '' : '-rotate-90'}`}
                       aria-hidden
                     />
-                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
                       <Warehouse size={18} aria-hidden />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -141,25 +136,9 @@ export default function WarehousesPage() {
                           <span className="truncate">{warehouse.address}</span>
                         </p>
                       )}
-                      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                        <CapacityStat
-                          label="Hàng đang trong kho"
-                          hint="Số khay thực tế đang nằm trong kho"
-                          value={warehouse.totalQty}
-                          max={warehouse.capacity}
-                          meterLabel={`Hàng trong kho ${warehouse.code}`}
-                        />
-                        <CapacityStat
-                          label="Chỗ đã chia cho vị trí"
-                          hint={freeSlots > 0 ? `Còn ${num(freeSlots)} khay chưa gán vị trí` : 'Đã chia hết sức chứa kho cho các vị trí'}
-                          value={warehouse.allocatedCapacity}
-                          max={warehouse.capacity}
-                          meterLabel={`Phân bổ vị trí ${warehouse.code}`}
-                        />
-                      </div>
                     </div>
                   </button>
-                  <div className="flex shrink-0 flex-col justify-start gap-2 border-l border-line px-3 py-3">
+                  <div className="flex shrink-0 items-center border-l border-line px-3 py-3">
                     <Button
                       icon={<Pencil size={14} />}
                       onClick={(e) => {
@@ -174,6 +153,22 @@ export default function WarehousesPage() {
 
                 {open && (
                   <div className="border-t border-line bg-canvas/40">
+                    <div className="flex flex-col gap-2 border-b border-line px-4 py-3 sm:flex-row">
+                      <CapacityStat
+                        label="Hàng đang trong kho"
+                        hint="Số khay thực tế đang nằm trong kho"
+                        value={warehouse.totalQty}
+                        max={warehouse.capacity}
+                        meterLabel={`Hàng trong kho ${warehouse.code}`}
+                      />
+                      <CapacityStat
+                        label="Chỗ đã chia cho vị trí"
+                        hint={freeSlots > 0 ? `Còn ${num(freeSlots)} khay chưa gán vị trí` : 'Đã chia hết sức chứa kho cho các vị trí'}
+                        value={warehouse.allocatedCapacity}
+                        max={warehouse.capacity}
+                        meterLabel={`Phân bổ vị trí ${warehouse.code}`}
+                      />
+                    </div>
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2">
                       <p className="text-small text-ink-muted">
                         Vị trí trong <span className="num font-medium text-ink">{warehouse.code}</span>

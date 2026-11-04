@@ -10,7 +10,7 @@ Backend Spring Boot cho HBSISMS. **Code-first** (entity JPA là nguồn sự th�
 Chỉ cần **JDK 17+**. `.env` trỏ tới PostgreSQL trên server (`72.61.114.184:5434`, SSL), không cần Docker:
 
 ```bash
-./mvnw spring-boot:run        # Windows: mvnw.cmd spring-boot:run
+./mvnw spring-boot:run        # Windows: ./mvnw spring-boot:run 
 ```
 
 Mở Swagger: http://localhost:8080/api/v1/swagger-ui.html — đăng nhập `POST /auth/login`, bấm **Authorize**, dán `token`.
