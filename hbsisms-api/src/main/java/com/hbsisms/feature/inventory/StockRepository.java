@@ -1,5 +1,7 @@
 package com.hbsisms.feature.inventory;
 
+import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -9,6 +11,29 @@ import org.springframework.transaction.annotation.Transactional;
 public interface StockRepository extends JpaRepository<Stock, Long> {
 
     boolean existsByLocation_Id(Long locationId);
+
+    Optional<Stock> findByVariant_IdAndLot_IdAndLocation_Id(Long variantId, Long lotId, Long locationId);
+
+    @Query("""
+            select distinct s from Stock s
+            join fetch s.variant v
+            join fetch v.product
+            join fetch s.lot
+            join fetch s.location l
+            join fetch l.warehouse
+            """)
+    List<Stock> findAllWithDetails();
+
+    @Query("""
+            select distinct s from Stock s
+            join fetch s.variant v
+            join fetch v.product
+            join fetch s.lot
+            join fetch s.location l
+            join fetch l.warehouse
+            where s.id = :id
+            """)
+    Optional<Stock> findWithDetailsById(@Param("id") Long id);
 
     @Query("""
             select coalesce(sum(s.qtyAvailable + s.qtyHeld + s.qtyQuarantine + s.qtyExpired), 0)

@@ -8,7 +8,7 @@ public record LocationResponse(
         Long warehouseId,
         String code,
         String zone,
-        Integer capacity,
+        int capacity,
         String note,
         long usedQty,
         boolean canDelete) {

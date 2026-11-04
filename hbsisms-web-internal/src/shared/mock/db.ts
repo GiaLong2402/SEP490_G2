@@ -146,7 +146,8 @@ function seed(): MockDb {
     { id: 3, customerId: 3, variantId: 4, unitPrice: 112000, pendingPrice: 110000, status: 'pending', effectiveFrom: isoDate(-30), effectiveTo: null, approvedBy: 2, approvedAt: isoTime(-30), updatedAt: isoTime(-1) },
   ];
 
-  const warehouses: T.Warehouse[] = [{ id: 1, code: 'WH1', name: 'Kho Hải sản Hòa Bình', address: 'TP Hạ Long, Quảng Ninh', isActive: true }];
+  // Capacity kho >= tổng capacity vị trí (120*5 + 160 + 500 = 1260).
+  const warehouses: T.Warehouse[] = [{ id: 1, code: 'WH1', name: 'Kho Hải sản Hòa Bình', address: 'TP Hạ Long, Quảng Ninh', capacity: 1260, isActive: true }];
   const locations: T.Location[] = ([['A-01', 'Khu A', 120], ['A-02', 'Khu A', 120], ['A-05', 'Khu A', 120], ['B-02', 'Khu B', 120], ['B-04', 'Khu B', 120], ['B-06', 'Khu B', 160], ['C-01', 'Kho lạnh C', 500]] as const)
     .map(([code, zone, capacity], i) => ({ id: i + 1, warehouseId: 1, code, zone, capacity, note: null }));
 
@@ -190,10 +191,10 @@ function seed(): MockDb {
   });
 
   const receipts: MockDb['receipts'] = lots.slice(0, 6).map((lot, i) => ({
-    id: i + 1, code: `PN-${pad(i + 1, 4)}`, receiptType: 'finished', supplierId: 1, source: 'Xưởng chế biến Hòa Bình', receivedBy: 4, receivedAt: lot.receivedAt ?? now, note: null,
+    id: i + 1, code: `PN-${pad(i + 1, 4)}`, receiptType: 'finished', source: 'Xưởng chế biến Hòa Bình', receivedBy: 4, receivedAt: lot.receivedAt ?? now, note: null,
     items: [{ name: `${variants[lot.variantId - 1].sku} · ${lot.lotCode}`, qty: stock[i].qtyAvailable + stock[i].qtyHeld, unit: 'khay' }],
   }));
-  receipts.push({ id: 7, code: 'PN-0007', receiptType: 'raw', supplierId: 2, source: 'Cảng cá Cái Rồng', receivedBy: 4, receivedAt: isoTime(-2, 6, 30), note: null, items: [{ name: 'Mực tươi nguyên liệu', qty: 120, unit: 'kg' }, { name: 'Tôm biển nguyên liệu', qty: 45, unit: 'kg' }] });
+  receipts.push({ id: 7, code: 'PN-0007', receiptType: 'raw', source: 'Cảng cá Cái Rồng', receivedBy: 4, receivedAt: isoTime(-2, 6, 30), note: 'Mực tươi nguyên liệu: 120 kg; Tôm biển nguyên liệu: 45 kg', items: [{ name: 'Mực tươi nguyên liệu', qty: 120, unit: 'kg' }, { name: 'Tôm biển nguyên liệu', qty: 45, unit: 'kg' }] });
 
   const stocktakes: T.Stocktake[] = [
     { id: 1, code: 'KK-0001', scope: 'Khu A', status: 'done', createdBy: 2, countedBy: 4, startedAt: isoTime(-20, 7), closedAt: isoTime(-20, 11), note: null },

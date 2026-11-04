@@ -3,7 +3,6 @@ import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useLocations } from '@/features/inventory';
 import { useVariantOptions } from '@/features/products';
-import { SupplierFormModal, useSupplierOptions } from '@/features/suppliers';
 import { useAction } from '@/shared/api/useAction';
 import { receiptTypeLabels, type ReceiptType } from '@/shared/domain/enums';
 import { dateTime, num, todayISO } from '@/shared/lib/format';
@@ -22,17 +21,15 @@ const rawRow = (): RawRow => ({ key: rowKey++, rawMaterialId: '', qty: '' });
 export default function ReceiptsPage() {
   const [params, setParams] = useSearchParams();
   const [tab, setTab] = useState<'receipts' | 'raw'>('receipts');
-  const list = useListParams(['receiptType', 'supplierId'] as const);
-  const { data, isLoading, error, refetch } = useReceipts({ q: list.q, page: list.page, receiptType: list.filters.receiptType, supplierId: list.filters.supplierId });
-  const suppliers = useSupplierOptions().data ?? [];
+  const list = useListParams(['receiptType'] as const);
+  const { data, isLoading, error, refetch } = useReceipts({ q: list.q, page: list.page, receiptType: list.filters.receiptType });
   const raw = useRawMaterials();
   const variants = useVariantOptions().data ?? [];
   const locations = useLocations().data ?? [];
 
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<ReceiptType>('finished');
-  const [supplierId, setSupplierId] = useState('');
-  const [addingSupplier, setAddingSupplier] = useState(false);
+  const [source, setSource] = useState('');
   const [finished, setFinished] = useState<FinishedRow[]>([finishedRow()]);
   const [rawRows, setRawRows] = useState<RawRow[]>([rawRow()]);
   const [touched, setTouched] = useState(false);
@@ -40,7 +37,7 @@ export default function ReceiptsPage() {
 
   const openForm = () => {
     setType('finished');
-    setSupplierId('');
+    setSource('');
     setFinished([finishedRow()]);
     setRawRows([rawRow()]);
     setTouched(false);
@@ -56,12 +53,13 @@ export default function ReceiptsPage() {
   const finishedValid = finished.every((r) => Number(r.variantId) > 0 && Number(r.locationId) > 0 && r.expDate && Number.isInteger(Number(r.qty)) && Number(r.qty) > 0 && (!r.mfgDate || r.expDate >= r.mfgDate));
   const rawValid = rawRows.every((r) => Number(r.rawMaterialId) > 0 && Number(r.qty) > 0);
   const linesValid = type === 'finished' ? finishedValid : rawValid;
+  const sourceValid = source.trim().length > 0;
 
   const create = useAction(
     () =>
       receiptsApi.create({
         receiptType: type,
-        supplierId: Number(supplierId),
+        source: source.trim(),
         note: null,
         finishedLines: type === 'finished' ? finished.map((r) => ({ variantId: Number(r.variantId), lotCode: r.lotCode.trim() || null, mfgDate: r.mfgDate || null, expDate: r.expDate, locationId: Number(r.locationId), qty: Number(r.qty) })) : undefined,
         rawLines: type === 'raw' ? rawRows.map((r) => ({ rawMaterialId: Number(r.rawMaterialId), qty: Number(r.qty) })) : undefined,
@@ -72,7 +70,7 @@ export default function ReceiptsPage() {
   const columns: Column<ReceiptListItem>[] = [
     { key: 'code', header: 'Mã phiếu', cell: (r) => <span className="num">{r.code}</span> },
     { key: 'type', header: 'Loại', cell: (r) => <Chip tone={r.receiptType === 'raw' ? 'amber' : 'blue'}>{receiptTypeLabels[r.receiptType]}</Chip> },
-    { key: 'supplier', header: 'Nhà cung cấp', cell: (r) => <span className="font-medium">{r.supplierName}</span> },
+    { key: 'source', header: 'Nguồn', cell: (r) => <span className="font-medium">{r.source?.trim() || r.supplierName || '—'}</span> },
     { key: 'items', header: 'Hàng nhập', cell: (r) => <span className="line-clamp-2 min-w-[220px]">{r.items.map((i) => `${i.name}: ${num(i.qty)} ${i.unit}`).join('; ')}</span> },
     { key: 'at', header: 'Thời gian', hideOnMobile: true, cell: (r) => <span className="whitespace-nowrap">{dateTime(r.receivedAt)}</span> },
     { key: 'by', header: 'Người nhận', hideOnMobile: true, cell: (r) => r.receiverName ?? '—' },
@@ -94,11 +92,8 @@ export default function ReceiptsPage() {
         {tab === 'receipts' ? (
           <>
             <FilterBar>
-              <SearchBox value={list.q} onChange={list.setQ} placeholder="Tìm mã phiếu, nhà cung cấp..." />
+              <SearchBox value={list.q} onChange={list.setQ} placeholder="Tìm mã phiếu, nguồn hàng..." />
               <FilterSelect label="Loại" value={list.filters.receiptType} onChange={(v) => list.setFilter('receiptType', v)}>{enumOptions(receiptTypeLabels)}</FilterSelect>
-              <FilterSelect label="Nhà cung cấp" value={list.filters.supplierId} onChange={(v) => list.setFilter('supplierId', v)}>
-                {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </FilterSelect>
             </FilterBar>
             <DataTable columns={columns} rows={data?.items} rowKey={(r) => r.id} loading={isLoading} error={error} onRetry={refetch} emptyText="Chưa có phiếu nhập" />
             {data && <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onChange={list.setPage} />}
@@ -115,22 +110,19 @@ export default function ReceiptsPage() {
         onClose={() => setOpen(false)}
         onSubmit={() => {
           setTouched(true);
-          if (supplierId && linesValid) create.mutate();
+          if (sourceValid && linesValid) create.mutate();
         }}
         footer={<><Button onClick={() => setOpen(false)}>Hủy bỏ</Button><Button type="submit" variant="primary" loading={create.isPending}>Lưu phiếu</Button></>}
       >
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Loại phiếu" required><Select value={type} onChange={(e) => setType(e.target.value as ReceiptType)}>{enumOptions(receiptTypeLabels)}</Select></Field>
           <Field
-            label="Nhà cung cấp"
+            label="Nguồn hàng"
             required
-            error={touched && !supplierId ? 'Vui lòng chọn nhà cung cấp' : undefined}
-            hint={<button type="button" className="text-primary hover:underline" onClick={() => setAddingSupplier(true)}>+ Thêm nhà cung cấp mới</button>}
+            error={touched && !sourceValid ? 'Vui lòng nhập nguồn hàng' : undefined}
+            hint="Ghi chú nơi lấy hàng (chưa liên kết nhà cung cấp)"
           >
-            <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-              <option value="">Chọn nhà cung cấp...</option>
-              {suppliers.filter((s) => s.isActive).map((s) => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
-            </Select>
+            <Input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Ví dụ: Xưởng chế biến Hòa Bình" />
           </Field>
         </div>
         <div className="mt-4 overflow-x-auto">
@@ -179,15 +171,12 @@ export default function ReceiptsPage() {
         {touched && !linesValid && <p className="mt-2 text-small text-red-fg">Mỗi dòng cần đủ thông tin, số lượng lớn hơn 0 và HSD không trước ngày sản xuất.</p>}
       </Modal>
 
-      <SupplierFormModal open={addingSupplier} onClose={() => setAddingSupplier(false)} onSaved={(id) => setSupplierId(String(id))} />
-
       <RawMaterialFormModal
         open={!!materialForm}
         material={materialForm?.material}
         onClose={() => setMaterialForm(null)}
         onSaved={(id) => {
           if (!materialForm?.fromReceipt) return;
-          // Điền vào dòng đang trống, nếu không còn thì thêm dòng mới.
           const empty = rawRows.find((r) => !r.rawMaterialId);
           setRawRows(empty ? rawRows.map((r) => (r.key === empty.key ? { ...r, rawMaterialId: String(id) } : r)) : [...rawRows, { ...rawRow(), rawMaterialId: String(id) }]);
         }}

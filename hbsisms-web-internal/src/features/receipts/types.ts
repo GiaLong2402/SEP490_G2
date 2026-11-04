@@ -9,6 +9,7 @@ export interface ReceiptItemView {
 
 export interface ReceiptListItem extends GoodsReceipt {
   receiverName: string | null;
+  /** Alias of source until Supplier module exists — API mirrors source here. */
   supplierName: string;
   items: ReceiptItemView[];
 }
@@ -29,8 +30,8 @@ export interface RawLineInput {
 
 export interface ReceiptInput {
   receiptType: ReceiptType;
-  /** Bắt buộc: không có phiếu nhập nào thiếu nhà cung cấp. */
-  supplierId: ID;
+  /** Free-text nguồn hàng (chưa có bảng Supplier). */
+  source: string;
   note: string | null;
   finishedLines?: FinishedLineInput[];
   rawLines?: RawLineInput[];

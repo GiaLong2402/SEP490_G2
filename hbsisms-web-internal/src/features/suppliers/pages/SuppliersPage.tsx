@@ -17,7 +17,7 @@ export default function SuppliersPage() {
     { key: 'name', header: 'Nhà cung cấp', cell: (s) => <div className="min-w-[180px]"><div className="font-medium">{s.name}</div>{s.address && <div className="text-ink-muted">{s.address}</div>}</div> },
     { key: 'contact', header: 'Liên hệ', cell: (s) => <div className="whitespace-nowrap">{s.contactName ?? '—'}{s.phone && <div className="text-ink-faint">{s.phone}</div>}</div> },
     { key: 'tax', header: 'MST', hideOnMobile: true, cell: (s) => <span className="num">{s.taxCode ?? '—'}</span> },
-    { key: 'receipts', header: 'Phiếu nhập', align: 'right', cell: (s) => <Link to={`/receipts?supplierId=${s.id}`} className="num text-primary hover:underline">{num(s.receiptCount)}</Link> },
+    { key: 'receipts', header: 'Phiếu nhập', align: 'right', cell: (s) => <Link to={`/receipts?q=${encodeURIComponent(s.name)}`} className="num text-primary hover:underline">{num(s.receiptCount)}</Link> },
     { key: 'last', header: 'Nhập gần nhất', hideOnMobile: true, cell: (s) => date(s.lastReceiptAt) },
     { key: 'status', header: 'Trạng thái', cell: (s) => <Chip tone={s.isActive ? 'green' : 'neutral'}>{s.isActive ? 'Đang giao dịch' : 'Ngừng giao dịch'}</Chip> },
     { key: 'edit', header: '', align: 'right', cell: (s) => <IconButton label={`Sửa ${s.name}`} onClick={() => setForm({ supplier: s })}><Pencil size={14} /></IconButton> },

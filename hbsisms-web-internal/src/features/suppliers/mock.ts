@@ -3,7 +3,8 @@ import { db, nextCode, nextId } from '@/shared/mock/db';
 import { audit } from '@/shared/mock/services';
 
 function toItem(s: (typeof db.suppliers)[number]) {
-  const receipts = db.receipts.filter((r) => r.supplierId === s.id);
+  // Receipts store free-text source (no supplier FK yet); match by name for mock stats.
+  const receipts = db.receipts.filter((r) => (r.source ?? '').toLowerCase() === s.name.toLowerCase());
   return { ...s, receiptCount: receipts.length, lastReceiptAt: receipts.map((r) => r.receivedAt).sort().pop() ?? null };
 }
 

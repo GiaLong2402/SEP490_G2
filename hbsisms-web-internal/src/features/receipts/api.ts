@@ -4,7 +4,6 @@ import type { RawMaterial, RawMaterialInput, ReceiptInput, ReceiptListItem } fro
 
 export interface ReceiptQuery extends ListQuery {
   receiptType?: string;
-  supplierId?: string;
 }
 
 export const receiptsApi = {

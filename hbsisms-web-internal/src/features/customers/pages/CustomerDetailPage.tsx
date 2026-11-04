@@ -66,6 +66,7 @@ export default function CustomerDetailPage() {
   if (isLoading) return <PageLoading />;
   if (error || !customer) return <ErrorState error={error} onRetry={refetch} />;
   const isB2b = customer.customerType === 'b2b';
+  const prices = customer.prices ?? [];
   const isEditingAddress = editingAddressId !== null;
   const addressSaving = addAddress.isPending || updateAddress.isPending;
 
@@ -74,7 +75,17 @@ export default function CustomerDetailPage() {
     { key: 'name', header: 'Sản phẩm', cell: (p) => `${p.productName} · ${p.packLabel}` },
     { key: 'list', header: 'Niêm yết', align: 'right', cell: (p) => <span className="num text-ink-muted">{money(p.listPrice)}</span> },
     { key: 'price', header: 'Giá riêng', align: 'right', cell: (p) => <span className="num font-medium">{p.approvedAt ? money(p.unitPrice) : '—'}</span> },
-    { key: 'pending', header: 'Đề xuất', align: 'right', cell: (p) => (p.status === 'pending' ? <span className="num text-amber-fg">{money(p.pendingPrice)}</span> : '—') },
+    {
+      key: 'pending',
+      header: 'Đề xuất',
+      align: 'right',
+      cell: (p) =>
+        p.status === 'pending' && p.pendingPrice != null ? (
+          <span className="num text-amber-fg">{money(p.pendingPrice)}</span>
+        ) : (
+          '—'
+        ),
+    },
     { key: 'effective', header: 'Hiệu lực', hideOnMobile: true, cell: (p) => (p.effectiveFrom || p.effectiveTo ? `${date(p.effectiveFrom)} → ${date(p.effectiveTo)}` : 'Không giới hạn') },
     { key: 'status', header: 'Trạng thái', cell: (p) => <StatusChip meta={approvalStatusMeta} value={p.status} /> },
     {
@@ -95,7 +106,7 @@ export default function CustomerDetailPage() {
     { key: 'state', header: 'Trạng thái', cell: (o) => <StatusChip meta={orderStateMeta} value={o.state} /> },
   ];
 
-  const tabs: { key: Tab; label: string }[] = [{ key: 'address', label: `Địa chỉ (${customer.addresses.length})` }, ...(isB2b ? [{ key: 'prices' as Tab, label: `Giá riêng (${customer.prices.length})` }] : []), { key: 'orders', label: 'Đơn gần đây' }];
+  const tabs: { key: Tab; label: string }[] = [{ key: 'address', label: `Địa chỉ (${customer.addresses.length})` }, ...(isB2b ? [{ key: 'prices' as Tab, label: `Giá riêng (${prices.length})` }] : []), { key: 'orders', label: 'Đơn gần đây' }];
   const priceValid = Number(price.variantId) > 0 && Number(price.unitPrice) > 0;
 
   return (
@@ -177,7 +188,7 @@ export default function CustomerDetailPage() {
               <div className="flex justify-end p-3">
                 <Button icon={<Plus size={14} />} onClick={() => { setPrice({ variantId: '', unitPrice: '', effectiveFrom: '', effectiveTo: '' }); setPriceTouched(false); setPriceOpen(true); }}>Đề xuất giá riêng</Button>
               </div>
-              <DataTable columns={priceColumns} rows={customer.prices} rowKey={(p) => p.id} emptyText="Khách chưa có giá riêng" />
+              <DataTable columns={priceColumns} rows={prices} rowKey={(p) => p.id} emptyText="Khách chưa có giá riêng" />
             </>
           )}
           {tab === 'orders' && <DataTable columns={orderColumns} rows={customer.recentOrders} rowKey={(o) => o.id} emptyText="Khách chưa có đơn hàng" />}

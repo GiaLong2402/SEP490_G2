@@ -42,12 +42,14 @@ public class WarehouseService {
     public WarehouseResponse create(WarehouseRequest request) {
         String code = requireWarehouseCode(request.code());
         String name = requireWarehouseName(request.name());
+        int capacity = requirePositiveCapacity(request.capacity());
         assertWarehouseCodeAvailable(code, null);
 
         Warehouse warehouse = new Warehouse();
         warehouse.setCode(code);
         warehouse.setName(name);
         warehouse.setAddress(Strings.trimToNull(request.address()));
+        warehouse.setCapacity(capacity);
         warehouse.setActive(Boolean.TRUE.equals(request.isActive()));
         return toDetail(warehouseRepository.save(warehouse));
     }
@@ -59,16 +61,33 @@ public class WarehouseService {
 
         String code = requireWarehouseCode(request.code());
         String name = requireWarehouseName(request.name());
+        int capacity = requirePositiveCapacity(request.capacity());
         assertWarehouseCodeAvailable(code, id);
 
         boolean deactivating = warehouse.isActive() && !Boolean.TRUE.equals(request.isActive());
-        if (deactivating && stockRepository.sumQtyByWarehouseId(id) > 0) {
+        long usedQty = stockRepository.sumQtyByWarehouseId(id);
+        if (deactivating && usedQty > 0) {
             throw ApiException.conflict("Kho còn hàng, hãy chuyển hết hàng trước khi ngừng dùng");
+        }
+
+        long allocated = sumLocationCapacities(id, null, 0);
+        if (capacity < usedQty) {
+            throw ApiException.conflict(String.format(
+                    "Sức chứa kho phải ≥ hàng đang chứa (%d khay), không thể đặt %d.",
+                    usedQty,
+                    capacity));
+        }
+        if (capacity < allocated) {
+            throw ApiException.conflict(String.format(
+                    "Sức chứa kho phải ≥ tổng sức chứa các vị trí (%d khay), không thể đặt %d.",
+                    allocated,
+                    capacity));
         }
 
         warehouse.setCode(code);
         warehouse.setName(name);
         warehouse.setAddress(Strings.trimToNull(request.address()));
+        warehouse.setCapacity(capacity);
         warehouse.setActive(Boolean.TRUE.equals(request.isActive()));
         return toDetail(warehouseRepository.save(warehouse));
     }
@@ -78,8 +97,9 @@ public class WarehouseService {
         Warehouse warehouse = warehouseRepository.findById(warehouseId)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy kho"));
         String code = requireLocationCode(request.code());
-        Integer capacity = normalizeCapacity(request.capacity());
+        int capacity = requirePositiveCapacity(request.capacity());
         assertLocationCodeAvailable(warehouseId, code, null);
+        assertLocationFitsWarehouse(warehouse, warehouseId, null, capacity);
 
         Location location = new Location();
         location.setWarehouse(warehouse);
@@ -94,10 +114,20 @@ public class WarehouseService {
     public void updateLocation(Long id, LocationRequest request) {
         Location location = locationRepository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy vị trí"));
-        Long warehouseId = location.getWarehouse().getId();
+        Warehouse warehouse = location.getWarehouse();
+        Long warehouseId = warehouse.getId();
         String code = requireLocationCode(request.code());
-        Integer capacity = normalizeCapacity(request.capacity());
+        int capacity = requirePositiveCapacity(request.capacity());
         assertLocationCodeAvailable(warehouseId, code, id);
+
+        long usedQty = stockRepository.sumQtyByLocationId(id);
+        if (capacity < usedQty) {
+            throw ApiException.conflict(String.format(
+                    "Sức chứa vị trí phải ≥ hàng đang chứa (%d khay), không thể đặt %d.",
+                    usedQty,
+                    capacity));
+        }
+        assertLocationFitsWarehouse(warehouse, warehouseId, id, capacity);
 
         location.setCode(code);
         location.setZone(Strings.trimToNull(request.zone()));
@@ -127,6 +157,38 @@ public class WarehouseService {
         return WarehouseResponse.from(warehouse, locationResponses);
     }
 
+    /**
+     * Sum of location capacities in a warehouse, optionally replacing one location's capacity
+     * with {@code newCapacity} (for add: {@code excludeLocationId == null}).
+     */
+    private long sumLocationCapacities(Long warehouseId, Long excludeLocationId, int newCapacity) {
+        long sum = 0;
+        for (Location location : locationRepository.findByWarehouse_IdOrderByCodeAsc(warehouseId)) {
+            if (excludeLocationId != null && excludeLocationId.equals(location.getId())) {
+                continue;
+            }
+            Integer cap = location.getCapacity();
+            sum += cap != null ? cap : 0;
+        }
+        return sum + newCapacity;
+    }
+
+    private void assertLocationFitsWarehouse(
+            Warehouse warehouse, Long warehouseId, Long excludeLocationId, int newCapacity) {
+        long allocated = sumLocationCapacities(warehouseId, excludeLocationId, newCapacity);
+        int warehouseCapacity = warehouse.getCapacity() != null ? warehouse.getCapacity() : 0;
+        if (allocated > warehouseCapacity) {
+            long others = allocated - newCapacity;
+            long remaining = Math.max(0, warehouseCapacity - others);
+            throw ApiException.conflict(String.format(
+                    "Tổng sức chứa vị trí (%d) vượt sức chứa kho %s (%d). Còn phân bổ được tối đa %d khay.",
+                    allocated,
+                    warehouse.getCode(),
+                    warehouseCapacity,
+                    remaining));
+        }
+    }
+
     private static String requireWarehouseCode(String code) {
         String trimmed = Strings.trimToNull(code);
         if (trimmed == null) {
@@ -151,11 +213,8 @@ public class WarehouseService {
         return trimmed;
     }
 
-    private static Integer normalizeCapacity(Integer capacity) {
-        if (capacity == null) {
-            return null;
-        }
-        if (capacity <= 0) {
+    private static int requirePositiveCapacity(Integer capacity) {
+        if (capacity == null || capacity <= 0) {
             throw ApiException.badRequest("Sức chứa phải là số nguyên dương");
         }
         return capacity;

@@ -17,6 +17,9 @@ public record WarehouseRequest(
         @Size(max = 255, message = "Địa chỉ tối đa 255 ký tự")
         String address,
 
+        @NotNull(message = "Vui lòng nhập sức chứa kho")
+        Integer capacity,
+
         @NotNull(message = "Trạng thái là bắt buộc")
         Boolean isActive) {
 }

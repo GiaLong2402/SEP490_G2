@@ -31,6 +31,10 @@ public class Warehouse {
     @Column(length = 255)
     private String address;
 
+    /** Max trays the warehouse can hold; required (no unlimited). */
+    @Column(nullable = false, columnDefinition = "integer not null default 500")
+    private Integer capacity = 500;
+
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 }

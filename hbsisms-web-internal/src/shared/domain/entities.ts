@@ -49,8 +49,8 @@ export interface CustomerPrice {
   approvedBy: ID | null; approvedAt: ISODateTime | null; updatedAt: ISODateTime;
 }
 
-export interface Warehouse { id: ID; code: string; name: string; address: string | null; isActive: boolean }
-export interface Location { id: ID; warehouseId: ID; code: string; zone: string | null; capacity: number | null; note: string | null }
+export interface Warehouse { id: ID; code: string; name: string; address: string | null; capacity: number; isActive: boolean }
+export interface Location { id: ID; warehouseId: ID; code: string; zone: string | null; capacity: number; note: string | null }
 export interface RawMaterial { id: ID; code: string; name: string; unit: string; qtyOnHand: number; reorderLevel: number | null; isActive: boolean }
 export interface Lot { id: ID; lotCode: string; variantId: ID; mfgDate: ISODate | null; expDate: ISODate | null; receivedAt: ISODateTime | null; note: string | null }
 
@@ -70,7 +70,7 @@ export interface Supplier {
 }
 
 export interface GoodsReceipt {
-  id: ID; code: string; receiptType: E.ReceiptType; supplierId: ID; source: string | null; receivedBy: ID | null; receivedAt: ISODateTime; note: string | null;
+  id: ID; code: string; receiptType: E.ReceiptType; source: string | null; receivedBy: ID | null; receivedAt: ISODateTime; note: string | null;
 }
 
 export interface Stocktake {

@@ -2,8 +2,11 @@ import { fail, matches, mock, paginate } from '@/shared/api/mockServer';
 import { db, nextCode, nextId } from '@/shared/mock/db';
 import { appendLedger, audit, userName, variantLabel } from '@/shared/mock/services';
 
-const supplierName = (id: number) => db.suppliers.find((s) => s.id === id)?.name ?? '—';
-const toItem = (r: (typeof db.receipts)[number]) => ({ ...r, receiverName: userName(r.receivedBy), supplierName: supplierName(r.supplierId) });
+const toItem = (r: (typeof db.receipts)[number]) => ({
+  ...r,
+  receiverName: userName(r.receivedBy),
+  supplierName: r.source?.trim() || '—',
+});
 
 function checkRawMaterial(body: any, id: number | null) {
   const code = String(body.code ?? '').trim();
@@ -34,17 +37,15 @@ mock('PUT', '/raw-materials/:id', ({ params, body, userId }) => {
 
 mock('GET', '/goods-receipts', ({ query }) => {
   const rows = db.receipts
-    .filter((r) => matches(query.q, r.code, supplierName(r.supplierId)))
+    .filter((r) => matches(query.q, r.code, r.source))
     .filter((r) => !query.receiptType || r.receiptType === query.receiptType)
-    .filter((r) => !query.supplierId || r.supplierId === Number(query.supplierId))
     .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
   return paginate(rows.map(toItem), query);
 });
 
 mock('POST', '/goods-receipts', ({ body, userId }) => {
-  const supplier = db.suppliers.find((s) => s.id === body.supplierId);
-  if (!supplier) fail(400, 'Vui lòng chọn nhà cung cấp');
-  if (!supplier.isActive) fail(409, `${supplier.name} đã ngừng giao dịch`);
+  const source = String(body.source ?? '').trim();
+  if (!source) fail(400, 'Vui lòng nhập nguồn hàng');
   const id = nextId(db.receipts);
   const now = new Date().toISOString();
   let items: (typeof db.receipts)[number]['items'] = [];
@@ -58,13 +59,18 @@ mock('POST', '/goods-receipts', ({ body, userId }) => {
       const lotCode = line.lotCode?.trim() || `LOT-${now.slice(2, 10).replace(/-/g, '')}-${String(lotId).padStart(2, '0')}`;
       if (db.lots.some((l) => l.lotCode === lotCode)) fail(409, `Mã lô ${lotCode} đã tồn tại`);
       db.lots.push({ id: lotId, lotCode, variantId: line.variantId, mfgDate: line.mfgDate, expDate: line.expDate, receivedAt: now, note: null });
-      db.stock.push({ id: nextId(db.stock), variantId: line.variantId, lotId, locationId: line.locationId, qtyAvailable: qty, qtyHeld: 0, qtyQuarantine: 0, qtyExpired: 0, updatedAt: now });
+      const existing = db.stock.find((s) => s.variantId === line.variantId && s.lotId === lotId && s.locationId === line.locationId);
+      if (existing) {
+        existing.qtyAvailable += qty;
+        existing.updatedAt = now;
+      } else {
+        db.stock.push({ id: nextId(db.stock), variantId: line.variantId, lotId, locationId: line.locationId, qtyAvailable: qty, qtyHeld: 0, qtyQuarantine: 0, qtyExpired: 0, updatedAt: now });
+      }
       appendLedger({ variantId: line.variantId, lotId, locationId: line.locationId, toLocationId: null, entryType: 'in', qtyDelta: qty, balanceAfter: qty, refType: 'goods_receipt', refId: id, note: 'Nhập thành phẩm', createdBy: userId });
       return { name: `${variantLabel(line.variantId).sku} · ${lotCode}`, qty, unit: 'khay' };
     });
   } else {
     if (!body.rawLines?.length) fail(400, 'Phiếu phải có ít nhất một dòng');
-    // Schema chưa có nơi lưu chi tiết nhập nguyên liệu; tạm giữ ở `items` (spec mục 5 #4).
     items = body.rawLines.map((line: any) => {
       const material = db.rawMaterials.find((m) => m.id === line.rawMaterialId);
       if (!material) fail(400, 'Nguyên liệu không tồn tại');
@@ -74,7 +80,11 @@ mock('POST', '/goods-receipts', ({ body, userId }) => {
       return { name: material.name, qty, unit: material.unit };
     });
   }
-  const row = { id, code: nextCode('PN', db.receipts), receiptType: body.receiptType, supplierId: supplier.id, source: supplier.name, receivedBy: userId, receivedAt: now, note: body.note, items };
+  const note =
+    body.receiptType === 'raw'
+      ? [body.note, items.map((i) => `${i.name}: ${i.qty} ${i.unit}`).join('; ')].filter(Boolean).join(' — ') || null
+      : body.note;
+  const row = { id, code: nextCode('PN', db.receipts), receiptType: body.receiptType, source, receivedBy: userId, receivedAt: now, note, items };
   db.receipts.push(row);
   audit(userId, 'create', 'goods_receipt', id);
   return toItem(row);

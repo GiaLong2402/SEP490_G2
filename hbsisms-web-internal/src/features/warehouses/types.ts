@@ -10,18 +10,21 @@ export interface WarehouseLocation extends Location {
 export interface WarehouseDetail extends Warehouse {
   locations: WarehouseLocation[];
   totalQty: number;
+  /** Tổng sức chứa đã phân bổ cho các vị trí. */
+  allocatedCapacity: number;
 }
 
 export interface WarehouseInput {
   code: string;
   name: string;
   address: string | null;
+  capacity: number;
   isActive: boolean;
 }
 
 export interface LocationInput {
   code: string;
   zone: string | null;
-  capacity: number | null;
+  capacity: number;
   note: string | null;
 }

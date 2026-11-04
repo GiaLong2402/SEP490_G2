@@ -41,7 +41,9 @@ public class Location {
     @Column(length = 60)
     private String zone;
 
-    private Integer capacity;
+    /** Max trays at this bin; required (no unlimited). */
+    @Column(nullable = false, columnDefinition = "integer not null default 1")
+    private Integer capacity = 1;
 
     @Column(length = 200)
     private String note;
