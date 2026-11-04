@@ -68,7 +68,7 @@ export function ProductFormModal({ open, product, onClose, onSaved }: { open: bo
         </div>
       </div>
     </Modal>
-    <CategoryFormModal open={addingCategory} onClose={() => setAddingCategory(false)} onSaved={(id) => set('categoryId', id)} />
+    <CategoryFormModal open={addingCategory} onClose={() => setAddingCategory(false)} onSaved={(saved) => set('categoryId', saved.id)} />
     </>
   );
 }
