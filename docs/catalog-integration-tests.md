@@ -2,8 +2,6 @@
 
 File bàn giao sau khi Doanh hoàn thành IT phần Product write + Variant/Tier. Cường đọc checklist bên dưới, tự viết IT Category + Product list/search (file class riêng), rồi append bảng kết quả vào cùng file này.
 
-Phân công Excel (`380-Tracking-Task-Phan-cong.xlsx`): **Integration test API danh mục** = Cường (category) + Doanh (product). Hai file IT riêng, không sửa chung 1 class.
-
 **Yêu cầu chạy:** Docker Desktop đang bật (Testcontainers Postgres). Nên dùng JDK 17 nếu máy ít RAM (JDK 25 dễ OOM khi start Spring + container).
 
 ```powershell
@@ -61,14 +59,14 @@ Doanh **không** làm IT Category CRUD / Product list-search của Cường.
 
 ## Checklist Cường (Category / Product read) — tự làm + append báo cáo
 
-**Mục tiêu Tracking:** MockMvc + Testcontainers cho category và product read; file IT **riêng**.
+**Mục tiêu:** MockMvc + Testcontainers cho category và product read.
 
 ### File gợi ý
 
 | File | Việc |
 |------|------|
 | `CategoryApiIntegrationTest.java` (**mới**) | CRUD category: tạo → list → sửa → 409 trùng code → 403 thiếu `products` → cycle parent |
-| Product list/search IT (class riêng hoặc cùng Category nếu team thống nhất **một** file Cường) | `GET /products` filter `q` / `categoryId` (kèm descendants) / paging |
+| Product list/search IT (class riêng của Cường) | `GET /products` filter `q` / `categoryId` (kèm descendants) / paging |
 
 Không sửa `ProductApiIntegrationTest` / `VariantApiIntegrationTest` của Doanh.
 
@@ -103,9 +101,9 @@ cd hbsisms-api
 
 ---
 
-## Đóng việc trên tracking
+## Đóng việc
 
-Đủ **2 phần báo cáo** trong file này mới đánh dấu xong IT danh mục trên Excel:
+Đủ **2 phần báo cáo** trong file này:
 
 1. Doanh — mục trên (21 pass)
 2. Cường — bảng Category + Product read

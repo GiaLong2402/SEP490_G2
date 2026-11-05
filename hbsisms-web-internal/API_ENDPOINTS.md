@@ -136,18 +136,21 @@ Tổng cộng 97 endpoint, sinh từ `src/features/*/mock.ts`. Kiểu dữ liệ
 
 ## products
 
-| Phương thức | Đường dẫn |
-|---|---|
-| GET | `/categories` |
-| POST | `/categories` |
-| PUT | `/categories/:id` |
-| GET | `/variants` |
-| GET | `/products` |
-| GET | `/products/:id` |
-| POST | `/products` |
-| PUT | `/products/:id` |
-| POST | `/products/:id/variants` |
-| PUT | `/variants/:id` |
+Contract FE (Doanh — form/variant): body/response khớp `features/products/types.ts`.
+Jackson khóa tên field `isPublished` / `isActive` (không `published` / `active`).
+
+| Phương thức | Đường dẫn | Ghi chú contract |
+|---|---|---|
+| GET | `/categories` | Cường (read) |
+| POST | `/categories` | Cường |
+| PUT | `/categories/:id` | Cường |
+| GET | `/variants` | options: `{ id, sku, packLabel, productName, listPrice, packPerCase }` (chỉ `isActive`) |
+| GET | `/products` | Cường (list/search) |
+| GET | `/products/:id` | `ProductDetail` (+ `variants[].tiers`, `available`) — dùng assert sau write |
+| POST | `/products` | **201** + `ProductDetail`; body `ProductInput` |
+| PUT | `/products/:id` | **200** + `ProductDetail`; `gallery: null` giữ, `[]` xóa |
+| POST | `/products/:id/variants` | **204**; body `VariantInput` (+ `tiers[]`) |
+| PUT | `/variants/:id` | **204**; body `VariantInput` |
 
 ## quotes
 

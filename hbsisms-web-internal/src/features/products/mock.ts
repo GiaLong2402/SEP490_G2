@@ -95,9 +95,33 @@ mock('GET', '/products/:id', ({ params }) => {
 });
 
 mock('POST', '/products', ({ body, userId }) => {
-  if (db.products.some((p) => p.code === body.code)) fail(409, `Mã ${body.code} đã tồn tại`);
+  const code = String(body.code ?? '').trim();
+  const name = String(body.name ?? '').trim();
+  if (!code) fail(400, 'Vui lòng nhập mã sản phẩm');
+  if (!name) fail(400, 'Vui lòng nhập tên sản phẩm');
+  if (db.products.some((p) => p.code.toLowerCase() === code.toLowerCase())) fail(409, `Mã ${code} đã tồn tại`);
+  // Khớp API: tạo mới chưa có variant active → không publish B2C.
+  if (body.isPublished) fail(400, 'Không thể hiển thị cổng B2C khi chưa có quy cách đang bán');
   const now = new Date().toISOString();
-  const product = { ...body, id: nextId(db.products), slug: body.code, imageUrl: null, gallery: null, createdAt: now, updatedAt: now };
+  const gallery = Array.isArray(body.gallery)
+    ? body.gallery.map((url: string) => String(url).trim()).filter(Boolean)
+    : [];
+  const product = {
+    ...body,
+    code,
+    name,
+    id: nextId(db.products),
+    slug: name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || code.toLowerCase(),
+    imageUrl: typeof body.imageUrl === 'string' && body.imageUrl.trim() ? body.imageUrl.trim() : null,
+    gallery,
+    createdAt: now,
+    updatedAt: now,
+  };
   db.products.push(product);
   audit(userId, 'create', 'product', product.id);
   return toItem(product);
@@ -106,8 +130,31 @@ mock('POST', '/products', ({ body, userId }) => {
 mock('PUT', '/products/:id', ({ params, body, userId }) => {
   const product = db.products.find((p) => p.id === Number(params.id));
   if (!product) fail(404, 'Không tìm thấy sản phẩm');
-  if (db.products.some((p) => p.code === body.code && p.id !== product.id)) fail(409, `Mã ${body.code} đã tồn tại`);
-  Object.assign(product, body, { updatedAt: new Date().toISOString() });
+  const code = String(body.code ?? '').trim();
+  const name = String(body.name ?? '').trim();
+  if (!code) fail(400, 'Vui lòng nhập mã sản phẩm');
+  if (!name) fail(400, 'Vui lòng nhập tên sản phẩm');
+  if (db.products.some((p) => p.code.toLowerCase() === code.toLowerCase() && p.id !== product.id)) {
+    fail(409, `Mã ${code} đã tồn tại`);
+  }
+  if (body.isPublished) {
+    const hasActiveVariant = db.variants.some((v) => v.productId === product.id && v.isActive);
+    if (!hasActiveVariant) fail(400, 'Không thể hiển thị cổng B2C khi chưa có quy cách đang bán');
+  }
+  // gallery null = giữ (API); [] hoặc mảng = ghi đè. FE form luôn gửi string[].
+  const nextGallery =
+    body.gallery === null || body.gallery === undefined
+      ? product.gallery
+      : Array.isArray(body.gallery)
+        ? body.gallery.map((url: string) => String(url).trim()).filter(Boolean)
+        : product.gallery;
+  Object.assign(product, body, {
+    code,
+    name,
+    imageUrl: typeof body.imageUrl === 'string' && body.imageUrl.trim() ? body.imageUrl.trim() : null,
+    gallery: nextGallery,
+    updatedAt: new Date().toISOString(),
+  });
   audit(userId, 'update', 'product', product.id);
   return toItem(product);
 });

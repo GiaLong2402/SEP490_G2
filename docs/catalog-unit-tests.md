@@ -2,8 +2,6 @@
 
 File bàn giao sau khi Doanh hoàn thành unit test phần Product write + Variant/Tier. Cường đọc checklist bên dưới, tự viết/bổ sung test phần mình (Category + Product read), rồi điền bảng kết quả vào mục Cường.
 
-Phân công Excel (`380-Tracking-Task-Phan-cong.xlsx`): **Danh mục = Cường + Doanh**.
-
 **Lệnh chạy phần Doanh**
 
 ```powershell
@@ -135,11 +133,9 @@ Nhánh gợi ý: theo GIT.md (`feature/api-catalog-…` / test catalog).
 
 ---
 
-## Đóng việc trên tracking
+## Đóng việc
 
-Đủ **2 phần báo cáo** mới đánh dấu xong unit test danh mục trên Excel:
+Đủ **2 phần báo cáo** trong file này:
 
 1. Doanh — mục trong file này (ProductServiceTest + VariantServiceTest, 42 pass)
 2. Cường — bảng kết quả Category + Product read ở trên
-
-Task IT catalog (nếu có trên Tracking) làm sau, không nằm trong file này.
