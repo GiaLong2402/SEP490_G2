@@ -11,6 +11,13 @@ export interface LedgerQuery extends ListQuery {
   to?: string;
 }
 
+export interface LotExpireJobResult {
+  scanned: number;
+  expired: number;
+  failed: number;
+  asOfDate: string;
+}
+
 export const inventoryApi = {
   summary: () => api.get<InventorySummary>('/inventory/summary'),
   alerts: () => api.get<InventoryAlerts>('/inventory/alerts'),
@@ -21,4 +28,6 @@ export const inventoryApi = {
   locations: () => api.get<LocationOption[]>('/locations'),
   move: (body: MoveInput) => api.post<void>('/inventory/moves', body),
   adjust: (body: AdjustInput) => api.post<void>('/inventory/adjusts', body),
+  /** Manual trigger for the daily past-HSD job (task 38). */
+  runExpireJob: () => api.post<LotExpireJobResult>('/inventory/jobs/expire-lots'),
 };

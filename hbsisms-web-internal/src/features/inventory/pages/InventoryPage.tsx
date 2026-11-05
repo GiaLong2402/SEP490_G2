@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRightLeft, PackagePlus, SlidersHorizontal } from 'lucide-react';
+import { ArrowRightLeft, PackagePlus, SlidersHorizontal, TimerReset } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useAction } from '@/shared/api/useAction';
 import { ledgerEntryMeta } from '@/shared/domain/enums';
@@ -41,6 +41,13 @@ export default function InventoryPage() {
     { q: list.q, page: list.page, entryType: list.filters.entryType, from: list.filters.from, to: list.filters.to },
     tab === 'ledger',
   );
+
+  const runExpireJob = useAction(() => inventoryApi.runExpireJob(), {
+    success: (r) =>
+      r.expired > 0
+        ? `Đã chuyển ${r.expired} dòng tồn quá HSD sang hết hạn`
+        : 'Không có lô nào cần chuyển hết hạn',
+  });
 
   const [moving, setMoving] = useState<LotStockRow | null>(null);
   const [moveForm, setMoveForm] = useState({ toLocationId: '', qty: '' });
@@ -91,6 +98,7 @@ export default function InventoryPage() {
     { key: 'avail', header: 'Khả dụng', align: 'right', cell: (l) => <span className="num">{num(l.available)}</span> },
     { key: 'held', header: 'Đang giữ', align: 'right', cell: (l) => <span className="num">{num(l.held)}</span> },
     { key: 'q', header: 'Cách ly', align: 'right', hideOnMobile: true, cell: (l) => <span className="num">{num(l.quarantine)}</span> },
+    { key: 'expQty', header: 'Hết hạn', align: 'right', hideOnMobile: true, cell: (l) => <span className="num">{num(l.expired)}</span> },
     { key: 'actions', header: '', align: 'right', cell: (l) => lotActions(l) },
   ];
   const variantColumns: Column<VariantStockRow>[] = [
@@ -118,7 +126,22 @@ export default function InventoryPage() {
 
   return (
     <>
-      <PageHeader title="Tồn kho" subtitle="Xuất theo hạn sử dụng sớm nhất (FEFO)" actions={<LinkButton to="/receipts?new=1" variant="primary" icon={<PackagePlus size={15} />}>Nhập kho</LinkButton>} />
+      <PageHeader
+        title="Tồn kho"
+        subtitle="Xuất theo hạn sử dụng sớm nhất (FEFO)"
+        actions={
+          <>
+            <Button
+              icon={<TimerReset size={15} />}
+              loading={runExpireJob.isPending}
+              onClick={() => runExpireJob.mutate()}
+            >
+              Chạy job hết hạn
+            </Button>
+            <LinkButton to="/receipts?new=1" variant="primary" icon={<PackagePlus size={15} />}>Nhập kho</LinkButton>
+          </>
+        }
+      />
       <StatGrid>
         <StatCard label="Khả dụng (khay)" value={num(summary?.available)} />
         <StatCard label="Đang giữ cho đơn" value={num(summary?.held)} />

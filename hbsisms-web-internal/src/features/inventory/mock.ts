@@ -125,6 +125,37 @@ mock('POST', '/inventory/moves', ({ body, userId }) => {
   audit(userId, 'move', 'stock', source.id, { qty, to: body.toLocationId });
 });
 
+mock('POST', '/inventory/jobs/expire-lots', ({ userId }) => {
+  const today = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+  let expired = 0;
+  for (const s of db.stock) {
+    if (s.qtyAvailable <= 0) continue;
+    const lot = db.lots.find((l) => l.id === s.lotId);
+    if (!lot?.expDate || lot.expDate >= today) continue;
+    const qty = s.qtyAvailable;
+    s.qtyAvailable = 0;
+    s.qtyExpired += qty;
+    appendLedger({
+      variantId: s.variantId,
+      lotId: s.lotId,
+      locationId: s.locationId,
+      toLocationId: null,
+      entryType: 'expire',
+      qtyDelta: -qty,
+      balanceAfter: s.qtyAvailable,
+      refType: 'expire_job',
+      refId: s.id,
+      note: `Lô quá HSD ${lot.expDate}`,
+      createdBy: userId,
+    });
+    expired++;
+  }
+  return { scanned: expired, expired, failed: 0, asOfDate: today };
+});
+
 mock('POST', '/inventory/adjusts', ({ body, userId }) => {
   const source = db.stock.find((s) => s.id === body.stockId);
   if (!source) fail(404, 'Không tìm thấy dòng tồn');
