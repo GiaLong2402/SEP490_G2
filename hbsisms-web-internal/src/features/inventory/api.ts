@@ -26,7 +26,9 @@ export const inventoryApi = {
   lots: (query: InventoryQuery, signal?: AbortSignal) => api.get<Page<LotStockRow>>('/inventory/lots', query, signal),
   ledger: (query: LedgerQuery, signal?: AbortSignal) => api.get<Page<LedgerRow>>('/inventory/ledger', query, signal),
   locations: () => api.get<LocationOption[]>('/locations'),
+  /** API returns 204 No Content. */
   move: (body: MoveInput) => api.post<void>('/inventory/moves', body),
+  /** API returns 204 No Content; writes ledger + audit. */
   adjust: (body: AdjustInput) => api.post<void>('/inventory/adjusts', body),
   /** Manual trigger for the daily past-HSD job (task 38). */
   runExpireJob: () => api.post<LotExpireJobResult>('/inventory/jobs/expire-lots'),

@@ -83,8 +83,8 @@ Tổng cộng 97 endpoint, sinh từ `src/features/*/mock.ts`. Kiểu dữ liệ
 | GET | `/inventory/near-expiry` |
 | GET | `/inventory/ledger` | query: `q`, `entryType`, `from`, `to` (yyyy-MM-dd), page |
 | GET | `/locations` |
-| POST | `/inventory/moves` |
-| POST | `/inventory/adjusts` | body: `{ stockId, qtyDelta, note }` → 204; ledger `ADJUST` + audit |
+| POST | `/inventory/moves` | body: `{ stockId, toLocationId, qty }` → 204; ledger `move` |
+| POST | `/inventory/adjusts` | body: `{ stockId, qtyDelta, note }` → 204; ledger `adjust` + audit |
 
 ## marketing
 

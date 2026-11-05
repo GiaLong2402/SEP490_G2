@@ -112,7 +112,7 @@ mock('POST', '/inventory/moves', ({ body, userId }) => {
   if (!source) fail(404, 'Không tìm thấy dòng tồn');
   const qty = Number(body.qty);
   if (!Number.isInteger(qty) || qty <= 0) fail(400, 'Số lượng phải là số nguyên dương');
-  if (qty > source.qtyAvailable) fail(409, 'Vượt số lượng khả dụng ở vị trí hiện tại');
+  if (qty > source.qtyAvailable) fail(409, 'Không đủ tồn kho');
   if (source.locationId === body.toLocationId) fail(400, 'Vị trí đích trùng vị trí hiện tại');
   source.qtyAvailable -= qty;
   let target = db.stock.find((s) => s.lotId === source.lotId && s.locationId === body.toLocationId);
@@ -121,10 +121,9 @@ mock('POST', '/inventory/moves', ({ body, userId }) => {
     db.stock.push(target);
   }
   target.qtyAvailable += qty;
+  // API moves: ledger only — no audit (audit is on adjusts).
   appendLedger({ variantId: source.variantId, lotId: source.lotId, locationId: source.locationId, toLocationId: body.toLocationId, entryType: 'move', qtyDelta: qty, balanceAfter: target.qtyAvailable, refType: null, refId: null, note: 'Chuyển vị trí', createdBy: userId });
-  audit(userId, 'move', 'stock', source.id, { qty, to: body.toLocationId });
 });
-
 mock('POST', '/inventory/jobs/expire-lots', ({ userId }) => {
   const today = (() => {
     const d = new Date();
