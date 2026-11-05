@@ -75,18 +75,33 @@ File: `hbsisms-api/src/test/java/com/hbsisms/feature/inventory/InventoryMoveApiI
 
 ---
 
-## Checklist + báo cáo Khôi — tự làm rồi append vào đây
+## Phần Khôi — đã làm (task 40)
 
-**Việc gợi ý**
+File: `hbsisms-api/src/test/java/com/hbsisms/feature/inventory/StocktakeDamageApiIntegrationTest.java`
 
-- IT API stocktake: create → count → complete (adjust đúng chênh lệch)
-- IT damage-reports: create không trừ; approve trừ; reject không trừ
+```powershell
+cd hbsisms-api
+.\mvnw.cmd test "-Dtest=StocktakeDamageApiIntegrationTest"
+```
 
-**Sau khi xong:** thêm bảng:
+Kết quả gần nhất: **14 tests, 0 failures** (BUILD SUCCESS).
 
-| Test method | Hành vi | Pass/Fail |
-|-------------|---------|-----------|
-| *(Khôi điền)* | | |
+| Test method | Hành vi | Kết quả |
+|-------------|---------|---------|
+| `stocktake_noDiff_completesDoneWithoutApproval` | count đúng hệ thống → complete DONE, không tạo approval | pass |
+| `stocktake_withDiff_approve_adjustsStock` | chênh lệch → PENDING_APPROVAL; approve → DONE + điều chỉnh tồn | pass |
+| `stocktake_withDiff_reject_keepsCountingWithoutAdjust` | reject → về COUNTING, tồn không đổi | pass |
+| `stocktake_cancel_marksCancelled` | cancel phiên COUNTING → CANCELLED | pass |
+| `stocktake_create_emptyZone_returns409` | zone không có hàng → 409 | pass |
+| `stocktake_complete_uncountedLines_returns409` | còn dòng chưa đếm mà complete → 409 | pass |
+| `stocktake_saveCounts_negativeQty_returns400` | countedQty &lt; 0 → 400 | pass |
+| `stocktake_saveCounts_whilePendingApproval_returns409` | đang chờ duyệt mà sửa số đếm → 409 | pass |
+| `damage_createDoesNotDeduct_approveDoes` | tạo damage không trừ; approve mới trừ on-hand | pass |
+| `damage_rejectDoesNotTouchStock` | reject damage → tồn giữ nguyên | pass |
+| `damage_create_rejectsWhenQtyExceedsOnHand` | qty hỏng > on-hand → 409 | pass |
+| `damage_create_blankReason_returns400` | lý do trống/whitespace → 400 | pass |
+| `damage_create_lotVariantMismatch_returns400` | lot không thuộc variant → 400 | pass |
+| `damage_decideAgain_returns409` | duyệt lại task đã xử lý → 409; tồn không đổi thêm | pass |
 
 ---
 
