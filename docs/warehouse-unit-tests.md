@@ -90,14 +90,68 @@ Nhánh: `feature/api-warehouse-unit-tests`.
 | 5 | Adjust vượt available → 409 | `adjust_negativeConflictsWhenInsufficient` | pass |
 | 6 | Adjust tăng tồn thành công + ghi audit | `adjust_positiveChecksCapacityAndWritesLedger`, `adjustByStockId_increasesAndWritesLedger`, `record_savesLogWithUserAndDetail`, `record_allowsNullUser` | pass |
 
-Ngoài checklist: happy path / byStockId liên quan — `move_updatesSourceAndTarget`, `moveByStockId_delegatesToMove`, `moveByStockId_notFound`, `adjustByStockId_decreasesAndWritesLedger`, cùng các test move/adjust khác trong bảng Long/`StockServiceTest` ở trên.
-
 ### File Duy bổ sung
 
 | File | Nội dung |
 |------|----------|
 | `StockServiceTest.java` | `adjustByStockId_increasesAndWritesLedger` |
 | `AuditLogServiceTest.java` (mới) | `record_savesLogWithUserAndDetail`, `record_allowsNullUser` |
+
+### Bảng đủ 42 test (lệnh chạy phần Duy)
+
+Khi chạy `StockServiceTest` + `AuditLogServiceTest` = **42** method (40 + 2). Phần lớn move/adjust trong `StockServiceTest` Long đã viết sẵn; Duy xác nhận pass + bổ sung 3 method đánh dấu *(Duy)*.
+
+#### StockServiceTest — 40
+
+| Test method | Hành vi | Kết quả |
+|-------------|---------|---------|
+| `receiveIn_rejectsNonPositiveQty` | qty ≤ 0 → 400 | pass |
+| `issueOut_rejectsNonPositiveQty` | qty ≤ 0 → 400 | pass |
+| `hold_rejectsNonPositiveQty` | qty ≤ 0 → 400 | pass |
+| `release_rejectsNonPositiveQty` | qty ≤ 0 → 400 | pass |
+| `move_rejectsNonPositiveQty` | qty ≤ 0 → 400 | pass |
+| `damage_rejectsNonPositiveQty` | qty ≤ 0 → 400 | pass |
+| `expire_rejectsNonPositiveQty` | qty ≤ 0 → 400 | pass |
+| `receiveIn_createsStockAndWritesLedger` | tạo stock mới + ledger IN | pass |
+| `receiveIn_addsToExistingStock` | cộng vào stock có sẵn + ledger IN | pass |
+| `receiveIn_conflictsWhenExceedsLocationCapacity` | vượt sức chứa vị trí → 409 | pass |
+| `receiveIn_conflictsWhenExceedsWarehouseCapacity` | vượt sức chứa kho → 409 | pass |
+| `issueOut_writesLedgerWhenSuccessful` | xuất thành công + ledger OUT | pass |
+| `issueOut_conflictsWhenAtomicUpdateReturnsZero` | không đủ tồn → 409 | pass |
+| `issueOut_notFoundWhenStockMissing` | thiếu dòng tồn → 404 | pass |
+| `hold_reducesAvailableAndIncreasesHeld` | giữ hàng + ledger HOLD | pass |
+| `hold_conflictsWhenAvailableInsufficient` | thiếu khả dụng → 409 | pass |
+| `release_returnsHeldToAvailableAndWritesLedger` | nhả giữ + ledger RELEASE | pass |
+| `release_conflictsWhenHeldInsufficient` | thiếu tồn đang giữ → 409 | pass |
+| `move_requiresToLocationId` | thiếu vị trí đích → 400 | pass |
+| `move_rejectsSameLocation` | nguồn = đích → 400 | pass |
+| `move_notFoundWhenTargetLocationMissing` | đích không tồn tại → 404 | pass |
+| `move_conflictsWhenTargetLocationCapacityExceeded` | vượt capacity vị trí đích → 409 | pass |
+| `move_sameWarehouse_doesNotCheckWarehouseCapacityAgain` | cùng kho: không gọi sumQtyByWarehouseId | pass |
+| `move_crossWarehouse_conflictsWhenTargetWarehouseFull` | khác kho, vượt capacity kho đích → 409 | pass |
+| `move_conflictsWhenSourceLacksQty` | nguồn thiếu tồn → 409 | pass |
+| `move_updatesSourceAndTarget` | chuyển thành công + ledger MOVE | pass |
+| `moveByStockId_notFound` | stock id không có → 404 | pass |
+| `moveByStockId_delegatesToMove` | ủy quyền move + note mặc định | pass |
+| `adjust_requiresNote` | note trống → 400 | pass |
+| `adjust_rejectsZeroDelta` | delta = 0 → 400 | pass |
+| `adjust_positiveChecksCapacityAndWritesLedger` | tăng tồn + check capacity + ADJUST | pass |
+| `adjust_negativeConflictsWhenInsufficient` | giảm vượt tồn → 409 | pass |
+| `adjustByStockId_notFound` | 404 | pass |
+| `adjustByStockId_zeroDelta_rejected` | 400 | pass |
+| `adjustByStockId_decreasesAndWritesLedger` | giảm + ADJUST | pass |
+| `adjustByStockId_increasesAndWritesLedger` *(Duy)* | tăng byStockId + ADJUST | pass |
+| `damage_deductsAcrossBucketsAndWritesLedger` | trừ quarantine rồi available + DAMAGE | pass |
+| `damage_conflictsWhenOnHandInsufficient` | on-hand không đủ → 409 | pass |
+| `expire_movesAvailableToExpiredAndWritesLedger` | available → expired + EXPIRE | pass |
+| `expire_conflictsWhenAvailableInsufficient` | thiếu available → 409 | pass |
+
+#### AuditLogServiceTest — 2 *(Duy)*
+
+| Test method | Hành vi | Kết quả |
+|-------------|---------|---------|
+| `record_savesLogWithUserAndDetail` | ghi audit có user + detail | pass |
+| `record_allowsNullUser` | ghi audit khi user null | pass |
 
 ### Lệnh chạy phần Duy
 
