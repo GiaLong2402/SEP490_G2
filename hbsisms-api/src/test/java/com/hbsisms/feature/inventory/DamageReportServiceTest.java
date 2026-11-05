@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -208,6 +209,49 @@ class DamageReportServiceTest {
 
         assertThat(report.getStatus()).isEqualTo(ApprovalStatus.REJECTED);
         verify(stockService, never()).damage(any());
+    }
+
+    @Test
+    void applyDecision_whenAlreadyDecided_rejectsWithoutTouchingStock() {
+        DamageReport report = new DamageReport();
+        setId(report, 50L);
+        report.setVariant(variant);
+        report.setLot(lot);
+        report.setLocation(location);
+        report.setQty(5);
+        report.setReason("Vỡ bao");
+        report.setStatus(ApprovalStatus.APPROVED);
+        when(damageReportRepository.findDetailedById(50L)).thenReturn(Optional.of(report));
+
+        assertThatThrownBy(() -> service.applyDecision(50L, true, actor, "lần 2"))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+        verify(stockService, never()).damage(any());
+        verify(damageReportRepository, never()).save(any());
+    }
+
+    @Test
+    void applyDecision_approved_propagatesWhenStockDamageFails() {
+        DamageReport report = new DamageReport();
+        setId(report, 50L);
+        report.setCode("BH-0001");
+        report.setVariant(variant);
+        report.setLot(lot);
+        report.setLocation(location);
+        report.setQty(5);
+        report.setReason("Vỡ bao");
+        report.setStatus(ApprovalStatus.PENDING);
+        when(damageReportRepository.findDetailedById(50L)).thenReturn(Optional.of(report));
+        when(damageReportRepository.save(report)).thenReturn(report);
+        when(stockService.damage(any()))
+                .thenThrow(ApiException.conflict("Không đủ tồn kho để trừ hỏng"));
+
+        assertThatThrownBy(() -> service.applyDecision(50L, true, actor, "OK"))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+        verify(stockService, times(1)).damage(any());
     }
 
     private static void setId(Object entity, Long id) {
