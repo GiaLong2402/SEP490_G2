@@ -609,6 +609,27 @@ class StockServiceTest {
         assertThat(captor.getValue().getNote()).isEqualTo("Hao hụt");
     }
 
+    @Test
+    void adjustByStockId_increasesAndWritesLedger() {
+        Stock source = stock(1L, 5);
+        when(stockRepository.findWithDetailsById(1L)).thenReturn(Optional.of(source));
+        when(locationRepository.findById(100L)).thenReturn(Optional.of(locationA));
+        when(stockRepository.sumQtyByLocationId(100L)).thenReturn(5L);
+        when(stockRepository.sumQtyByWarehouseId(1L)).thenReturn(5L);
+        when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 10L, 100L))
+                .thenReturn(Optional.of(source));
+        when(stockRepository.adjustQtyAvailable(1L, 3)).thenReturn(1);
+        when(stockRepository.findById(1L)).thenReturn(Optional.of(stock(1L, 8)));
+
+        stockService.adjustByStockId(1L, 3, "Bù thiếu đếm", 1L);
+
+        ArgumentCaptor<StockLedger> captor = ArgumentCaptor.forClass(StockLedger.class);
+        verify(stockLedgerRepository).save(captor.capture());
+        assertThat(captor.getValue().getEntryType()).isEqualTo(LedgerEntryType.ADJUST);
+        assertThat(captor.getValue().getQtyDelta()).isEqualTo(3);
+        assertThat(captor.getValue().getNote()).isEqualTo("Bù thiếu đếm");
+    }
+
     // --- DAMAGE / EXPIRE ---
 
     @Test

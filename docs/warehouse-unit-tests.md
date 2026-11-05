@@ -9,7 +9,7 @@ cd hbsisms-api
 .\mvnw.cmd test -Dtest=StockServiceTest
 ```
 
-Kết quả gần nhất: **39 tests, 0 failures** (BUILD SUCCESS).
+Kết quả gần nhất (sau khi Duy bổ sung `adjustByStockId_increasesAndWritesLedger`): **40 tests** trong `StockServiceTest` + **2** trong `AuditLogServiceTest` khi chạy chung = **42**, 0 failures (BUILD SUCCESS).
 
 ---
 
@@ -17,7 +17,7 @@ Kết quả gần nhất: **39 tests, 0 failures** (BUILD SUCCESS).
 
 File: `hbsisms-api/src/test/java/com/hbsisms/feature/inventory/StockServiceTest.java`
 
-Trước: 11 test · Sau: **39 test** · Tất cả **pass**.
+Trước: 11 test · Sau bàn giao Long: **39 test** · Sau bổ sung Duy (+1): **40 test** · Tất cả **pass**.
 
 | Test method | Hành vi | Kết quả |
 |-------------|---------|---------|
@@ -56,6 +56,7 @@ Trước: 11 test · Sau: **39 test** · Tất cả **pass**.
 | `adjustByStockId_notFound` | 404 | pass |
 | `adjustByStockId_zeroDelta_rejected` | 400 | pass |
 | `adjustByStockId_decreasesAndWritesLedger` | giảm + ADJUST | pass |
+| `adjustByStockId_increasesAndWritesLedger` | tăng byStockId + ADJUST (Duy bổ sung) | pass |
 | `damage_deductsAcrossBucketsAndWritesLedger` | trừ quarantine rồi available + DAMAGE | pass |
 | `damage_conflictsWhenOnHandInsufficient` | on-hand không đủ → 409 | pass |
 | `expire_movesAvailableToExpiredAndWritesLedger` | available → expired + EXPIRE | pass |
@@ -65,41 +66,50 @@ Long **không** làm unit test API move/adjust của Duy, cũng không làm stoc
 
 ---
 
-## Checklist Duy (move / adjust) — tự làm + báo cáo riêng
+## Checklist Duy (move / adjust) — đã làm + báo cáo
 
-**Mục tiêu tracking:** chuyển vị trí, điều chỉnh tồn (API / audit). Không sửa logic ledger trong `StockService` trừ khi phát hiện bug (báo Long).
+**Mục tiêu tracking (#39):** chuyển vị trí, điều chỉnh tồn (+ audit unit). Không sửa logic ledger trong `StockService` trừ khi phát hiện bug (báo Long). **Không** gồm IT API kho (tracking #40).
 
-**File gợi ý**
+Nhánh: `feature/api-warehouse-unit-tests`.
 
-- IT mẫu: `InventoryAdjustApiIntegrationTest.java`
-- Có thể bổ sung unit/IT quanh `POST /inventory/moves`, `POST /inventory/adjusts`, audit log
+**Báo cáo:** mục này trong file (6 checklist + lệnh chạy 42 tests). Không tách file báo cáo riêng.
 
-**Case tối thiểu cần có / xác nhận**
+### Phạm vi (đồng bộ phần Duy)
 
-1. Move: vị trí đích trùng / không hợp lệ → 400
-2. Move: qty > available → 409
-3. Adjust: note bắt buộc → 400
-4. Adjust: delta = 0 → 400
-5. Adjust: vượt available → 409
-6. Adjust tăng tồn thành công + ghi audit (nếu module audit thuộc phần Duy)
+- **Trong:** xác nhận unit move/adjust trong `StockServiceTest`; bổ sung `adjustByStockId_increasesAndWritesLedger` + `AuditLogServiceTest`; báo cáo docs
+- **Ngoài:** IT / Docker / Testcontainers (#40); stocktake / damage (Khôi)
 
-**Chạy test (ví dụ)**
+### 6 case tối thiểu → test method (Pass)
+
+| # | Case | Test method | Kết quả |
+|---|------|-------------|---------|
+| 1 | Move đích trùng / không hợp lệ → 400 | `move_rejectsSameLocation`, `move_requiresToLocationId`, `move_notFoundWhenTargetLocationMissing` | pass |
+| 2 | Move qty > available → 409 (không âm tồn) | `move_conflictsWhenSourceLacksQty` | pass |
+| 3 | Adjust note bắt buộc → 400 | `adjust_requiresNote` | pass |
+| 4 | Adjust delta = 0 → 400 | `adjust_rejectsZeroDelta`, `adjustByStockId_zeroDelta_rejected` | pass |
+| 5 | Adjust vượt available → 409 | `adjust_negativeConflictsWhenInsufficient` | pass |
+| 6 | Adjust tăng tồn thành công + ghi audit | `adjust_positiveChecksCapacityAndWritesLedger`, `adjustByStockId_increasesAndWritesLedger`, `record_savesLogWithUserAndDetail`, `record_allowsNullUser` | pass |
+
+Ngoài checklist: happy path / byStockId liên quan — `move_updatesSourceAndTarget`, `moveByStockId_delegatesToMove`, `moveByStockId_notFound`, `adjustByStockId_decreasesAndWritesLedger`, cùng các test move/adjust khác trong bảng Long/`StockServiceTest` ở trên.
+
+### File Duy bổ sung
+
+| File | Nội dung |
+|------|----------|
+| `StockServiceTest.java` | `adjustByStockId_increasesAndWritesLedger` |
+| `AuditLogServiceTest.java` (mới) | `record_savesLogWithUserAndDetail`, `record_allowsNullUser` |
+
+### Lệnh chạy phần Duy
 
 ```powershell
 cd hbsisms-api
-.\mvnw.cmd test -Dtest=InventoryAdjustApiIntegrationTest
-# hoặc -Dtest=TênClassTestCủaBạn
+.\mvnw.cmd test "-Dtest=StockServiceTest,AuditLogServiceTest"
 ```
 
-**Format báo cáo riêng (copy vào PR / tracking)**
-
-| Test method | Hành vi | Pass/Fail |
-|-------------|---------|-----------|
-| … | … | … |
-
-Nhánh gợi ý: theo GIT.md (`feature/api-stock-move` / adjust).
+Kết quả gần nhất: **42 tests, 0 failures** (BUILD SUCCESS) — StockService **40** + AuditLog **2**.
 
 ---
+
 
 ## Checklist Khôi (stocktake / damage) — đã làm + báo cáo
 
@@ -175,7 +185,7 @@ Trước: 4 test · Sau: **12 test** · Tất cả **pass**.
 Đủ **3 báo cáo** mới đánh dấu xong phần unit test kho trên Excel:
 
 1. Long — mục trong file này ✅  
-2. Duy — báo cáo riêng (checklist phía trên)  
+2. Duy — mục trong file này ✅  
 3. Khôi — mục trong file này ✅ (đủ nhánh service, không chỉ case tối thiểu)  
 
 Task IT concurrent (tracking IT kho) làm sau, không nằm trong file này.
