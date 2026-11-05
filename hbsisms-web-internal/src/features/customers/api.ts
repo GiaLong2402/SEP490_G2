@@ -10,8 +10,11 @@ export interface CustomerQuery extends ListQuery {
 export const customersApi = {
   list: (query: CustomerQuery, signal?: AbortSignal) => api.get<Page<CustomerListItem>>('/customers', query, signal),
   get: (id: ID) => api.get<CustomerDetail>(`/customers/${id}`),
+  /** API returns 201 + CustomerDetailResponse. */
   create: (body: CustomerInput) => api.post<CustomerDetail>('/customers', body),
+  /** API returns 200 + CustomerDetailResponse. */
   update: (id: ID, body: CustomerInput) => api.put<CustomerDetail>(`/customers/${id}`, body),
+  /** API returns 200 + CustomerDetailResponse; body `{ isActive }`. */
   setActive: (id: ID, isActive: boolean) => api.patch<CustomerDetail>(`/customers/${id}/active`, { isActive }),
   addresses: (id: ID) => api.get<CustomerAddress[]>(`/customers/${id}/addresses`),
   /** API returns 201 + AddressResponse. */

@@ -1,6 +1,7 @@
 import { fail, matches, mock, paginate } from '@/shared/api/mockServer';
 import { db, nextCode, nextId } from '@/shared/mock/db';
 import { audit, configInt, createApproval, variantLabel } from '@/shared/mock/services';
+import { normalizeVnPhone, validateOptionalPhone, validateOptionalTaxCode } from './customerValidation';
 
 function toDetail(id: number) {
   const customer = db.customers.find((c) => c.id === id);
@@ -30,8 +31,56 @@ function toDetail(id: number) {
   };
 }
 
-// Giống CHECK chk_b2b_terms: khách B2C không có hạn mức và kỳ hạn.
-const normalize = (body: any) => (body.customerType === 'b2b' ? body : { ...body, creditLimit: 0, netDays: 0, taxCode: null });
+/** Validate then normalize like API CustomerService — fail 400 instead of silent coerce. */
+function assertAndNormalizeCustomerBody(body: any) {
+  if (!body?.customerType) fail(400, 'Loại khách hàng là bắt buộc');
+  if (!String(body.name ?? '').trim()) fail(400, 'Vui lòng nhập tên khách');
+
+  const phoneErr = validateOptionalPhone(body.phone);
+  if (phoneErr) fail(400, phoneErr);
+  const contactPhoneErr = validateOptionalPhone(body.contactPhone, 'SĐT liên hệ');
+  if (contactPhoneErr) fail(400, contactPhoneErr);
+
+  const creditLimit = body.creditLimit == null ? 0 : Number(body.creditLimit);
+  const netDays = body.netDays == null ? 0 : Number(body.netDays);
+  const taxRaw = body.taxCode?.trim?.() || body.taxCode || null;
+
+  if (body.customerType === 'b2c') {
+    if (taxRaw || creditLimit !== 0 || netDays !== 0) {
+      fail(400, 'Khách B2C không được có MST / hạn mức / kỳ hạn nợ');
+    }
+    return {
+      ...body,
+      name: String(body.name).trim(),
+      email: body.email?.trim?.() || body.email || null,
+      phone: normalizeVnPhone(body.phone),
+      taxCode: null,
+      contactName: null,
+      contactPhone: null,
+      creditLimit: 0,
+      netDays: 0,
+      note: body.note?.trim?.() || body.note || null,
+    };
+  }
+
+  if (creditLimit < 0) fail(400, 'Hạn mức không được âm');
+  if (netDays < 0 || !Number.isInteger(netDays)) fail(400, 'Số ngày nợ không hợp lệ');
+  const taxErr = validateOptionalTaxCode(taxRaw);
+  if (taxErr) fail(400, taxErr);
+
+  return {
+    ...body,
+    name: String(body.name).trim(),
+    email: body.email?.trim?.() || body.email || null,
+    phone: normalizeVnPhone(body.phone),
+    taxCode: taxRaw ? String(taxRaw).trim() : null,
+    contactName: body.contactName?.trim?.() || body.contactName || null,
+    contactPhone: normalizeVnPhone(body.contactPhone),
+    creditLimit,
+    netDays,
+    note: body.note?.trim?.() || body.note || null,
+  };
+}
 
 mock('GET', '/customers', ({ query }) => {
   const activeFilter =
@@ -50,12 +99,13 @@ mock('GET', '/customers', ({ query }) => {
 mock('GET', '/customers/:id', ({ params }) => toDetail(Number(params.id)));
 
 mock('POST', '/customers', ({ body, userId }) => {
+  const normalized = assertAndNormalizeCustomerBody(body);
   const now = new Date().toISOString();
-  const prefix = body.customerType === 'b2b' ? 'KH-B' : 'KH';
-  const code = body.customerType === 'b2b'
+  const prefix = normalized.customerType === 'b2b' ? 'KH-B' : 'KH';
+  const code = normalized.customerType === 'b2b'
     ? `KH-B${String(db.customers.filter((c) => c.customerType === 'b2b').length + 1).padStart(3, '0')}`
     : nextCode(prefix, db.customers.filter((c) => c.customerType === 'b2c'));
-  const customer = { ...normalize(body), id: nextId(db.customers), code, accountUserId: null, currentDebt: 0, createdAt: now, updatedAt: now };
+  const customer = { ...normalized, id: nextId(db.customers), code, accountUserId: null, currentDebt: 0, createdAt: now, updatedAt: now };
   db.customers.push(customer);
   audit(userId, 'create', 'customer', customer.id);
   return toDetail(customer.id);
@@ -65,7 +115,8 @@ mock('PUT', '/customers/:id', ({ params, body, userId }) => {
   const customer = db.customers.find((c) => c.id === Number(params.id));
   if (!customer) fail(404, 'Không tìm thấy khách hàng');
   if (body.customerType === 'b2c' && customer.currentDebt > 0) fail(409, 'Khách đang có công nợ, không thể chuyển sang B2C');
-  Object.assign(customer, normalize(body), { updatedAt: new Date().toISOString() });
+  const normalized = assertAndNormalizeCustomerBody(body);
+  Object.assign(customer, normalized, { updatedAt: new Date().toISOString() });
   audit(userId, 'update', 'customer', customer.id);
   return toDetail(customer.id);
 });

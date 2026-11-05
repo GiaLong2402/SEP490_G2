@@ -2,27 +2,28 @@ import { useEffect, useState } from 'react';
 import { useAction } from '@/shared/api/useAction';
 import { Button, Checkbox, Field, Input, Modal, Select, Textarea } from '@/shared/ui';
 import { customersApi } from '../api';
+import { normalizeVnPhone, validateOptionalPhone, validateOptionalTaxCode } from '../customerValidation';
 import type { CustomerDetail, CustomerInput } from '../types';
 
 const empty: CustomerInput = { customerType: 'b2c', name: '', email: '', phone: '', taxCode: '', contactName: '', contactPhone: '', creditLimit: 0, netDays: 0, isActive: true, note: '' };
 
-/** B2C không gửi MST / hạn mức / NET — khớp rule API (400 nếu gửi). */
+/** B2C không gửi MST / hạn mức / NET — khớp rule API (400 nếu gửi). Phone normalize như API. */
 function toRequestBody(form: CustomerInput): CustomerInput {
   if (form.customerType === 'b2b') {
     return {
       ...form,
       email: form.email?.trim() || null,
-      phone: form.phone?.trim() || null,
+      phone: normalizeVnPhone(form.phone),
       taxCode: form.taxCode?.trim() || null,
       contactName: form.contactName?.trim() || null,
-      contactPhone: form.contactPhone?.trim() || null,
+      contactPhone: normalizeVnPhone(form.contactPhone),
       note: form.note?.trim() || null,
     };
   }
   return {
     ...form,
     email: form.email?.trim() || null,
-    phone: form.phone?.trim() || null,
+    phone: normalizeVnPhone(form.phone),
     taxCode: null,
     contactName: null,
     contactPhone: null,
@@ -54,9 +55,13 @@ export function CustomerFormModal({ open, customer, onClose, onSaved }: { open: 
   const isB2b = form.customerType === 'b2b';
   const errors = {
     name: !form.name.trim() ? 'Vui lòng nhập tên khách' : undefined,
+    phone: validateOptionalPhone(form.phone),
+    tax: isB2b ? validateOptionalTaxCode(form.taxCode) : undefined,
+    contactPhone: isB2b ? validateOptionalPhone(form.contactPhone, 'SĐT liên hệ') : undefined,
     limit: isB2b && form.creditLimit < 0 ? 'Hạn mức không được âm' : undefined,
     net: isB2b && (form.netDays < 0 || !Number.isInteger(form.netDays)) ? 'Số ngày không hợp lệ' : undefined,
   };
+  const hasError = !!(errors.name || errors.phone || errors.tax || errors.contactPhone || errors.limit || errors.net);
   return (
     <Modal
       open={open}
@@ -65,7 +70,7 @@ export function CustomerFormModal({ open, customer, onClose, onSaved }: { open: 
       width="lg"
       onSubmit={() => {
         setTouched(true);
-        if (!errors.name && !errors.limit && !errors.net) save.mutate();
+        if (!hasError) save.mutate();
       }}
       footer={<><Button onClick={onClose}>Hủy bỏ</Button><Button type="submit" variant="primary" loading={save.isPending}>Lưu</Button></>}
     >
@@ -87,13 +92,13 @@ export function CustomerFormModal({ open, customer, onClose, onSaved }: { open: 
           </Select>
         </Field>
         <Field label="Tên khách hàng" required error={touched ? errors.name : undefined}><Input value={form.name} onChange={(e) => set('name', e.target.value)} /></Field>
-        <Field label="Điện thoại"><Input value={form.phone ?? ''} onChange={(e) => set('phone', e.target.value)} /></Field>
+        <Field label="Điện thoại" error={touched ? errors.phone : undefined}><Input value={form.phone ?? ''} onChange={(e) => set('phone', e.target.value)} placeholder="0xxxxxxxxx" /></Field>
         <Field label="Email"><Input type="email" value={form.email ?? ''} onChange={(e) => set('email', e.target.value)} /></Field>
         {isB2b && (
           <>
-            <Field label="Mã số thuế"><Input value={form.taxCode ?? ''} onChange={(e) => set('taxCode', e.target.value)} /></Field>
+            <Field label="Mã số thuế" error={touched ? errors.tax : undefined}><Input value={form.taxCode ?? ''} onChange={(e) => set('taxCode', e.target.value)} placeholder="10–13 chữ số" /></Field>
             <Field label="Người liên hệ"><Input value={form.contactName ?? ''} onChange={(e) => set('contactName', e.target.value)} /></Field>
-            <Field label="SĐT liên hệ"><Input value={form.contactPhone ?? ''} onChange={(e) => set('contactPhone', e.target.value)} /></Field>
+            <Field label="SĐT liên hệ" error={touched ? errors.contactPhone : undefined}><Input value={form.contactPhone ?? ''} onChange={(e) => set('contactPhone', e.target.value)} placeholder="0xxxxxxxxx" /></Field>
             <Field label="Hạn mức công nợ (₫)" error={touched ? errors.limit : undefined}><Input type="number" min={0} value={form.creditLimit} onChange={(e) => set('creditLimit', Number(e.target.value))} /></Field>
             <Field label="Kỳ hạn NET (ngày)" error={touched ? errors.net : undefined}><Input type="number" min={0} value={form.netDays} onChange={(e) => set('netDays', Number(e.target.value))} /></Field>
           </>
