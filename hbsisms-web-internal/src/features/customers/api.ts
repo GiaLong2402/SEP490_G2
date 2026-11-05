@@ -14,8 +14,12 @@ export const customersApi = {
   update: (id: ID, body: CustomerInput) => api.put<CustomerDetail>(`/customers/${id}`, body),
   setActive: (id: ID, isActive: boolean) => api.patch<CustomerDetail>(`/customers/${id}/active`, { isActive }),
   addresses: (id: ID) => api.get<CustomerAddress[]>(`/customers/${id}/addresses`),
-  addAddress: (id: ID, body: AddressInput) => api.post<void>(`/customers/${id}/addresses`, body),
-  updateAddress: (id: ID, addressId: ID, body: AddressInput) => api.put<void>(`/customers/${id}/addresses/${addressId}`, body),
+  /** API returns 201 + AddressResponse. */
+  addAddress: (id: ID, body: AddressInput) => api.post<CustomerAddress>(`/customers/${id}/addresses`, body),
+  /** API returns 200 + AddressResponse. */
+  updateAddress: (id: ID, addressId: ID, body: AddressInput) =>
+    api.put<CustomerAddress>(`/customers/${id}/addresses/${addressId}`, body),
   deleteAddress: (id: ID, addressId: ID) => api.delete<void>(`/customers/${id}/addresses/${addressId}`),
+  /** API returns 204 No Content. */
   proposePrice: (id: ID, body: PriceProposal) => api.post<void>(`/customers/${id}/prices`, body),
 };
