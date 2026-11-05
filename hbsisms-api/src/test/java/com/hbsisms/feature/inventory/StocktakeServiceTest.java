@@ -292,6 +292,186 @@ class StocktakeServiceTest {
                 .isEqualTo(HttpStatus.CONFLICT);
     }
 
+    @Test
+    void create_rejectsWhenZoneHasNoLocations() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(actor));
+        when(locationRepository.findAllWithWarehouse()).thenReturn(List.of(location));
+
+        assertThatThrownBy(() -> service.create(new StocktakeInput("Khu không tồn tại", null), 1L))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void create_wholeWarehouse_setsScopeToanKho() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(actor));
+        when(locationRepository.findAllWithWarehouse()).thenReturn(List.of(location));
+        when(stockRepository.findAllWithDetails()).thenReturn(List.of(stock));
+        when(stocktakeRepository.findMaxKkCode()).thenReturn(Optional.empty());
+        when(stocktakeRepository.saveAndFlush(any(Stocktake.class))).thenAnswer(inv -> {
+            Stocktake s = inv.getArgument(0);
+            ReflectionTestUtils.setField(s, "id", 41L);
+            return s;
+        });
+        when(stocktakeRepository.save(any(Stocktake.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(stocktakeRepository.findWithActorsById(41L)).thenAnswer(inv -> {
+            Stocktake s = countingStocktake(41L);
+            s.setScope("Toàn kho");
+            return Optional.of(s);
+        });
+        when(stocktakeLineRepository.findDetailedByStocktakeId(41L)).thenAnswer(inv -> {
+            Stocktake parent = countingStocktake(41L);
+            parent.setScope("Toàn kho");
+            StocktakeLine line = line(100L, 12, null);
+            line.setStocktake(parent);
+            return List.of(line);
+        });
+        when(approvalTaskRepository.findByRefTypeAndRefIdAndStatus(
+                        eq(StocktakeService.REF_TYPE), eq(41L), eq(ApprovalStatus.PENDING)))
+                .thenReturn(Optional.empty());
+        when(warehouseRepository.count()).thenReturn(1L);
+
+        StocktakeDetailResponse detail = service.create(new StocktakeInput(null, null), 1L);
+
+        assertThat(detail.scope()).isEqualTo("Toàn kho");
+        ArgumentCaptor<Stocktake> captor = ArgumentCaptor.forClass(Stocktake.class);
+        verify(stocktakeRepository).saveAndFlush(captor.capture());
+        assertThat(captor.getValue().getScope()).isEqualTo("Toàn kho");
+    }
+
+    @Test
+    void saveCounts_persistsCountedQty() {
+        Stocktake stocktake = countingStocktake(40L);
+        StocktakeLine line = line(100L, 12, null);
+        when(stocktakeRepository.findWithActorsById(40L)).thenReturn(Optional.of(stocktake));
+        when(approvalTaskRepository.findByRefTypeAndRefIdAndStatus(
+                        eq(StocktakeService.REF_TYPE), eq(40L), eq(ApprovalStatus.PENDING)))
+                .thenReturn(Optional.empty());
+        when(stocktakeLineRepository.findByStocktake_Id(40L)).thenReturn(List.of(line));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(actor));
+
+        service.saveCounts(40L, new StocktakeSaveCountsRequest(List.of(new StocktakeCountItem(100L, 11))), 1L);
+
+        assertThat(line.getCountedQty()).isEqualTo(11);
+        verify(stocktakeRepository).save(stocktake);
+    }
+
+    @Test
+    void saveCounts_rejectsWhenPendingApproval() {
+        Stocktake stocktake = countingStocktake(40L);
+        when(stocktakeRepository.findWithActorsById(40L)).thenReturn(Optional.of(stocktake));
+        when(approvalTaskRepository.findByRefTypeAndRefIdAndStatus(
+                        eq(StocktakeService.REF_TYPE), eq(40L), eq(ApprovalStatus.PENDING)))
+                .thenReturn(Optional.of(new ApprovalTask()));
+
+        assertThatThrownBy(() -> service.saveCounts(
+                        40L, new StocktakeSaveCountsRequest(List.of(new StocktakeCountItem(100L, 10))), 1L))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void complete_rejectsWhenPendingApproval() {
+        Stocktake stocktake = countingStocktake(40L);
+        when(stocktakeRepository.findWithActorsById(40L)).thenReturn(Optional.of(stocktake));
+        when(approvalTaskRepository.findByRefTypeAndRefIdAndStatus(
+                        eq(StocktakeService.REF_TYPE), eq(40L), eq(ApprovalStatus.PENDING)))
+                .thenReturn(Optional.of(new ApprovalTask()));
+
+        assertThatThrownBy(() -> service.complete(40L, 1L))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void cancel_rejectsWhenNotCounting() {
+        Stocktake stocktake = countingStocktake(40L);
+        stocktake.setStatus(StocktakeStatus.DONE);
+        when(stocktakeRepository.findWithActorsById(40L)).thenReturn(Optional.of(stocktake));
+
+        assertThatThrownBy(() -> service.cancel(40L, 1L))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void complete_rejectsWhenApprovalAlreadyOpen() {
+        Stocktake stocktake = countingStocktake(40L);
+        StocktakeLine line = line(100L, 12, 10);
+        when(stocktakeRepository.findWithActorsById(40L)).thenReturn(Optional.of(stocktake));
+        // First call in assertCountingEditable: no pending; second in openApproval: already open
+        when(approvalTaskRepository.findByRefTypeAndRefIdAndStatus(
+                        eq(StocktakeService.REF_TYPE), eq(40L), eq(ApprovalStatus.PENDING)))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(new ApprovalTask()));
+        when(stocktakeLineRepository.findByStocktake_Id(40L)).thenReturn(List.of(line));
+
+        assertThatThrownBy(() -> service.complete(40L, 1L))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void create_rejectsWhenActorMissing() {
+        assertThatThrownBy(() -> service.create(new StocktakeInput("Kho lạnh", null), null))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void create_rejectsWhenUserNotFound() {
+        when(userRepository.findById(1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.create(new StocktakeInput("Kho lạnh", null), 1L))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void applyApprovalDecision_rejectsWhenNotCounting() {
+        Stocktake stocktake = countingStocktake(40L);
+        stocktake.setStatus(StocktakeStatus.DONE);
+        when(stocktakeRepository.findWithActorsById(40L)).thenReturn(Optional.of(stocktake));
+
+        assertThatThrownBy(() -> service.applyApprovalDecision(40L, true, 1L))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+        verify(stockService, never()).adjustByStockId(anyLong(), anyInt(), any(), any());
+    }
+
+    @Test
+    void applyApprovalDecision_approved_notFoundWhenStockMissing() {
+        Stocktake stocktake = countingStocktake(40L);
+        StocktakeLine line = line(100L, 12, 9);
+        when(stocktakeRepository.findWithActorsById(40L)).thenReturn(Optional.of(stocktake));
+        when(stocktakeLineRepository.findByStocktake_Id(40L)).thenReturn(List.of(line));
+        when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(5L, 7L, 10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.applyApprovalDecision(40L, true, 1L))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        verify(stockService, never()).adjustByStockId(anyLong(), anyInt(), any(), any());
+    }
+
+    @Test
+    void get_notFound() {
+        when(stocktakeRepository.findWithActorsById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.get(999L))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
     private Stocktake countingStocktake(long id) {
         Stocktake stocktake = new Stocktake();
         ReflectionTestUtils.setField(stocktake, "id", id);

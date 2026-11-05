@@ -254,6 +254,93 @@ class DamageReportServiceTest {
         verify(stockService, times(1)).damage(any());
     }
 
+    @Test
+    void create_rejectsWhenLotNotBelongToVariant() {
+        ProductVariant other = new ProductVariant();
+        setId(other, 2L);
+        Lot foreignLot = new Lot();
+        setId(foreignLot, 8L);
+        foreignLot.setLotCode("LOT-B");
+        foreignLot.setVariant(other);
+
+        when(productVariantRepository.findWithProductById(1L)).thenReturn(Optional.of(variant));
+        when(lotRepository.findById(8L)).thenReturn(Optional.of(foreignLot));
+
+        assertThatThrownBy(() -> service.create(
+                        new DamageReportRequest(1L, 8L, 10L, 1, "Hỏng", null), 3L))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(stockService, never()).damage(any());
+    }
+
+    @Test
+    void create_rejectsWhenStockMissingAtLocation() {
+        when(productVariantRepository.findWithProductById(1L)).thenReturn(Optional.of(variant));
+        when(lotRepository.findById(7L)).thenReturn(Optional.of(lot));
+        when(locationRepository.findById(10L)).thenReturn(Optional.of(location));
+        when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 7L, 10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.create(
+                        new DamageReportRequest(1L, 7L, 10L, 1, "Hỏng", null), 3L))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(stockService, never()).damage(any());
+    }
+
+    @Test
+    void create_rejectsWhenReasonBlank() {
+        assertThatThrownBy(() -> service.create(
+                        new DamageReportRequest(1L, 7L, 10L, 1, "   ", null), 3L))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(stockService, never()).damage(any());
+    }
+
+    @Test
+    void create_rejectsWhenVariantNotFound() {
+        when(productVariantRepository.findWithProductById(1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.create(
+                        new DamageReportRequest(1L, 7L, 10L, 1, "Hỏng", null), 3L))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void applyDecision_notFound() {
+        when(damageReportRepository.findDetailedById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.applyDecision(999L, true, actor, null))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        verify(stockService, never()).damage(any());
+    }
+
+    @Test
+    void applyDecision_approved_rejectsWhenLocationMissing() {
+        DamageReport report = new DamageReport();
+        setId(report, 50L);
+        report.setVariant(variant);
+        report.setLot(lot);
+        report.setLocation(null);
+        report.setQty(5);
+        report.setReason("Vỡ bao");
+        report.setStatus(ApprovalStatus.PENDING);
+        when(damageReportRepository.findDetailedById(50L)).thenReturn(Optional.of(report));
+        when(damageReportRepository.save(report)).thenReturn(report);
+
+        assertThatThrownBy(() -> service.applyDecision(50L, true, actor, "OK"))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+        verify(stockService, never()).damage(any());
+    }
+
     private static void setId(Object entity, Long id) {
         try {
             var field = entity.getClass().getDeclaredField("id");

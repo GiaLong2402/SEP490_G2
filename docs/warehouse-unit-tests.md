@@ -101,37 +101,72 @@ Nhánh gợi ý: theo GIT.md (`feature/api-stock-move` / adjust).
 
 ---
 
-## Checklist Khôi (stocktake / damage) — tự làm + báo cáo riêng
+## Checklist Khôi (stocktake / damage) — đã làm + báo cáo
 
-**Mục tiêu tracking:** kiểm kê chốt đúng chênh lệch; báo hỏng chỉ trừ khi duyệt.
+**Mục tiêu tracking:** kiểm kê chốt đúng chênh lệch; báo hỏng chỉ trừ khi duyệt. Cover đủ nhánh chính của `StocktakeService` / `DamageReportService` (happy path + validation + conflict).
 
-**File**
-
-- `StocktakeServiceTest.java` (hiện còn mỏng — cần mở rộng)
-- `DamageReportServiceTest.java` (đã có create / approve / reject cơ bản — bổ sung nếu thiếu)
-
-**Case tối thiểu Stocktake**
-
-1. Create trong scope có stock → snapshot đúng qty hệ thống
-2. Save counts → complete: gọi `StockService.adjust` đúng delta (counted − system)
-3. Complete khi không lệch → không gọi adjust thừa
-4. Cancel / reject path nếu service hỗ trợ
-
-**Case tối thiểu Damage**
-
-1. Create pending: **không** trừ tồn
-2. Approve: gọi `StockService.damage` đúng qty
-3. Reject: không đụng tồn
-4. Approve khi không còn đủ on-hand → lỗi; không trừ hai lần
-
-**Chạy test (ví dụ)**
+**Lệnh chạy phần Khôi**
 
 ```powershell
 cd hbsisms-api
 .\mvnw.cmd test -Dtest=StocktakeServiceTest,DamageReportServiceTest
 ```
 
-**Format báo cáo:** giống bảng của Duy.
+Kết quả gần nhất: **34 tests, 0 failures** (BUILD SUCCESS) — Stocktake **22** + Damage **12**.
+
+Nhánh: `feature/api-stocktake-damage-unit-tests`.
+
+### StocktakeServiceTest
+
+File: `hbsisms-api/src/test/java/com/hbsisms/feature/inventory/StocktakeServiceTest.java`
+
+Trước: 1 test · Sau: **22 test** · Tất cả **pass**.
+
+| Test method | Hành vi | Kết quả |
+|-------------|---------|---------|
+| `create_rejectsWhenNoStockInScope` | scope không có hàng → 409 | pass |
+| `create_rejectsWhenZoneHasNoLocations` | zone không có vị trí → 409 | pass |
+| `create_snapshotsSystemQtyFromAvailablePlusHeld` | create có stock → snapshot = available + held | pass |
+| `create_wholeWarehouse_setsScopeToanKho` | zone null → scope "Toàn kho" | pass |
+| `create_rejectsWhenActorMissing` | actor null → 403 | pass |
+| `create_rejectsWhenUserNotFound` | user không tồn tại → 404 | pass |
+| `saveCounts_persistsCountedQty` | lưu số đếm thành công | pass |
+| `saveCounts_rejectsNegativeCountedQty` | số đếm âm → 400 | pass |
+| `saveCounts_rejectsWhenPendingApproval` | đang chờ duyệt → 409 | pass |
+| `complete_whenNoDiff_marksDoneWithoutApprovalOrAdjust` | không lệch → DONE, không duyệt / không adjust | pass |
+| `complete_whenDiff_opensApprovalWithoutAdjustingYet` | có lệch → mở approval, chưa adjust | pass |
+| `complete_rejectsWhenUncountedLinesRemain` | còn dòng chưa đếm → 409 | pass |
+| `complete_rejectsWhenPendingApproval` | đang chờ duyệt → 409 | pass |
+| `complete_rejectsWhenApprovalAlreadyOpen` | gửi duyệt lần 2 → 409 | pass |
+| `applyApprovalDecision_approved_adjustsByCountedMinusSystem` | approve → adjust đúng delta | pass |
+| `applyApprovalDecision_approved_skipsZeroDiffLines` | diff = 0 không adjust thừa | pass |
+| `applyApprovalDecision_approved_notFoundWhenStockMissing` | thiếu dòng tồn → 404 | pass |
+| `applyApprovalDecision_rejected_keepsCountingWithoutAdjust` | reject → COUNTING, không adjust | pass |
+| `applyApprovalDecision_rejectsWhenNotCounting` | status ≠ COUNTING → 409 | pass |
+| `cancel_marksCancelled` | cancel → CANCELLED | pass |
+| `cancel_rejectsWhenNotCounting` | cancel khi DONE → 409 | pass |
+| `get_notFound` | id không có → 404 | pass |
+
+### DamageReportServiceTest
+
+File: `hbsisms-api/src/test/java/com/hbsisms/feature/inventory/DamageReportServiceTest.java`
+
+Trước: 4 test · Sau: **12 test** · Tất cả **pass**.
+
+| Test method | Hành vi | Kết quả |
+|-------------|---------|---------|
+| `create_opensPendingApprovalWithoutDeductingStock` | create pending + mở duyệt, **không** trừ tồn | pass |
+| `create_rejectsWhenQtyExceedsOnHand` | qty > on-hand → 409 | pass |
+| `create_rejectsWhenLotNotBelongToVariant` | lô ≠ variant → 400 | pass |
+| `create_rejectsWhenStockMissingAtLocation` | không có tồn tại vị trí → 400 | pass |
+| `create_rejectsWhenReasonBlank` | lý do trống → 400 | pass |
+| `create_rejectsWhenVariantNotFound` | variant không có → 404 | pass |
+| `applyDecision_approved_callsStockDamage` | approve → `damage` đúng qty | pass |
+| `applyDecision_rejected_doesNotTouchStock` | reject → không đụng tồn | pass |
+| `applyDecision_whenAlreadyDecided_rejectsWithoutTouchingStock` | duyệt lần 2 → 409 | pass |
+| `applyDecision_approved_propagatesWhenStockDamageFails` | thiếu tồn lúc approve → lỗi; damage 1 lần | pass |
+| `applyDecision_approved_rejectsWhenLocationMissing` | thiếu location → 409, không damage | pass |
+| `applyDecision_notFound` | report id không có → 404 | pass |
 
 ---
 
@@ -139,8 +174,8 @@ cd hbsisms-api
 
 Đủ **3 báo cáo** mới đánh dấu xong phần unit test kho trên Excel:
 
-1. Long — mục trong file này  
-2. Duy — báo cáo riêng  
-3. Khôi — báo cáo riêng  
+1. Long — mục trong file này ✅  
+2. Duy — báo cáo riêng (checklist phía trên)  
+3. Khôi — mục trong file này ✅ (đủ nhánh service, không chỉ case tối thiểu)  
 
 Task IT concurrent (tracking IT kho) làm sau, không nằm trong file này.
