@@ -105,6 +105,63 @@ class PriceResolverTest {
                 .isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
+    @Test
+    void rejectsNullVariantId() {
+        assertThatThrownBy(() -> priceResolver.resolve(1L, null, 1))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void customerWithoutSpecial_fallsBackToHighestTier() {
+        when(productVariantRepository.findById(10L)).thenReturn(Optional.of(variant(10L, "90000")));
+        when(customerPriceRepository.findEffectiveSpecial(eq(2L), eq(10L), any(LocalDate.class)))
+                .thenReturn(Optional.empty());
+        when(volumeTierRepository.findByVariant_IdAndMinQtyKhayLessThanEqualOrderByMinQtyKhayDesc(10L, 15))
+                .thenReturn(List.of(tier(10, "81000"), tier(5, "85000")));
+
+        ResolvedPrice result = priceResolver.resolve(2L, 10L, 15);
+
+        assertThat(result.unitPrice()).isEqualByComparingTo("81000");
+        assertThat(result.priceBasis()).isEqualTo(PriceBasis.TIER);
+    }
+
+    @Test
+    void customerWithoutSpecialOrTier_fallsBackToList() {
+        when(productVariantRepository.findById(10L)).thenReturn(Optional.of(variant(10L, "90000")));
+        when(customerPriceRepository.findEffectiveSpecial(eq(2L), eq(10L), any(LocalDate.class)))
+                .thenReturn(Optional.empty());
+        when(volumeTierRepository.findByVariant_IdAndMinQtyKhayLessThanEqualOrderByMinQtyKhayDesc(10L, 2))
+                .thenReturn(List.of());
+
+        ResolvedPrice result = priceResolver.resolve(2L, 10L, 2);
+
+        assertThat(result.unitPrice()).isEqualByComparingTo("90000");
+        assertThat(result.priceBasis()).isEqualTo(PriceBasis.LIST);
+    }
+
+    @Test
+    void rejectsNegativeQty() {
+        assertThatThrownBy(() -> priceResolver.resolve(1L, 10L, -3))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void guestWithMatchingTier_usesTierWithoutLookingUpSpecial() {
+        when(productVariantRepository.findById(10L)).thenReturn(Optional.of(variant(10L, "90000")));
+        when(volumeTierRepository.findByVariant_IdAndMinQtyKhayLessThanEqualOrderByMinQtyKhayDesc(10L, 25))
+                .thenReturn(List.of(tier(20, "79000")));
+
+        ResolvedPrice result = priceResolver.resolve(null, 10L, 25);
+
+        assertThat(result.unitPrice()).isEqualByComparingTo("79000");
+        assertThat(result.priceBasis()).isEqualTo(PriceBasis.TIER);
+        verify(customerPriceRepository, never()).findEffectiveSpecial(any(), any(), any());
+    }
+
     private static ProductVariant variant(Long id, String listPrice) {
         ProductVariant v = new ProductVariant();
         ReflectionTestUtils.setField(v, "id", id);
