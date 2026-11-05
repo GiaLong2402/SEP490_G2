@@ -26,7 +26,9 @@ export default function StocktakesPage() {
     { key: 'scope', header: 'Phạm vi', cell: (s) => s.scope ?? '—' },
     { key: 'progress', header: 'Tiến độ', align: 'right', cell: (s) => <span className="num">{num(s.countedCount)} / {num(s.lineCount)}</span> },
     { key: 'diff', header: 'Chênh lệch', align: 'right', cell: (s) => <span className={`num ${s.diffTotal !== 0 ? 'font-semibold text-red-fg' : ''}`}>{s.diffTotal > 0 ? '+' : ''}{num(s.diffTotal)}</span> },
+    { key: 'creator', header: 'Người tạo', hideOnMobile: true, cell: (s) => s.creatorName ?? '—' },
     { key: 'by', header: 'Người đếm', hideOnMobile: true, cell: (s) => s.counterName ?? '—' },
+    { key: 'note', header: 'Ghi chú', hideOnMobile: true, cell: (s) => (s.note?.trim() ? s.note : '—') },
     { key: 'at', header: 'Bắt đầu', hideOnMobile: true, cell: (s) => dateTime(s.startedAt) },
     { key: 'status', header: 'Trạng thái', cell: (s) => (s.pendingApproval ? <Chip tone="amber">Chờ duyệt chênh lệch</Chip> : <StatusChip meta={stocktakeStatusMeta} value={s.status} />) },
   ];
@@ -50,7 +52,7 @@ export default function StocktakesPage() {
               {zones.map((z) => <option key={z} value={z}>{z}</option>)}
             </Select>
           </Field>
-          <Field label="Ghi chú"><Input value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+          <Field label="Ghi chú"><Input value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} /></Field>
         </div>
       </Modal>
     </>

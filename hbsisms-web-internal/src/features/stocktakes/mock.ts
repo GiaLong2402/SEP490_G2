@@ -28,7 +28,16 @@ mock('GET', '/stocktakes/:id', ({ params }) => toDetail(Number(params.id)));
 
 mock('POST', '/stocktakes', ({ body, userId }) => {
   const id = nextId(db.stocktakes);
-  const zoneLocations = db.locations.filter((l) => !body.zone || l.zone === body.zone).map((l) => l.id);
+  // Khớp BE: chỉ vị trí kho active; zone trống locations vs trống hàng là 2 message khác nhau.
+  const zoneLocations = db.locations
+    .filter((l) => {
+      const wh = db.warehouses.find((w) => w.id === l.warehouseId);
+      return wh?.isActive !== false && (!body.zone || l.zone === body.zone);
+    })
+    .map((l) => l.id);
+  if (!zoneLocations.length) {
+    fail(409, body.zone ? 'Khu vực này không có vị trí' : 'Chưa có vị trí kho đang dùng');
+  }
   const stocks = db.stock.filter((s) => zoneLocations.includes(s.locationId) && s.qtyAvailable + s.qtyHeld > 0);
   if (!stocks.length) fail(409, 'Khu vực này không có hàng để kiểm kê');
   db.stocktakes.push({ id, code: nextCode('KK', db.stocktakes), scope: body.zone ?? 'Toàn kho', status: 'counting', createdBy: userId, countedBy: userId, startedAt: new Date().toISOString(), closedAt: null, note: body.note });
@@ -43,8 +52,10 @@ mock('PUT', '/stocktakes/:id/lines', ({ params, body, userId }) => {
   body.counts.forEach(({ lineId, countedQty }: { lineId: number; countedQty: number | null }) => {
     const line = db.stocktakeLines.find((l) => l.id === lineId && l.stocktakeId === row.id);
     if (!line) return;
+    if (countedQty != null && countedQty < 0) fail(400, 'Số đếm không được âm');
     line.countedQty = countedQty;
-    line.diff = (countedQty ?? 0) - line.systemQty;
+    // Khớp StocktakeLineResponse: chưa đếm → diff = 0
+    line.diff = countedQty == null ? 0 : countedQty - line.systemQty;
   });
   row.countedBy = userId;
 });
@@ -52,7 +63,7 @@ mock('PUT', '/stocktakes/:id/lines', ({ params, body, userId }) => {
 mock('POST', '/stocktakes/:id/complete', ({ params, userId }) => {
   const row = db.stocktakes.find((s) => s.id === Number(params.id));
   if (!row || row.status !== 'counting') fail(409, 'Phiếu không còn ở trạng thái đang đếm');
-  if (toItem(row).pendingApproval) fail(409, 'Phiếu đã gửi duyệt');
+  if (toItem(row).pendingApproval) fail(409, 'Phiếu đang chờ duyệt, không thể sửa số đếm');
   const lines = db.stocktakeLines.filter((l) => l.stocktakeId === row.id);
   if (lines.some((l) => l.countedQty === null)) fail(409, 'Còn dòng chưa đếm');
   const diffs = lines.filter((l) => l.diff !== 0);
@@ -68,8 +79,8 @@ mock('POST', '/stocktakes/:id/complete', ({ params, userId }) => {
 
 mock('POST', '/stocktakes/:id/cancel', ({ params, userId }) => {
   const row = db.stocktakes.find((s) => s.id === Number(params.id));
-  if (!row || row.status !== 'counting') fail(409, 'Chỉ hủy được phiếu đang đếm');
-  if (toItem(row).pendingApproval) fail(409, 'Phiếu đang chờ duyệt, không thể hủy');
+  if (!row || row.status !== 'counting') fail(409, 'Phiếu không còn ở trạng thái đang đếm');
+  if (toItem(row).pendingApproval) fail(409, 'Phiếu đang chờ duyệt, không thể sửa số đếm');
   row.status = 'cancelled';
   row.closedAt = new Date().toISOString();
   audit(userId, 'cancel', 'stocktake', row.id);

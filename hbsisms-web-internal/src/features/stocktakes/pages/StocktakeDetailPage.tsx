@@ -64,7 +64,7 @@ export default function StocktakeDetailPage() {
       <PageHeader
         breadcrumb={<><Link to="/stocktakes" className="hover:underline">Kiểm kê</Link> / {stocktake.code}</>}
         title={<span className="flex items-center gap-2"><span className="font-mono">{stocktake.code}</span>{stocktake.pendingApproval ? <Chip tone="amber">Chờ duyệt chênh lệch</Chip> : <StatusChip meta={stocktakeStatusMeta} value={stocktake.status} />}</span>}
-        subtitle={`${stocktake.scope} · Bắt đầu ${dateTime(stocktake.startedAt)}${stocktake.closedAt ? ` · Kết thúc ${dateTime(stocktake.closedAt)}` : ''}`}
+        subtitle={`${stocktake.scope} · Tạo bởi ${stocktake.creatorName ?? '—'} · Đếm bởi ${stocktake.counterName ?? '—'} · Bắt đầu ${dateTime(stocktake.startedAt)}${stocktake.closedAt ? ` · Kết thúc ${dateTime(stocktake.closedAt)}` : ''}`}
         actions={
           editable && (
             <>
@@ -80,6 +80,9 @@ export default function StocktakeDetailPage() {
         <StatCard label="Dòng chênh lệch" value={num(stocktake.lines.filter((l) => (liveDiff(l) ?? 0) !== 0).length)} />
         <StatCard label="Tổng chênh lệch (khay)" value={`${totalDiff > 0 ? '+' : ''}${num(totalDiff)}`} tone={totalDiff !== 0 ? 'danger' : undefined} />
       </StatGrid>
+      {stocktake.note?.trim() && (
+        <div className="mb-4"><Alert tone="info">Ghi chú: {stocktake.note}</Alert></div>
+      )}
       {stocktake.pendingApproval && <div className="mb-4"><Alert tone="warning">Phiếu đang chờ Chủ cửa hàng duyệt. Tồn kho chỉ được điều chỉnh sau khi duyệt.</Alert></div>}
       {invalid && <div className="mb-4"><Alert tone="danger">Số đếm phải là số nguyên không âm.</Alert></div>}
       <Card flush><DataTable columns={columns} rows={stocktake.lines} rowKey={(l) => l.id} emptyText="Phiếu không có dòng nào" /></Card>
