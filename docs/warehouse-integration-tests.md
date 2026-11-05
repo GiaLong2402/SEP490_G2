@@ -36,20 +36,42 @@ Adjust validation chi tiết (note trống, delta 0, audit…) giữ ở `Invent
 
 ---
 
-## Checklist + báo cáo Duy — tự làm rồi append vào đây
+## Checklist + báo cáo Duy — đã làm
 
-**Việc gợi ý**
+**Phạm vi:** IT `POST /inventory/moves` + validation/audit `POST /inventory/adjusts`. Concurrent adjust/receive nằm ở phần Long (`WarehouseApiIntegrationTest`). Không sửa logic atomic trong `StockService`.
 
-- IT move edge / audit adjust nếu còn gap ngoài `InventoryAdjustApiIntegrationTest`
-- Không sửa logic atomic trừ tồn trong `StockService` trừ khi phát hiện bug
+Nhánh: `feature/api-warehouse-integration-tests`.
 
-**Sau khi xong:** thêm bảng dưới (PR riêng vào cùng file):
+```powershell
+cd hbsisms-api
+.\mvnw.cmd test "-Dtest=InventoryAdjustApiIntegrationTest,InventoryMoveApiIntegrationTest"
+```
 
-| Test method | Hành vi | Pass/Fail |
-|-------------|---------|-----------|
-| *(Duy điền)* | | |
+Kết quả gần nhất: **10 tests, 0 failures** (BUILD SUCCESS) — Adjust **6** + Move **4**.
 
-Lệnh ví dụ: `.\mvnw.cmd test -Dtest=InventoryAdjustApiIntegrationTest` (và class IT mới nếu có).
+### InventoryAdjustApiIntegrationTest
+
+File: `hbsisms-api/src/test/java/com/hbsisms/feature/inventory/InventoryAdjustApiIntegrationTest.java`
+
+| Test method | Hành vi | Kết quả |
+|-------------|---------|---------|
+| `adjust_decreasesStockWritesLedgerAndAudit` | giảm tồn + ledger ADJUST + audit | pass |
+| `adjust_increasesStock` | tăng tồn thành công | pass |
+| `adjust_blankNote_returns400` | note trống → 400 | pass |
+| `adjust_zeroDelta_returns400` | delta = 0 → 400 | pass |
+| `adjust_unknownStock_returns404` | stockId không có → 404 | pass |
+| `adjust_exceedsAvailable_returns409` | trừ vượt available → 409 | pass |
+
+### InventoryMoveApiIntegrationTest
+
+File: `hbsisms-api/src/test/java/com/hbsisms/feature/inventory/InventoryMoveApiIntegrationTest.java`
+
+| Test method | Hành vi | Kết quả |
+|-------------|---------|---------|
+| `move_updatesSourceTargetAndWritesLedger` | chuyển thành công + ledger MOVE | pass |
+| `move_unknownStock_returns404` | stockId không có → 404 | pass |
+| `move_sameLocation_returns400` | đích = nguồn → 400 | pass |
+| `move_qtyExceedsAvailable_returns409` | qty > available → 409 | pass |
 
 ---
 
