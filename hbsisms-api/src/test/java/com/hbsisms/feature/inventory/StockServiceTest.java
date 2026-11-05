@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -38,6 +39,8 @@ class StockServiceTest {
     @Mock
     private LocationRepository locationRepository;
     @Mock
+    private WarehouseRepository warehouseRepository;
+    @Mock
     private UserRepository userRepository;
 
     private StockService stockService;
@@ -46,6 +49,8 @@ class StockServiceTest {
     private Location locationA;
     private Location locationB;
     private Location locationOtherWarehouse;
+    private Warehouse warehouse;
+    private Warehouse warehouse2;
 
     @BeforeEach
     void setUp() {
@@ -55,6 +60,7 @@ class StockServiceTest {
                 productVariantRepository,
                 lotRepository,
                 locationRepository,
+                warehouseRepository,
                 userRepository);
         Product product = new Product();
         product.setName("Tôm sú");
@@ -66,7 +72,7 @@ class StockServiceTest {
         setId(lot, 10L);
         lot.setLotCode("LOT-1");
         lot.setVariant(variant);
-        Warehouse warehouse = new Warehouse();
+        warehouse = new Warehouse();
         setId(warehouse, 1L);
         warehouse.setCode("KHO-1");
         warehouse.setCapacity(500);
@@ -80,7 +86,7 @@ class StockServiceTest {
         locationB.setCode("A-02");
         locationB.setCapacity(100);
         locationB.setWarehouse(warehouse);
-        Warehouse warehouse2 = new Warehouse();
+        warehouse2 = new Warehouse();
         setId(warehouse2, 2L);
         warehouse2.setCode("KHO-2");
         warehouse2.setCapacity(30);
@@ -89,6 +95,11 @@ class StockServiceTest {
         locationOtherWarehouse.setCode("B-01");
         locationOtherWarehouse.setCapacity(100);
         locationOtherWarehouse.setWarehouse(warehouse2);
+        lenient().when(warehouseRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(warehouse));
+        lenient().when(warehouseRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(warehouse2));
+        lenient().when(locationRepository.findById(100L)).thenReturn(Optional.of(locationA));
+        lenient().when(locationRepository.findById(101L)).thenReturn(Optional.of(locationB));
+        lenient().when(locationRepository.findById(200L)).thenReturn(Optional.of(locationOtherWarehouse));
     }
 
     // --- validation: qty <= 0 ---
@@ -144,7 +155,7 @@ class StockServiceTest {
                 .thenReturn(Optional.empty());
         when(productVariantRepository.findById(1L)).thenReturn(Optional.of(variant));
         when(lotRepository.findById(10L)).thenReturn(Optional.of(lot));
-        when(locationRepository.findById(100L)).thenReturn(Optional.of(locationA));
+        when(locationRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(locationA));
         when(stockRepository.sumQtyByLocationId(100L)).thenReturn(0L);
         when(stockRepository.sumQtyByWarehouseId(1L)).thenReturn(0L);
         when(stockRepository.saveAndFlush(any(Stock.class))).thenAnswer(inv -> {
@@ -167,7 +178,7 @@ class StockServiceTest {
     @Test
     void receiveIn_addsToExistingStock() {
         Stock existing = stock(1L, 5);
-        when(locationRepository.findById(100L)).thenReturn(Optional.of(locationA));
+        when(locationRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(locationA));
         when(stockRepository.sumQtyByLocationId(100L)).thenReturn(5L);
         when(stockRepository.sumQtyByWarehouseId(1L)).thenReturn(5L);
         when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 10L, 100L))
@@ -188,7 +199,7 @@ class StockServiceTest {
     @Test
     void receiveIn_conflictsWhenExceedsLocationCapacity() {
         locationA.setCapacity(20);
-        when(locationRepository.findById(100L)).thenReturn(Optional.of(locationA));
+        when(locationRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(locationA));
         when(stockRepository.sumQtyByLocationId(100L)).thenReturn(0L);
 
         assertThatThrownBy(
@@ -208,8 +219,8 @@ class StockServiceTest {
     @Test
     void receiveIn_conflictsWhenExceedsWarehouseCapacity() {
         locationA.setCapacity(100);
-        locationA.getWarehouse().setCapacity(25);
-        when(locationRepository.findById(100L)).thenReturn(Optional.of(locationA));
+        warehouse.setCapacity(25);
+        when(locationRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(locationA));
         when(stockRepository.sumQtyByLocationId(100L)).thenReturn(0L);
         when(stockRepository.sumQtyByWarehouseId(1L)).thenReturn(20L);
 
@@ -373,7 +384,7 @@ class StockServiceTest {
     void move_notFoundWhenTargetLocationMissing() {
         when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 10L, 100L))
                 .thenReturn(Optional.of(stock(1L, 5)));
-        when(locationRepository.findById(101L)).thenReturn(Optional.empty());
+        when(locationRepository.findByIdForUpdate(101L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> stockService.move(StockMutation.move(1L, 10L, 100L, 101L, 2, null, 1L)))
                 .isInstanceOf(ApiException.class)
@@ -387,7 +398,7 @@ class StockServiceTest {
         locationB.setCapacity(5);
         when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 10L, 100L))
                 .thenReturn(Optional.of(stock(1L, 10)));
-        when(locationRepository.findById(101L)).thenReturn(Optional.of(locationB));
+        when(locationRepository.findByIdForUpdate(101L)).thenReturn(Optional.of(locationB));
         when(stockRepository.sumQtyByLocationId(101L)).thenReturn(3L);
 
         assertThatThrownBy(() -> stockService.move(StockMutation.move(1L, 10L, 100L, 101L, 4, null, 1L)))
@@ -407,7 +418,7 @@ class StockServiceTest {
                 .thenReturn(Optional.of(source));
         when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 10L, 101L))
                 .thenReturn(Optional.of(target));
-        when(locationRepository.findById(101L)).thenReturn(Optional.of(locationB));
+        when(locationRepository.findByIdForUpdate(101L)).thenReturn(Optional.of(locationB));
         when(stockRepository.sumQtyByLocationId(101L)).thenReturn(0L);
         when(stockRepository.adjustQtyAvailable(1L, -4)).thenReturn(1);
         when(stockRepository.adjustQtyAvailable(2L, 4)).thenReturn(1);
@@ -424,7 +435,7 @@ class StockServiceTest {
     void move_crossWarehouse_conflictsWhenTargetWarehouseFull() {
         when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 10L, 100L))
                 .thenReturn(Optional.of(stock(1L, 20)));
-        when(locationRepository.findById(200L)).thenReturn(Optional.of(locationOtherWarehouse));
+        when(locationRepository.findByIdForUpdate(200L)).thenReturn(Optional.of(locationOtherWarehouse));
         when(stockRepository.sumQtyByLocationId(200L)).thenReturn(0L);
         when(stockRepository.sumQtyByWarehouseId(2L)).thenReturn(28L);
 
@@ -442,7 +453,7 @@ class StockServiceTest {
     void move_conflictsWhenSourceLacksQty() {
         when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 10L, 100L))
                 .thenReturn(Optional.of(stock(1L, 2)));
-        when(locationRepository.findById(101L)).thenReturn(Optional.of(locationB));
+        when(locationRepository.findByIdForUpdate(101L)).thenReturn(Optional.of(locationB));
         when(stockRepository.sumQtyByLocationId(101L)).thenReturn(0L);
         when(stockRepository.adjustQtyAvailable(1L, -5)).thenReturn(0);
 
@@ -466,7 +477,7 @@ class StockServiceTest {
         when(stockRepository.adjustQtyAvailable(2L, 4)).thenReturn(1);
         when(stockRepository.findById(1L)).thenReturn(Optional.of(stock(1L, 6)));
         when(stockRepository.findById(2L)).thenReturn(Optional.of(stock(2L, 4)));
-        when(locationRepository.findById(101L)).thenReturn(Optional.of(locationB));
+        when(locationRepository.findByIdForUpdate(101L)).thenReturn(Optional.of(locationB));
         when(stockRepository.sumQtyByLocationId(101L)).thenReturn(0L);
 
         stockService.move(StockMutation.move(1L, 10L, 100L, 101L, 4, "Chuyển", 1L));
@@ -499,7 +510,7 @@ class StockServiceTest {
                 .thenReturn(Optional.of(source));
         when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 10L, 101L))
                 .thenReturn(Optional.of(target));
-        when(locationRepository.findById(101L)).thenReturn(Optional.of(locationB));
+        when(locationRepository.findByIdForUpdate(101L)).thenReturn(Optional.of(locationB));
         when(stockRepository.sumQtyByLocationId(101L)).thenReturn(0L);
         when(stockRepository.adjustQtyAvailable(1L, -3)).thenReturn(1);
         when(stockRepository.adjustQtyAvailable(2L, 3)).thenReturn(1);
@@ -537,7 +548,7 @@ class StockServiceTest {
     @Test
     void adjust_positiveChecksCapacityAndWritesLedger() {
         Stock existing = stock(1L, 5);
-        when(locationRepository.findById(100L)).thenReturn(Optional.of(locationA));
+        when(locationRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(locationA));
         when(stockRepository.sumQtyByLocationId(100L)).thenReturn(5L);
         when(stockRepository.sumQtyByWarehouseId(1L)).thenReturn(5L);
         when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 10L, 100L))

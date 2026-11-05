@@ -21,6 +21,7 @@ public class StockService {
     private final ProductVariantRepository productVariantRepository;
     private final LotRepository lotRepository;
     private final LocationRepository locationRepository;
+    private final WarehouseRepository warehouseRepository;
     private final UserRepository userRepository;
 
     public StockService(
@@ -29,12 +30,14 @@ public class StockService {
             ProductVariantRepository productVariantRepository,
             LotRepository lotRepository,
             LocationRepository locationRepository,
+            WarehouseRepository warehouseRepository,
             UserRepository userRepository) {
         this.stockRepository = stockRepository;
         this.stockLedgerRepository = stockLedgerRepository;
         this.productVariantRepository = productVariantRepository;
         this.lotRepository = lotRepository;
         this.locationRepository = locationRepository;
+        this.warehouseRepository = warehouseRepository;
         this.userRepository = userRepository;
     }
 
@@ -124,7 +127,7 @@ public class StockService {
         }
         Stock source = requireExistingStock(cmd.variantId(), cmd.lotId(), cmd.locationId());
         Location toLocation = locationRepository
-                .findById(cmd.toLocationId())
+                .findByIdForUpdate(cmd.toLocationId())
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy vị trí đích"));
         assertLocationCapacityAllows(toLocation, cmd.qty());
         Long fromWarehouseId = source.getLocation().getWarehouse().getId();
@@ -376,10 +379,13 @@ public class StockService {
         }
     }
 
-    /** Reject inbound qty that would exceed location or warehouse capacity (both required). */
+    /**
+     * Reject inbound qty that would exceed location or warehouse capacity (both required).
+     * Locks location (and warehouse) so concurrent receives cannot both pass a stale capacity check.
+     */
     private void assertCapacityAllows(long locationId, int qtyToAdd) {
         Location location = locationRepository
-                .findById(locationId)
+                .findByIdForUpdate(locationId)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy vị trí"));
         assertLocationCapacityAllows(location, qtyToAdd);
         assertWarehouseCapacityAllows(location.getWarehouse(), qtyToAdd);
@@ -401,13 +407,16 @@ public class StockService {
     }
 
     private void assertWarehouseCapacityAllows(Warehouse warehouse, int qtyToAdd) {
-        int capacity = requireCapacity(warehouse.getCapacity(), "kho " + warehouse.getCode());
-        long used = stockRepository.sumQtyByWarehouseId(warehouse.getId());
+        Warehouse locked = warehouseRepository
+                .findByIdForUpdate(warehouse.getId())
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy kho"));
+        int capacity = requireCapacity(locked.getCapacity(), "kho " + locked.getCode());
+        long used = stockRepository.sumQtyByWarehouseId(locked.getId());
         long after = used + qtyToAdd;
         if (after > capacity) {
             throw ApiException.conflict(String.format(
                     "Kho %s sức chứa %d khay, đang %d, không nhận thêm %d (vượt %d).",
-                    warehouse.getCode(),
+                    locked.getCode(),
                     capacity,
                     used,
                     qtyToAdd,
