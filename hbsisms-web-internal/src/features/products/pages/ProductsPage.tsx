@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Plus, Tags } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { money, num } from '@/shared/lib/format';
-import { Button, Card, Chip, DataTable, FilterBar, FilterSelect, LinkButton, PageHeader, Pagination, SearchBox, useListParams, type Column } from '@/shared/ui';
+import { Button, Card, Chip, DataTable, FilterBar, LinkButton, PageHeader, Pagination, SearchBox, useListParams, type Column } from '@/shared/ui';
+import { CategoryFilterMenu } from '../components/CategoryFilterMenu';
 import { ProductFormModal } from '../components/ProductFormModal';
 import { useCategories, useProducts } from '../hooks';
 import type { ProductListItem } from '../types';
@@ -29,9 +30,11 @@ export default function ProductsPage() {
       <Card flush>
         <FilterBar>
           <SearchBox value={list.q} onChange={list.setQ} placeholder="Tìm tên, mã, SKU..." />
-          <FilterSelect label="Loại" value={list.filters.categoryId} onChange={(v) => list.setFilter('categoryId', v)}>
-            {categories.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </FilterSelect>
+          <CategoryFilterMenu
+            categories={categories.data ?? []}
+            value={list.filters.categoryId}
+            onChange={(v) => list.setFilter('categoryId', v)}
+          />
         </FilterBar>
         <DataTable
           columns={columns}

@@ -3,6 +3,18 @@ const moneyFmt = new Intl.NumberFormat('vi-VN');
 export const money = (value: number | null | undefined) => (value === null || value === undefined ? '—' : `${moneyFmt.format(value)} ₫`);
 export const num = (value: number | null | undefined) => (value === null || value === undefined ? '—' : moneyFmt.format(value));
 
+/** Chỉ giữ chữ số từ ô nhập (bỏ dấu nghìn / khoảng trắng). */
+export function parseThousands(display: string) {
+  return display.replace(/\D/g, '');
+}
+
+/** Hiển thị hàng nghìn kiểu Việt: 150000 → 150.000 */
+export function formatThousands(digits: string) {
+  const raw = parseThousands(digits);
+  if (!raw) return '';
+  return raw.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
 /** Tiền rút gọn cho nhãn hẹp: 18,5 tr */
 export function moneyShort(value: number) {
   const abs = Math.abs(value);

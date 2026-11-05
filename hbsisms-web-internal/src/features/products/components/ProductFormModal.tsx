@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useAction } from '@/shared/api/useAction';
-import { Button, Checkbox, Field, Input, Modal, Select, Textarea } from '@/shared/ui';
+import { Button, Checkbox, Field, Input, Modal, Textarea } from '@/shared/ui';
 import { productsApi } from '../api';
 import { CategoryFormModal } from './CategoryFormModal';
+import { CategorySelectMenu } from './CategoryFilterMenu';
 import { useCategories } from '../hooks';
 import type { ProductDetail, ProductInput } from '../types';
 
@@ -101,10 +102,11 @@ export function ProductFormModal({ open, product, onClose, onSaved }: { open: bo
           <Input value={form.name} onChange={(e) => set('name', e.target.value)} />
         </Field>
         <Field label="Loại sản phẩm" hint={<button type="button" className="text-primary hover:underline" onClick={() => setAddingCategory(true)}>+ Thêm loại mới</button>}>
-          <Select value={form.categoryId ?? ''} onChange={(e) => set('categoryId', e.target.value ? Number(e.target.value) : null)}>
-            <option value="">Chưa phân loại</option>
-            {categories.data?.filter((c) => c.isActive || c.id === form.categoryId).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </Select>
+          <CategorySelectMenu
+            categories={categories.data ?? []}
+            value={form.categoryId}
+            onChange={(categoryId) => set('categoryId', categoryId)}
+          />
         </Field>
         <Field label="Xuất xứ">
           <Input value={form.origin ?? ''} onChange={(e) => set('origin', e.target.value)} />

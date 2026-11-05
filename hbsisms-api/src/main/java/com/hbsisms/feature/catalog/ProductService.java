@@ -9,9 +9,12 @@ import com.hbsisms.feature.catalog.dto.ProductResponse;
 import com.hbsisms.feature.catalog.dto.VariantWithTiersResponse;
 import com.hbsisms.feature.inventory.StockRepository;
 import jakarta.persistence.criteria.Predicate;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -43,10 +46,11 @@ public class ProductService {
     }
 
     public PageResponse<ProductResponse> list(String q, Long categoryId, int page, int pageSize) {
+        List<Long> categoryIds = categoryId == null ? List.of() : categoryIdsIncludingDescendants(categoryId);
         Specification<Product> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            if (categoryId != null) {
-                predicates.add(cb.equal(root.get("category").get("id"), categoryId));
+            if (!categoryIds.isEmpty()) {
+                predicates.add(root.get("category").get("id").in(categoryIds));
             }
             String needle = Strings.trimToNull(q);
             if (needle != null) {
@@ -60,6 +64,31 @@ public class ProductService {
         return PageResponse.from(productRepository
                 .findAll(spec, PageRequests.of(page, pageSize, LIST_SORT))
                 .map(this::toResponse));
+    }
+
+    /** Selected category plus every descendant in the category tree. */
+    private List<Long> categoryIdsIncludingDescendants(Long categoryId) {
+        List<Category> all = categoryRepository.findAll(Sort.by(Sort.Order.asc("id")));
+        Map<Long, List<Long>> childrenByParentId = new HashMap<>();
+        for (Category category : all) {
+            Category parent = category.getParent();
+            if (parent == null) {
+                continue;
+            }
+            childrenByParentId.computeIfAbsent(parent.getId(), ignored -> new ArrayList<>()).add(category.getId());
+        }
+        List<Long> ids = new ArrayList<>();
+        ArrayDeque<Long> queue = new ArrayDeque<>();
+        queue.add(categoryId);
+        while (!queue.isEmpty()) {
+            Long id = queue.removeFirst();
+            ids.add(id);
+            List<Long> children = childrenByParentId.get(id);
+            if (children != null) {
+                queue.addAll(children);
+            }
+        }
+        return ids;
     }
 
     public ProductResponse get(Long id) {

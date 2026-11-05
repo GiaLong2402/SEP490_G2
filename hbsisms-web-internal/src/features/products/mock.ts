@@ -65,10 +65,26 @@ mock('GET', '/variants', () =>
     .map((v) => ({ id: v.id, sku: v.sku, packLabel: v.packLabel, productName: db.products.find((p) => p.id === v.productId)?.name ?? '', listPrice: v.listPrice, packPerCase: v.packPerCase })),
 );
 
+function categoryIdsIncludingDescendants(categoryId: number) {
+  const ids = new Set<number>([categoryId]);
+  const queue = [categoryId];
+  while (queue.length) {
+    const id = queue.shift()!;
+    for (const c of db.categories) {
+      if (c.parentId === id && !ids.has(c.id)) {
+        ids.add(c.id);
+        queue.push(c.id);
+      }
+    }
+  }
+  return ids;
+}
+
 mock('GET', '/products', ({ query }) => {
+  const categoryIds = query.categoryId ? categoryIdsIncludingDescendants(Number(query.categoryId)) : null;
   const rows = db.products
     .filter((p) => matches(query.q, p.name, p.code) || db.variants.some((v) => v.productId === p.id && matches(query.q, v.sku)))
-    .filter((p) => !query.categoryId || p.categoryId === Number(query.categoryId));
+    .filter((p) => !categoryIds || (p.categoryId != null && categoryIds.has(p.categoryId)));
   return paginate(rows.map(toItem), query);
 });
 

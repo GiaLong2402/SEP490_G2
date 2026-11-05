@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { useAction } from '@/shared/api/useAction';
 import type { ID } from '@/shared/domain/entities';
+import { formatThousands, parseThousands } from '@/shared/lib/format';
 import { Button, Checkbox, Field, IconButton, Input, Modal } from '@/shared/ui';
 import { productsApi } from '../api';
 import type { VariantInput, VariantWithTiers } from '../types';
@@ -25,11 +26,16 @@ export function VariantFormModal({ open, productId, variant, onClose }: { open: 
     setSku(variant?.sku ?? '');
     setPackLabel(variant?.packLabel ?? '');
     setWeight(variant?.unitWeightG ? String(variant.unitWeightG) : '');
-    setListPrice(variant ? String(variant.listPrice) : '');
+    setListPrice(variant ? parseThousands(String(variant.listPrice)) : '');
     setPackPerCase(String(variant?.packPerCase ?? 1));
     setBarcode(variant?.barcode ?? '');
     setIsActive(variant?.isActive ?? true);
-    setTiers(variant?.tiers.map((t) => ({ minQtyKhay: String(t.minQtyKhay), unitPrice: String(t.unitPrice) })) ?? []);
+    setTiers(
+      variant?.tiers.map((t) => ({
+        minQtyKhay: String(t.minQtyKhay),
+        unitPrice: parseThousands(String(t.unitPrice)),
+      })) ?? [],
+    );
   }, [open, variant]);
 
   const tiersValid = tiers.every((t) => Number(t.minQtyKhay) > 0 && Number(t.unitPrice) > 0);
@@ -62,7 +68,15 @@ export function VariantFormModal({ open, productId, variant, onClose }: { open: 
         <Field label="SKU" required error={touched && !sku.trim() ? 'Bắt buộc' : undefined}><Input value={sku} onChange={(e) => setSku(e.target.value)} /></Field>
         <Field label="Quy cách" required error={touched && !packLabel.trim() ? 'Bắt buộc' : undefined}><Input placeholder="Khay 0,5kg" value={packLabel} onChange={(e) => setPackLabel(e.target.value)} /></Field>
         <Field label="Khối lượng (g)"><Input type="number" min={0} value={weight} onChange={(e) => setWeight(e.target.value)} /></Field>
-        <Field label="Giá niêm yết / khay" required error={touched && !(Number(listPrice) > 0) ? 'Phải lớn hơn 0' : undefined}><Input type="number" min={0} value={listPrice} onChange={(e) => setListPrice(e.target.value)} /></Field>
+        <Field label="Giá niêm yết / khay" required error={touched && !(Number(listPrice) > 0) ? 'Phải lớn hơn 0' : undefined}>
+          <Input
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            value={formatThousands(listPrice)}
+            onChange={(e) => setListPrice(parseThousands(e.target.value))}
+          />
+        </Field>
         <Field label="Số khay / thùng" required error={touched && !(Number(packPerCase) >= 1) ? 'Từ 1 trở lên' : undefined}><Input type="number" min={1} value={packPerCase} onChange={(e) => setPackPerCase(e.target.value)} /></Field>
         <Field label="Mã vạch"><Input value={barcode} onChange={(e) => setBarcode(e.target.value)} /></Field>
       </div>
@@ -77,7 +91,17 @@ export function VariantFormModal({ open, productId, variant, onClose }: { open: 
           {tiers.map((tier, i) => (
             <div key={i} className="flex items-center gap-2">
               <Input aria-label={`Từ số khay, bậc ${i + 1}`} type="number" min={1} placeholder="Từ số khay" value={tier.minQtyKhay} onChange={(e) => setTiers(tiers.map((t, j) => (j === i ? { ...t, minQtyKhay: e.target.value } : t)))} />
-              <Input aria-label={`Đơn giá, bậc ${i + 1}`} type="number" min={0} placeholder="Đơn giá / khay" value={tier.unitPrice} onChange={(e) => setTiers(tiers.map((t, j) => (j === i ? { ...t, unitPrice: e.target.value } : t)))} />
+              <Input
+                aria-label={`Đơn giá, bậc ${i + 1}`}
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="Đơn giá / khay"
+                value={formatThousands(tier.unitPrice)}
+                onChange={(e) =>
+                  setTiers(tiers.map((t, j) => (j === i ? { ...t, unitPrice: parseThousands(e.target.value) } : t)))
+                }
+              />
               <IconButton label={`Xóa bậc ${i + 1}`} onClick={() => setTiers(tiers.filter((_, j) => j !== i))}><Trash2 size={14} /></IconButton>
             </div>
           ))}
