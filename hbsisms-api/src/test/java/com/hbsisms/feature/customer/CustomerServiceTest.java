@@ -166,6 +166,71 @@ class CustomerServiceTest {
     }
 
     @Test
+    void createB2cRejectsTaxCode() {
+        assertThatThrownBy(() -> customerService.create(new CustomerRequest(
+                        CustomerType.B2C,
+                        "Test",
+                        null,
+                        "0912000111",
+                        "0123456789",
+                        null,
+                        null,
+                        BigDecimal.ZERO,
+                        (short) 0,
+                        true,
+                        null)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(api.getMessage()).contains("B2C");
+                });
+    }
+
+    @Test
+    void createB2cRejectsNetDays() {
+        assertThatThrownBy(() -> customerService.create(new CustomerRequest(
+                        CustomerType.B2C,
+                        "Test",
+                        null,
+                        "0912000111",
+                        null,
+                        null,
+                        null,
+                        BigDecimal.ZERO,
+                        (short) 7,
+                        true,
+                        null)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void createRejectsBlankName() {
+        assertThatThrownBy(() -> customerService.create(b2cRequest("  ", "0912000111", true)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void createRejectsNullCustomerType() {
+        assertThatThrownBy(() -> customerService.create(new CustomerRequest(
+                        null,
+                        "Test",
+                        null,
+                        "0912000111",
+                        null,
+                        null,
+                        null,
+                        BigDecimal.ZERO,
+                        (short) 0,
+                        true,
+                        null)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
     void updateB2bToB2cWithDebtConflicts() {
         Customer existing = sample("KH-B001", CustomerType.B2B, "Nợ");
         ReflectionTestUtils.setField(existing, "id", 5L);
@@ -178,6 +243,30 @@ class CustomerServiceTest {
     }
 
     @Test
+    void updateB2bToB2cWithZeroDebtSucceeds() {
+        Customer existing = sample("KH-B001", CustomerType.B2B, "Hết nợ");
+        ReflectionTestUtils.setField(existing, "id", 8L);
+        existing.setCurrentDebt(BigDecimal.ZERO);
+        existing.setCreditLimit(new BigDecimal("5000000"));
+        existing.setNetDays((short) 30);
+        existing.setTaxCode("0200555666");
+        when(customerRepository.findWithAccountById(8L)).thenReturn(Optional.of(existing));
+        when(customerRepository.save(any(Customer.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(addressRepository.findByCustomerIdOrderByDefaultAddressDescIdAsc(8L)).thenReturn(List.of());
+        when(customerPriceRepository.findByCustomerIdOrderByIdAsc(8L)).thenReturn(List.of());
+
+        CustomerDetailResponse detail = customerService.update(8L, b2cRequest("Hết nợ", "0912000111", true));
+
+        ArgumentCaptor<Customer> captor = ArgumentCaptor.forClass(Customer.class);
+        verify(customerRepository).save(captor.capture());
+        assertThat(captor.getValue().getCustomerType()).isEqualTo(CustomerType.B2C);
+        assertThat(captor.getValue().getCreditLimit()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(captor.getValue().getNetDays()).isZero();
+        assertThat(captor.getValue().getTaxCode()).isNull();
+        assertThat(detail.customerType()).isEqualTo(CustomerType.B2C);
+    }
+
+    @Test
     void createRejectsInvalidPhone() {
         assertThatThrownBy(() -> customerService.create(b2cRequest("A", "123", true)))
                 .isInstanceOf(ApiException.class)
@@ -185,9 +274,35 @@ class CustomerServiceTest {
     }
 
     @Test
+    void createNormalizesPlus84Phone() {
+        when(customerRepository.findCodesByPrefix("KH-")).thenReturn(List.of());
+        when(customerRepository.save(any(Customer.class))).thenAnswer(invocation -> {
+            Customer c = invocation.getArgument(0);
+            ReflectionTestUtils.setField(c, "id", 11L);
+            return c;
+        });
+        when(addressRepository.findByCustomerIdOrderByDefaultAddressDescIdAsc(11L)).thenReturn(List.of());
+        when(customerPriceRepository.findByCustomerIdOrderByIdAsc(11L)).thenReturn(List.of());
+
+        customerService.create(b2cRequest("Phone Norm", "+84912000111", true));
+
+        ArgumentCaptor<Customer> captor = ArgumentCaptor.forClass(Customer.class);
+        verify(customerRepository).save(captor.capture());
+        assertThat(captor.getValue().getPhone()).isEqualTo("0912000111");
+    }
+
+    @Test
     void createB2bRejectsInvalidTaxCode() {
         assertThatThrownBy(() -> customerService.create(b2bRequest(
                         "DN", "0933000222", "ABC", BigDecimal.ZERO, (short) 0)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void createB2bRejectsNegativeCreditLimit() {
+        assertThatThrownBy(() -> customerService.create(b2bRequest(
+                        "DN", "0933000222", "0200555666", new BigDecimal("-1"), (short) 0)))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }

@@ -64,37 +64,77 @@ File: `hbsisms-api/src/test/java/com/hbsisms/feature/customer/pricing/PriceResol
 
 ---
 
-## Checklist Duy (CRUD / B2C) — tự làm + báo cáo riêng
+## Checklist Duy (CRUD / B2C) — đã làm + báo cáo
 
-**Mục tiêu tracking:** quy tắc B2B/B2C (credit, mã KH, khóa/mở…).
+**Mục tiêu tracking (#23):** quy tắc B2B/B2C (credit, mã KH, khóa/mở…). Cover `CustomerService` + helper `CustomerType` / `CustomerCodeGenerator`.
 
-**File đã có sẵn (có thể mở rộng):**
+Nhánh: `feature/api-customer-unit-tests`.
 
-- `CustomerServiceTest.java`
-- `CustomerTypeTest.java`
-- `CustomerCodeGeneratorTest.java`
+**Case tối thiểu → test method (Pass)**
 
-**Case tối thiểu cần xác nhận / bổ sung**
+| # | Case | Test method | Kết quả |
+|---|------|-------------|---------|
+| 1 | Create B2C gán mã `KH-…`, debt = 0 | `createB2cAssignsCodeAndZeroDebt` | pass |
+| 2 | Create B2B giữ creditLimit / netDays / tax | `createB2bKeepsCreditTerms` | pass |
+| 3 | B2C không được set creditLimit → 400 | `createB2cRejectsCreditLimit` (+ tax/netDays) | pass |
+| 4 | Đổi B2B → B2C khi còn nợ → 409 | `updateB2bToB2cWithDebtConflicts` | pass |
+| 5 | Phone / taxCode không hợp lệ → 400 | `createRejectsInvalidPhone`, `createB2bRejectsInvalidTaxCode` | pass |
+| 6 | setActive lock/unlock | `setActiveLocksCustomer`, `setActiveUnlocksCustomer` | pass |
 
-1. Create B2C gán mã `KH-…`, debt = 0  
-2. Create B2B giữ creditLimit / netDays / tax  
-3. B2C không được set creditLimit → 400  
-4. Đổi B2B → B2C khi còn nợ → 409  
-5. Phone / taxCode không hợp lệ → 400  
-6. setActive lock/unlock  
-
-**Chạy test (ví dụ)**
+**Chạy test phần Duy**
 
 ```powershell
 cd hbsisms-api
-.\mvnw.cmd test -Dtest=CustomerServiceTest,CustomerTypeTest,CustomerCodeGeneratorTest
+.\mvnw.cmd test "-Dtest=CustomerServiceTest,CustomerTypeTest,CustomerCodeGeneratorTest"
 ```
 
-### Báo cáo Duy — (chưa điền)
+Kết quả gần nhất: **25 tests, 0 failures** (BUILD SUCCESS) — Service **19** + Type **3** + CodeGenerator **3**.
+
+### CustomerServiceTest
+
+File: `hbsisms-api/src/test/java/com/hbsisms/feature/customer/CustomerServiceTest.java`
 
 | Test method | Hành vi | Kết quả |
 |-------------|---------|---------|
-| … | … | … |
+| `searchMapsPageAndOrderCountZero` | search map page + sort name | pass |
+| `getDetailReturnsAddressesAndEmptyRecentOrders` | detail + addresses/prices rỗng | pass |
+| `getDetailNotFound` | id không có → 404 | pass |
+| `createB2cAssignsCodeAndZeroDebt` | B2C mã `KH-…`, debt = 0 | pass |
+| `createB2bKeepsCreditTerms` | B2B giữ credit / netDays / tax + mã `KH-B…` | pass |
+| `createB2cRejectsCreditLimit` | B2C + creditLimit → 400 | pass |
+| `createB2cRejectsTaxCode` | B2C + MST → 400 | pass |
+| `createB2cRejectsNetDays` | B2C + netDays ≠ 0 → 400 | pass |
+| `createRejectsBlankName` | tên trống → 400 | pass |
+| `createRejectsNullCustomerType` | type null → 400 | pass |
+| `updateB2bToB2cWithDebtConflicts` | B2B→B2C còn nợ → 409 | pass |
+| `updateB2bToB2cWithZeroDebtSucceeds` | B2B→B2C hết nợ → clear credit/tax | pass |
+| `createRejectsInvalidPhone` | phone sai → 400 | pass |
+| `createNormalizesPlus84Phone` | `+84…` → `0…` | pass |
+| `createB2bRejectsInvalidTaxCode` | taxCode không phải 10–13 số → 400 | pass |
+| `createB2bRejectsNegativeCreditLimit` | creditLimit âm → 400 | pass |
+| `setActiveLocksCustomer` | lock `isActive=false` | pass |
+| `setActiveUnlocksCustomer` | unlock `isActive=true` | pass |
+| `setActiveNotFound` | lock id không có → 404 | pass |
+
+### CustomerTypeTest
+
+File: `hbsisms-api/src/test/java/com/hbsisms/feature/customer/CustomerTypeTest.java`
+
+| Test method | Hành vi | Kết quả |
+|-------------|---------|---------|
+| `codeIsLowercase` | `b2c` / `b2b` | pass |
+| `fromCodeAcceptsLowercase` | parse case-insensitive | pass |
+| `fromCodeRejectsBlankAndUnknown` | null / blank / unknown → lỗi | pass |
+
+### CustomerCodeGeneratorTest
+
+File: `hbsisms-api/src/test/java/com/hbsisms/feature/customer/CustomerCodeGeneratorTest.java`
+
+| Test method | Hành vi | Kết quả |
+|-------------|---------|---------|
+| `nextB2cStartsAt001` | rỗng → `KH-001` | pass |
+| `nextB2cIgnoresKhoiAndB2bCodes` | bỏ mã KHOI / B2B khi sinh B2C | pass |
+| `nextB2bUsesKhBPrefix` | B2B → `KH-B…` | pass |
 
 ---
 
@@ -103,4 +143,4 @@ cd hbsisms-api
 Đủ **2 báo cáo** mới đánh dấu xong task 23 trên Excel:
 
 1. Khôi — mục trong file này ✅  
-2. Duy — báo cáo riêng (checklist phía trên)  
+2. Duy — mục trong file này ✅  
