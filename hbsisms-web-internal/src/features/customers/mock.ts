@@ -19,8 +19,9 @@ function toDetail(id: number) {
           ...p,
           ...variantLabel(p.variantId),
           listPrice: db.variants.find((v) => v.id === p.variantId)?.listPrice ?? 0,
-          // Chờ duyệt: ẩn note cũ. Đã quyết định: hiện note lần gần nhất nếu có.
+          // Chờ duyệt: ẩn quyết định cũ. Đã quyết định: gắn lần gần nhất (status + note).
           decisionNote: p.status === 'pending' ? null : (decided?.note ?? null),
+          lastDecision: p.status === 'pending' ? null : (decided?.status === 'approved' || decided?.status === 'rejected' ? decided.status : null),
         };
       }),
     recentOrders: db.orders

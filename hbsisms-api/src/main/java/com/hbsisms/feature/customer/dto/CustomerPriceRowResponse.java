@@ -24,10 +24,16 @@ public record CustomerPriceRowResponse(
         String productName,
         String packLabel,
         BigDecimal listPrice,
-        /** Ghi chú duyệt/từ chối gần nhất (từ approval_task) — staff xem trên tab Giá riêng. */
-        String decisionNote) {
+        /** Ghi chú lần quyết định gần nhất (từ approval_task). */
+        String decisionNote,
+        /**
+         * Trạng thái lần quyết định gần nhất ({@code approved}/{@code rejected}).
+         * Null khi đang chờ duyệt. FE dùng để phân biệt note duyệt giá đang dùng vs từ chối đề xuất mới.
+         */
+        ApprovalStatus lastDecision) {
 
-    public static CustomerPriceRowResponse from(CustomerPrice price, String decisionNote) {
+    public static CustomerPriceRowResponse from(
+            CustomerPrice price, String decisionNote, ApprovalStatus lastDecision) {
         ProductVariant variant = price.getVariant();
         return new CustomerPriceRowResponse(
                 price.getId(),
@@ -45,6 +51,7 @@ public record CustomerPriceRowResponse(
                 variant.getProduct().getName(),
                 variant.getPackLabel(),
                 variant.getListPrice(),
-                decisionNote);
+                decisionNote,
+                lastDecision);
     }
 }
