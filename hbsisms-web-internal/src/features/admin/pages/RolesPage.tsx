@@ -26,35 +26,56 @@ export default function RolesPage() {
       return { ...prev, [roleId]: current.includes(permission) ? current.filter((p) => p !== permission) : [...current, permission] };
     });
 
+  const minTableWidth = Math.max(480, 180 + roles.length * 120);
+
   return (
     <>
-      <PageHeader title="Vai trò và phân quyền" subtitle="Mỗi nhân viên có một vai trò" actions={<Button variant="primary" disabled={!dirtyIds.length} loading={save.isPending} onClick={() => save.mutate()}>Lưu thay đổi</Button>} />
-      <div className="mb-4"><Alert tone="info">Thay đổi có hiệu lực từ lần đăng nhập kế tiếp của nhân viên. Vai trò Quản trị luôn giữ quyền quản trị.</Alert></div>
+      <PageHeader
+        title="Vai trò và phân quyền"
+        subtitle="Hàng là quyền · cột là vai trò — thêm quyền mới chỉ thêm một hàng"
+        actions={<Button variant="primary" disabled={!dirtyIds.length} loading={save.isPending} onClick={() => save.mutate()}>Lưu thay đổi</Button>}
+      />
+      <div className="mb-4">
+        <Alert tone="info">Thay đổi có hiệu lực từ lần đăng nhập kế tiếp của nhân viên. Vai trò Quản trị luôn giữ quyền quản trị.</Alert>
+      </div>
       <Card flush>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-small">
+          <table className="w-full text-small" style={{ minWidth: minTableWidth }}>
             <thead>
               <tr className="bg-thead text-micro font-semibold uppercase tracking-wide text-ink-muted">
-                <th scope="col" className="h-[34px] px-3 text-left">Vai trò</th>
-                {PERMISSIONS.map((p) => <th key={p} scope="col" className="px-2 text-center">{permissionLabels[p]}</th>)}
+                <th scope="col" className="sticky left-0 z-10 h-[42px] bg-thead px-3 text-left shadow-[1px_0_0_var(--line)]">
+                  Quyền
+                </th>
+                {roles.map((role) => (
+                  <th key={role.id} scope="col" className="min-w-[110px] px-2 text-center font-semibold normal-case tracking-normal text-ink">
+                    <div>{role.name}</div>
+                    <div className="num mt-0.5 font-normal normal-case text-ink-faint">{role.code}</div>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {roles.map((role) => (
-                <tr key={role.id} className="border-t border-line">
-                  <th scope="row" className="h-[42px] px-3 text-left font-medium">{role.name}<div className="num font-normal text-ink-faint">{role.code}</div></th>
-                  {PERMISSIONS.map((p) => (
-                    <td key={p} className="text-center">
-                      <input
-                        type="checkbox"
-                        aria-label={`${role.name}: ${permissionLabels[p]}`}
-                        className="h-4 w-4 accent-[var(--primary)]"
-                        disabled={role.code === 'admin' && p === 'admin'}
-                        checked={draft[role.id]?.includes(p) ?? false}
-                        onChange={() => toggle(role.id, p)}
-                      />
-                    </td>
-                  ))}
+              {PERMISSIONS.map((p) => (
+                <tr key={p} className="border-t border-line">
+                  <th scope="row" className="sticky left-0 z-10 h-[42px] bg-card px-3 text-left font-medium shadow-[1px_0_0_var(--line)]">
+                    {permissionLabels[p]}
+                    <div className="num font-normal text-ink-faint">{p}</div>
+                  </th>
+                  {roles.map((role) => {
+                    const locked = role.code === 'admin' && p === 'admin';
+                    return (
+                      <td key={role.id} className="text-center">
+                        <input
+                          type="checkbox"
+                          aria-label={`${role.name}: ${permissionLabels[p]}`}
+                          className="h-4 w-4 accent-[var(--primary)] disabled:opacity-50"
+                          disabled={locked}
+                          checked={draft[role.id]?.includes(p) ?? false}
+                          onChange={() => toggle(role.id, p)}
+                        />
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
