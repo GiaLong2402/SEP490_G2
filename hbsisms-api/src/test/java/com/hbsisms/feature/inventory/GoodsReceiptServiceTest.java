@@ -13,8 +13,12 @@ import com.hbsisms.feature.catalog.ProductVariantRepository;
 import com.hbsisms.feature.inventory.dto.FinishedReceiptLineRequest;
 import com.hbsisms.feature.inventory.dto.GoodsReceiptRequest;
 import com.hbsisms.feature.inventory.dto.GoodsReceiptResponse;
+import com.hbsisms.feature.inventory.dto.RawReceiptLineRequest;
+import com.hbsisms.feature.inventory.dto.ReceiptItemResponse;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -24,6 +28,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 
 @ExtendWith(MockitoExtension.class)
@@ -130,6 +137,83 @@ class GoodsReceiptServiceTest {
                 .isInstanceOf(ApiException.class)
                 .extracting(ex -> ((ApiException) ex).getStatus())
                 .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void createRaw_appendsItemSummaryAndListParsesItems() {
+        when(goodsReceiptRepository.findMaxPnCode()).thenReturn(Optional.empty());
+        when(goodsReceiptRepository.saveAndFlush(any(GoodsReceipt.class))).thenAnswer(inv -> {
+            GoodsReceipt g = inv.getArgument(0);
+            setId(g, 9L);
+            return g;
+        });
+        when(goodsReceiptRepository.save(any(GoodsReceipt.class))).thenAnswer(inv -> inv.getArgument(0));
+        RawMaterial material = new RawMaterial();
+        setId(material, 3L);
+        material.setName("Đá lạnh");
+        material.setUnit("kg");
+        material.setActive(true);
+        material.setQtyOnHand(BigDecimal.ZERO);
+        when(rawMaterialRepository.findById(3L)).thenReturn(Optional.of(material));
+
+        GoodsReceiptResponse created = service.create(
+                new GoodsReceiptRequest(
+                        ReceiptType.RAW,
+                        "Chợ",
+                        "Giao sáng",
+                        null,
+                        List.of(new RawReceiptLineRequest(3L, new BigDecimal("12.5")))),
+                null);
+
+        assertThat(created.items()).singleElement().satisfies(item -> {
+            assertThat(item.name()).isEqualTo("Đá lạnh");
+            assertThat(item.qty()).isEqualTo(12.5);
+            assertThat(item.unit()).isEqualTo("kg");
+        });
+        assertThat(created.note()).contains("Đá lạnh: 12.5 kg");
+
+        GoodsReceipt stored = new GoodsReceipt();
+        setId(stored, 9L);
+        stored.setCode("PN-0001");
+        stored.setReceiptType(ReceiptType.RAW);
+        stored.setSource("Chợ");
+        stored.setNote(created.note());
+        stored.setReceivedAt(Instant.parse("2026-11-06T10:00:00Z"));
+        when(goodsReceiptRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(stored)));
+
+        var page = service.list(null, "raw", 1, 20);
+        assertThat(page.items()).singleElement().satisfies(row -> {
+            assertThat(row.items()).hasSize(1);
+            ReceiptItemResponse item = row.items().get(0);
+            assertThat(item.name()).isEqualTo("Đá lạnh");
+            assertThat(item.qty()).isEqualTo(12.5);
+            assertThat(item.unit()).isEqualTo("kg");
+        });
+    }
+
+    @Test
+    void list_rejectsInvalidReceiptType() {
+        assertThatThrownBy(() -> service.list(null, "bogus", 1, 20))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(api.getMessage()).contains("Loại phiếu không hợp lệ");
+                });
+    }
+
+    @Test
+    void parseRawItemsFromNote_readsSummaryAfterUserNote() {
+        List<ReceiptItemResponse> items =
+                GoodsReceiptService.parseRawItemsFromNote("Giao sáng — Đá lạnh: 12.5 kg; Muối: 2 bao");
+        assertThat(items).hasSize(2);
+        assertThat(items.get(0).name()).isEqualTo("Đá lạnh");
+        assertThat(items.get(0).qty()).isEqualTo(12.5);
+        assertThat(items.get(0).unit()).isEqualTo("kg");
+        assertThat(items.get(1).name()).isEqualTo("Muối");
+        assertThat(items.get(1).qty()).isEqualTo(2.0);
+        assertThat(items.get(1).unit()).isEqualTo("bao");
     }
 
     private static void setId(Object entity, Long id) {

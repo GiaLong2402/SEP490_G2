@@ -21,6 +21,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -33,6 +35,10 @@ public class GoodsReceiptService {
     public static final String REF_TYPE = "goods_receipt";
 
     private static final Sort LIST_SORT = Sort.by(Sort.Direction.DESC, "receivedAt", "id");
+
+    /** Matches create-time summary: {@code Name: qty unit} segments joined by {@code ; }. */
+    private static final Pattern RAW_ITEM_SEGMENT =
+            Pattern.compile("^(.+):\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(.*)$");
 
     private final GoodsReceiptRepository goodsReceiptRepository;
     private final StockLedgerRepository stockLedgerRepository;
@@ -221,13 +227,51 @@ public class GoodsReceiptService {
                     })
                     .toList();
         } else {
-            // Raw lines are not persisted separately yet (spec); list shows note if present.
-            String note = Strings.trimToNull(receipt.getNote());
-            items = note == null
-                    ? List.of()
-                    : List.of(new ReceiptItemResponse(note, 0, ""));
+            // Raw lines are summarized into note on create (FE mock uses the same " — " form).
+            items = parseRawItemsFromNote(receipt.getNote());
         }
         return GoodsReceiptResponse.from(receipt, items);
+    }
+
+    /**
+     * Rebuilds list {@code items} from the note summary written at create time
+     * ({@code [userNote — ]name: qty unit; ...}).
+     */
+    static List<ReceiptItemResponse> parseRawItemsFromNote(String note) {
+        String raw = Strings.trimToNull(note);
+        if (raw == null) {
+            return List.of();
+        }
+        String summary = raw;
+        int sep = raw.lastIndexOf(" — ");
+        if (sep >= 0) {
+            String after = raw.substring(sep + 3).trim();
+            if (!after.isEmpty() && looksLikeRawItemSummary(after)) {
+                summary = after;
+            }
+        }
+        if (!looksLikeRawItemSummary(summary)) {
+            return List.of();
+        }
+        List<ReceiptItemResponse> items = new ArrayList<>();
+        for (String segment : summary.split(";")) {
+            String part = segment.trim();
+            if (part.isEmpty()) {
+                continue;
+            }
+            Matcher m = RAW_ITEM_SEGMENT.matcher(part);
+            if (!m.matches()) {
+                continue;
+            }
+            items.add(new ReceiptItemResponse(
+                    m.group(1).trim(), Double.parseDouble(m.group(2)), m.group(3).trim()));
+        }
+        return items;
+    }
+
+    private static boolean looksLikeRawItemSummary(String text) {
+        String first = text.split(";", 2)[0].trim();
+        return RAW_ITEM_SEGMENT.matcher(first).matches();
     }
 
     private String nextPnCode() {
@@ -264,7 +308,7 @@ public class GoodsReceiptService {
         try {
             return ReceiptType.fromCode(value);
         } catch (IllegalArgumentException ex) {
-            return null;
+            throw ApiException.badRequest("Loại phiếu không hợp lệ: " + value);
         }
     }
 }
