@@ -12,6 +12,9 @@ import { RawMaterialFormModal } from '../components/RawMaterialFormModal';
 import { useRawMaterials, useReceipts } from '../hooks';
 import type { RawMaterial, ReceiptListItem } from '../types';
 
+/** Tạm ẩn NVL trên UI demo — bật `true` sau khi nhóm bàn lại scope. API vẫn giữ nguyên. */
+const SHOW_RAW_MATERIALS = false;
+
 interface FinishedRow { key: number; variantId: string; lotCode: string; mfgDate: string; expDate: string; locationId: string; qty: string }
 interface RawRow { key: number; rawMaterialId: string; qty: string }
 let rowKey = 1;
@@ -24,14 +27,18 @@ export default function ReceiptsPage() {
   const list = useListParams(['receiptType'] as const);
   const [rawQ, setRawQ] = useState('');
   const [rawStatus, setRawStatus] = useState('');
-  const { data, isLoading, error, refetch } = useReceipts({ q: list.q, page: list.page, receiptType: list.filters.receiptType });
-  const raw = useRawMaterials({
-    q: rawQ,
-    activeOnly: rawStatus === 'active' ? true : rawStatus === 'inactive' ? false : undefined,
-    lowStock: rawStatus === 'low' ? true : undefined,
-  });
+  const receiptTypeFilter = SHOW_RAW_MATERIALS ? list.filters.receiptType : 'finished';
+  const { data, isLoading, error, refetch } = useReceipts({ q: list.q, page: list.page, receiptType: receiptTypeFilter });
+  const raw = useRawMaterials(
+    {
+      q: rawQ,
+      activeOnly: rawStatus === 'active' ? true : rawStatus === 'inactive' ? false : undefined,
+      lowStock: rawStatus === 'low' ? true : undefined,
+    },
+    SHOW_RAW_MATERIALS && tab === 'raw',
+  );
   /** Full active catalog for receipt lines (not affected by raw-tab filters). */
-  const rawCatalog = useRawMaterials({ activeOnly: true });
+  const rawCatalog = useRawMaterials({ activeOnly: true }, SHOW_RAW_MATERIALS);
   const variants = useVariantOptions().data ?? [];
   const locations = useLocations().data ?? [];
 
@@ -58,19 +65,24 @@ export default function ReceiptsPage() {
     }
   }, [params]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!SHOW_RAW_MATERIALS && tab === 'raw') setTab('receipts');
+  }, [tab]);
+
   const finishedValid = finished.every((r) => Number(r.variantId) > 0 && Number(r.locationId) > 0 && r.expDate && Number.isInteger(Number(r.qty)) && Number(r.qty) > 0 && (!r.mfgDate || r.expDate >= r.mfgDate));
   const rawValid = rawRows.every((r) => Number(r.rawMaterialId) > 0 && Number(r.qty) > 0);
-  const linesValid = type === 'finished' ? finishedValid : rawValid;
+  const effectiveType: ReceiptType = SHOW_RAW_MATERIALS ? type : 'finished';
+  const linesValid = effectiveType === 'finished' ? finishedValid : rawValid;
   const sourceValid = source.trim().length > 0;
 
   const create = useAction(
     () =>
       receiptsApi.create({
-        receiptType: type,
+        receiptType: effectiveType,
         source: source.trim(),
         note: null,
-        finishedLines: type === 'finished' ? finished.map((r) => ({ variantId: Number(r.variantId), lotCode: r.lotCode.trim() || null, mfgDate: r.mfgDate || null, expDate: r.expDate, locationId: Number(r.locationId), qty: Number(r.qty) })) : undefined,
-        rawLines: type === 'raw' ? rawRows.map((r) => ({ rawMaterialId: Number(r.rawMaterialId), qty: Number(r.qty) })) : undefined,
+        finishedLines: effectiveType === 'finished' ? finished.map((r) => ({ variantId: Number(r.variantId), lotCode: r.lotCode.trim() || null, mfgDate: r.mfgDate || null, expDate: r.expDate, locationId: Number(r.locationId), qty: Number(r.qty) })) : undefined,
+        rawLines: effectiveType === 'raw' ? rawRows.map((r) => ({ rawMaterialId: Number(r.rawMaterialId), qty: Number(r.qty) })) : undefined,
       }),
     { success: (r) => `Đã tạo phiếu nhập ${r.code}`, onDone: () => setOpen(false) },
   );
@@ -92,16 +104,33 @@ export default function ReceiptsPage() {
     { key: 'edit', header: '', align: 'right', cell: (m) => <IconButton label={`Sửa ${m.name}`} onClick={() => setMaterialForm({ material: m })}><Pencil size={14} /></IconButton> },
   ];
 
+  const receiptTabs = SHOW_RAW_MATERIALS
+    ? [{ key: 'receipts' as const, label: 'Phiếu nhập' }, { key: 'raw' as const, label: 'Tồn nguyên liệu' }]
+    : [{ key: 'receipts' as const, label: 'Phiếu nhập' }];
+
   return (
     <>
-      <PageHeader title="Nhập kho" subtitle="Phiếu nhập thành phẩm, nguyên liệu và tồn nguyên liệu" actions={<>{tab === 'raw' && <Button icon={<Plus size={15} />} onClick={() => setMaterialForm({})}>Thêm nguyên liệu</Button>}<Button variant="primary" icon={<Plus size={15} />} onClick={openForm}>Tạo phiếu nhập</Button></>} />
+      <PageHeader
+        title="Nhập kho"
+        subtitle={SHOW_RAW_MATERIALS ? 'Phiếu nhập thành phẩm, nguyên liệu và tồn nguyên liệu' : 'Phiếu nhập thành phẩm vào kho'}
+        actions={
+          <>
+            {SHOW_RAW_MATERIALS && tab === 'raw' && <Button icon={<Plus size={15} />} onClick={() => setMaterialForm({})}>Thêm nguyên liệu</Button>}
+            <Button variant="primary" icon={<Plus size={15} />} onClick={openForm}>Tạo phiếu nhập</Button>
+          </>
+        }
+      />
       <Card flush>
-        <Tabs label="Nhập kho" value={tab} onChange={setTab} tabs={[{ key: 'receipts', label: 'Phiếu nhập' }, { key: 'raw', label: 'Tồn nguyên liệu' }]} />
-        {tab === 'receipts' ? (
+        {SHOW_RAW_MATERIALS ? (
+          <Tabs label="Nhập kho" value={tab} onChange={setTab} tabs={receiptTabs} />
+        ) : null}
+        {tab === 'receipts' || !SHOW_RAW_MATERIALS ? (
           <>
             <FilterBar>
               <SearchBox value={list.q} onChange={list.setQ} placeholder="Tìm mã phiếu, nguồn hàng..." />
-              <FilterSelect label="Loại" value={list.filters.receiptType} onChange={(v) => list.setFilter('receiptType', v)}>{enumOptions(receiptTypeLabels)}</FilterSelect>
+              {SHOW_RAW_MATERIALS ? (
+                <FilterSelect label="Loại" value={list.filters.receiptType} onChange={(v) => list.setFilter('receiptType', v)}>{enumOptions(receiptTypeLabels)}</FilterSelect>
+              ) : null}
             </FilterBar>
             <DataTable columns={columns} rows={data?.items} rowKey={(r) => r.id} loading={isLoading} error={error} onRetry={refetch} emptyText="Chưa có phiếu nhập" />
             {data && <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onChange={list.setPage} />}
@@ -133,10 +162,13 @@ export default function ReceiptsPage() {
         footer={<><Button onClick={() => setOpen(false)}>Hủy bỏ</Button><Button type="submit" variant="primary" loading={create.isPending}>Lưu phiếu</Button></>}
       >
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Loại phiếu" required><Select value={type} onChange={(e) => setType(e.target.value as ReceiptType)}>{enumOptions(receiptTypeLabels)}</Select></Field>
+          {SHOW_RAW_MATERIALS ? (
+            <Field label="Loại phiếu" required><Select value={type} onChange={(e) => setType(e.target.value as ReceiptType)}>{enumOptions(receiptTypeLabels)}</Select></Field>
+          ) : null}
           <Field
             label="Nguồn hàng"
             required
+            className={SHOW_RAW_MATERIALS ? undefined : 'sm:col-span-2'}
             error={touched && !sourceValid ? 'Vui lòng nhập nguồn hàng' : undefined}
             hint="Ghi chú nơi lấy hàng (chưa liên kết nhà cung cấp)"
           >
@@ -144,7 +176,7 @@ export default function ReceiptsPage() {
           </Field>
         </div>
         <div className="mt-4 overflow-x-auto">
-          {type === 'finished' ? (
+          {effectiveType === 'finished' ? (
             <table className="w-full min-w-[780px] text-small">
               <thead><tr className="text-left text-micro font-semibold uppercase text-ink-muted"><th className="pb-1 pr-2">Quy cách</th><th className="pr-2">Mã lô</th><th className="pr-2">Ngày SX</th><th className="pr-2">HSD</th><th className="pr-2">Vị trí</th><th className="w-20 pr-2">Số khay</th><th className="w-9" /></tr></thead>
               <tbody>
@@ -183,22 +215,24 @@ export default function ReceiptsPage() {
           )}
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          <Button icon={<Plus size={14} />} onClick={() => (type === 'finished' ? setFinished([...finished, finishedRow()]) : setRawRows([...rawRows, rawRow()]))}>Thêm dòng</Button>
-          {type === 'raw' && <Button variant="ghost" onClick={() => setMaterialForm({ fromReceipt: true })}>+ Nguyên liệu mới</Button>}
+          <Button icon={<Plus size={14} />} onClick={() => (effectiveType === 'finished' ? setFinished([...finished, finishedRow()]) : setRawRows([...rawRows, rawRow()]))}>Thêm dòng</Button>
+          {SHOW_RAW_MATERIALS && effectiveType === 'raw' && <Button variant="ghost" onClick={() => setMaterialForm({ fromReceipt: true })}>+ Nguyên liệu mới</Button>}
         </div>
         {touched && !linesValid && <p className="mt-2 text-small text-red-fg">Mỗi dòng cần đủ thông tin, số lượng lớn hơn 0 và HSD không trước ngày sản xuất.</p>}
       </Modal>
 
-      <RawMaterialFormModal
-        open={!!materialForm}
-        material={materialForm?.material}
-        onClose={() => setMaterialForm(null)}
-        onSaved={(id) => {
-          if (!materialForm?.fromReceipt) return;
-          const empty = rawRows.find((r) => !r.rawMaterialId);
-          setRawRows(empty ? rawRows.map((r) => (r.key === empty.key ? { ...r, rawMaterialId: String(id) } : r)) : [...rawRows, { ...rawRow(), rawMaterialId: String(id) }]);
-        }}
-      />
+      {SHOW_RAW_MATERIALS && (
+        <RawMaterialFormModal
+          open={!!materialForm}
+          material={materialForm?.material}
+          onClose={() => setMaterialForm(null)}
+          onSaved={(id) => {
+            if (!materialForm?.fromReceipt) return;
+            const empty = rawRows.find((r) => !r.rawMaterialId);
+            setRawRows(empty ? rawRows.map((r) => (r.key === empty.key ? { ...r, rawMaterialId: String(id) } : r)) : [...rawRows, { ...rawRow(), rawMaterialId: String(id) }]);
+          }}
+        />
+      )}
     </>
   );
 }
