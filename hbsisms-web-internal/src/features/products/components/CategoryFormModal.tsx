@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAction } from '@/shared/api/useAction';
 import { Button, Field, Input, Modal, Select, Textarea } from '@/shared/ui';
 import { productsApi } from '../api';
+import { CategoryTreePicker } from './CategoryFilterMenu';
 import { useCategories } from '../hooks';
 import type { CategoryListItem } from '../types';
 
@@ -55,16 +56,19 @@ export function CategoryFormModal({
   }, [open, category]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Không cho chọn chính nó hoặc loại con của nó làm loại cha.
-  const blocked = new Set<number>(category ? [category.id] : []);
-  for (let grew = true; grew; ) {
-    grew = false;
-    categories.forEach((c) => {
-      if (c.parentId !== null && blocked.has(c.parentId) && !blocked.has(c.id)) {
-        blocked.add(c.id);
-        grew = true;
-      }
-    });
-  }
+  const parentOptions = useMemo(() => {
+    const blocked = new Set<number>(category ? [category.id] : []);
+    for (let grew = true; grew; ) {
+      grew = false;
+      categories.forEach((c) => {
+        if (c.parentId !== null && blocked.has(c.parentId) && !blocked.has(c.id)) {
+          blocked.add(c.id);
+          grew = true;
+        }
+      });
+    }
+    return categories.filter((c) => !blocked.has(c.id));
+  }, [categories, category]);
 
   const errors = {
     name: !form.name.trim() ? 'Vui lòng nhập tên loại' : undefined,
@@ -111,10 +115,10 @@ export function CategoryFormModal({
           <Input value={form.code} onChange={(e) => { setCodeEdited(true); setForm({ ...form, code: e.target.value }); }} />
         </Field>
         <Field label="Loại cha">
-          <Select
+          <CategoryTreePicker
+            categories={parentOptions}
             value={form.parentId}
-            onChange={(e) => {
-              const parentId = e.target.value;
+            onChange={(parentId) => {
               setForm({
                 ...form,
                 parentId,
@@ -122,10 +126,11 @@ export function CategoryFormModal({
                 sortOrder: category ? form.sortOrder : nextSortOrder(categories, parentId ? Number(parentId) : null),
               });
             }}
-          >
-            <option value="">Không có</option>
-            {categories.filter((c) => !blocked.has(c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </Select>
+            emptyLabel="Không có"
+            formatTrigger={(name) => name ?? 'Không có'}
+            allowPickParent
+            ariaLabel="Loại cha"
+          />
         </Field>
         <Field
           label="Trạng thái"
