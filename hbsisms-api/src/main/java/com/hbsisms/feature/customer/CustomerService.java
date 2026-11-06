@@ -115,9 +115,15 @@ public class CustomerService {
                 .map(AddressResponse::from)
                 .toList();
         List<CustomerPrice> priceRows = customerPriceRepository.findByCustomerIdOrderByIdAsc(id);
-        Map<Long, String> decisionNotes = latestDecisionNotes(priceRows);
+        Map<Long, LatestDecision> decisions = latestDecisions(priceRows);
         List<CustomerPriceRowResponse> prices = priceRows.stream()
-                .map(price -> CustomerPriceRowResponse.from(price, decisionNoteFor(price, decisionNotes)))
+                .map(price -> {
+                    LatestDecision decision = decisionFor(price, decisions);
+                    return CustomerPriceRowResponse.from(
+                            price,
+                            decision == null ? null : decision.note(),
+                            decision == null ? null : decision.status());
+                })
                 .toList();
         return CustomerDetailResponse.from(customer, addresses, prices);
     }
@@ -213,31 +219,34 @@ public class CustomerService {
     }
 
     /**
-     * Chờ duyệt: ẩn note cũ. Đã duyệt/từ chối: hiện ghi chú lần quyết định gần nhất (nếu có).
+     * Chờ duyệt: ẩn quyết định cũ. Đã duyệt/từ chối: gắn lần quyết định gần nhất (status + note)
+     * để FE phân biệt “duyệt giá đang dùng” vs “từ chối đề xuất mới trên dòng đã duyệt”.
      */
-    private static String decisionNoteFor(CustomerPrice price, Map<Long, String> decisionNotes) {
+    private static LatestDecision decisionFor(CustomerPrice price, Map<Long, LatestDecision> decisions) {
         if (price.getStatus() == ApprovalStatus.PENDING) {
             return null;
         }
-        return decisionNotes.get(price.getId());
+        return decisions.get(price.getId());
     }
 
-    private Map<Long, String> latestDecisionNotes(List<CustomerPrice> priceRows) {
+    private Map<Long, LatestDecision> latestDecisions(List<CustomerPrice> priceRows) {
         if (priceRows.isEmpty()) {
             return Map.of();
         }
         List<Long> ids = priceRows.stream().map(CustomerPrice::getId).toList();
-        Map<Long, String> notes = new HashMap<>();
+        Map<Long, LatestDecision> decisions = new HashMap<>();
         for (ApprovalTask task : approvalTaskRepository.findDecidedByRefTypeAndRefIdIn(
                 CustomerPriceService.REF_TYPE_CUSTOMER_PRICE,
                 ids,
                 EnumSet.of(ApprovalStatus.APPROVED, ApprovalStatus.REJECTED))) {
-            if (!notes.containsKey(task.getRefId())) {
-                notes.put(task.getRefId(), task.getNote());
+            if (!decisions.containsKey(task.getRefId())) {
+                decisions.put(task.getRefId(), new LatestDecision(task.getStatus(), task.getNote()));
             }
         }
-        return notes;
+        return decisions;
     }
+
+    private record LatestDecision(ApprovalStatus status, String note) {}
 
     private record NormalizedProfile(
             String name,

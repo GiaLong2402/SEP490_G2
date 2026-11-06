@@ -10,8 +10,13 @@ export interface CustomerPriceRow extends CustomerPrice {
   listPrice: number;
   /** Giá đề xuất đang chờ duyệt; giá đang áp dụng vẫn là unitPrice. */
   pendingPrice: number | null;
-  /** Ghi chú duyệt/từ chối gần nhất — staff xem trên tab Giá riêng. */
+  /** Ghi chú lần quyết định gần nhất — staff xem trên tab Giá riêng. */
   decisionNote?: string | null;
+  /**
+   * Trạng thái lần quyết định gần nhất.
+   * Dùng để hiện “Đề xuất gần nhất: từ chối” khi owner reject đề xuất mới nhưng giá cũ vẫn approved.
+   */
+  lastDecision?: 'approved' | 'rejected' | null;
 }
 
 export interface CustomerOrderRow {

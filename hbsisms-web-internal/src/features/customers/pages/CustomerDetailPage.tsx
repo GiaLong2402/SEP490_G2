@@ -15,6 +15,20 @@ import type { AddressInput, CustomerOrderRow, CustomerPriceRow } from '../types'
 type Tab = 'address' | 'prices' | 'orders';
 const emptyAddress: AddressInput = { kind: 'shipping', recipientName: '', phone: '', line1: '', ward: '', district: '', province: 'Quảng Ninh', distanceKm: null, isDefault: false };
 
+/** Phân biệt note duyệt giá đang dùng vs lý do từ chối đề xuất mới trên cùng dòng approved. */
+function formatPriceDecisionNote(p: CustomerPriceRow): string {
+  if (p.status === 'pending') return '—';
+  const note = p.decisionNote?.trim() || '';
+  if (p.lastDecision === 'rejected') {
+    if (p.status === 'approved') {
+      return note ? `Đề xuất gần nhất: từ chối — ${note}` : 'Đề xuất gần nhất: từ chối';
+    }
+    return note || 'Từ chối';
+  }
+  if (p.lastDecision === 'approved') return note || '—';
+  return note || '—';
+}
+
 function toAddressInput(a: CustomerAddress): AddressInput {
   return {
     kind: a.kind,
@@ -100,11 +114,7 @@ export default function CustomerDetailPage() {
       key: 'note',
       header: 'Ghi chú duyệt',
       hideOnMobile: true,
-      cell: (p) => (
-        <span className="text-ink-muted">
-          {p.status === 'pending' || !p.decisionNote?.trim() ? '—' : p.decisionNote}
-        </span>
-      ),
+      cell: (p) => <span className="text-ink-muted">{formatPriceDecisionNote(p)}</span>,
     },
   ];
   const orderColumns: Column<CustomerOrderRow>[] = [
