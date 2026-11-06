@@ -24,7 +24,14 @@ export default function ProductDetailPage() {
     { key: 'case', header: 'Khay / thùng', align: 'right', cell: (v) => <span className="num">{v.packPerCase}</span> },
     { key: 'tiers', header: 'Bậc số lượng', hideOnMobile: true, cell: (v) => (v.tiers.length ? v.tiers.map((t) => `≥${t.minQtyKhay}: ${num(t.unitPrice)}`).join(' · ') : '—') },
     { key: 'avail', header: 'Khả dụng', align: 'right', cell: (v) => <span className="num">{num(v.available)}</span> },
-    { key: 'active', header: 'Trạng thái', cell: (v) => <Chip tone={v.isActive ? 'green' : 'neutral'}>{v.isActive ? 'Đang bán' : 'Ngừng bán'}</Chip> },
+    {
+      key: 'active',
+      header: 'TT quy cách',
+      cell: (v) => {
+        const selling = product.isActive && v.isActive;
+        return <Chip tone={selling ? 'green' : 'neutral'}>{selling ? 'Đang bán' : 'Ngừng bán'}</Chip>;
+      },
+    },
     { key: 'edit', header: '', align: 'right', cell: (v) => <IconButton label={`Sửa ${v.sku}`} onClick={() => setVariantModal({ variant: v })}><Pencil size={14} /></IconButton> },
   ];
 
@@ -76,7 +83,13 @@ export default function ProductDetailPage() {
         </Card>
       </div>
       <ProductFormModal open={editing} product={product} onClose={() => setEditing(false)} />
-      <VariantFormModal open={!!variantModal} productId={product.id} variant={variantModal?.variant} onClose={() => setVariantModal(null)} />
+      <VariantFormModal
+        open={!!variantModal}
+        productId={product.id}
+        productActive={product.isActive}
+        variant={variantModal?.variant}
+        onClose={() => setVariantModal(null)}
+      />
     </>
   );
 }
