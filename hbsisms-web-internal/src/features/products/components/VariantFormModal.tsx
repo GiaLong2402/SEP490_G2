@@ -9,7 +9,20 @@ import type { VariantInput, VariantWithTiers } from '../types';
 
 interface TierRow { minQtyKhay: string; unitPrice: string }
 
-export function VariantFormModal({ open, productId, variant, onClose }: { open: boolean; productId: ID; variant?: VariantWithTiers; onClose: () => void }) {
+export function VariantFormModal({
+  open,
+  productId,
+  productActive = true,
+  variant,
+  onClose,
+}: {
+  open: boolean;
+  productId: ID;
+  /** false khi sản phẩm đang ngừng kinh doanh — khóa checkbox quy cách. */
+  productActive?: boolean;
+  variant?: VariantWithTiers;
+  onClose: () => void;
+}) {
   const [sku, setSku] = useState('');
   const [packLabel, setPackLabel] = useState('');
   const [weight, setWeight] = useState('');
@@ -80,7 +93,17 @@ export function VariantFormModal({ open, productId, variant, onClose }: { open: 
         <Field label="Số khay / thùng" required error={touched && !(Number(packPerCase) >= 1) ? 'Từ 1 trở lên' : undefined}><Input type="number" min={1} value={packPerCase} onChange={(e) => setPackPerCase(e.target.value)} /></Field>
         <Field label="Mã vạch"><Input value={barcode} onChange={(e) => setBarcode(e.target.value)} /></Field>
       </div>
-      <div className="mt-3"><Checkbox label="Đang kinh doanh" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /></div>
+      <div className="mt-3">
+        <Checkbox
+          label="Quy cách đang bán"
+          checked={isActive}
+          disabled={!productActive}
+          onChange={(e) => setIsActive(e.target.checked)}
+        />
+        {!productActive && (
+          <p className="mt-1 text-small text-ink-faint">Sản phẩm đang ngừng kinh doanh.</p>
+        )}
+      </div>
       <div className="mt-4 border-t border-line pt-3">
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-h2">Bậc số lượng</h3>
