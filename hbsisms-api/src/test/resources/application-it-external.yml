@@ -1,0 +1,27 @@
+# IT không Docker: dùng Postgres từ .env (cùng DB_URL với app local).
+# Không dùng create-drop — tránh xóa schema DB shared/demo.
+# PG JDBC gửi JVM TimeZone lúc startup; Asia/Saigon bị remote PG từ chối → ép UTC.
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  datasource:
+    hikari:
+      data-source-properties:
+        options: -c TimeZone=UTC
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+app:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:test-only-secret-that-is-at-least-32-bytes-long}
+  seed:
+    admin-password: ${SEED_ADMIN_PASSWORD:Admin@12345}
+  inventory:
+    expire-job:
+      enabled: false

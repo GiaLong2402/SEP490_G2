@@ -121,13 +121,66 @@ cd hbsisms-api
 .\mvnw.cmd test "-Dtest=CategoryServiceTest,ProductServiceReadTest,CategoryDtoJacksonTest"
 ```
 
-### Format báo cáo Cường (điền vào bảng dưới sau khi pass)
+### Báo cáo Cường (Category + Product read) — đã làm
+
+**Lệnh chạy**
+
+```powershell
+cd hbsisms-api
+.\mvnw.cmd test "-Dtest=CategoryServiceTest,ProductServiceReadTest,CategoryDtoJacksonTest"
+```
+
+Kết quả gần nhất: **27 tests, 0 failures** (BUILD SUCCESS) — CategoryServiceTest **16** + ProductServiceReadTest **8** + CategoryDtoJacksonTest **3**.
+
+Nhánh: `feature/api-catalog-cuong-tests`.
+
+#### CategoryServiceTest
+
+File: `hbsisms-api/src/test/java/com/hbsisms/feature/catalog/CategoryServiceTest.java`
 
 | Test method | Hành vi | Pass/Fail |
 |-------------|---------|-----------|
-| … | … | … |
+| `create_rejectsDuplicateCode` | trùng mã → 409, không save | pass |
+| `create_trimsAndPersists` | trim code/name/description, lưu OK | pass |
+| `create_rejectsMissingParent` | parentId không có → 404 | pass |
+| `create_rejectsBlankCode` | code blank → 400 `"Vui lòng nhập mã loại"` | pass |
+| `create_rejectsBlankName` | name blank → 400 `"Vui lòng nhập tên loại"` | pass |
+| `create_withValidParent_persistsParentLink` | gắn parent hợp lệ, response có parentName | pass |
+| `create_persistsInactiveWhenRequested` | `isActive=false` được lưu | pass |
+| `update_rejectsSelfAsParent` | parent = self → 409 | pass |
+| `update_rejectsDescendantAsParent` | parent = con → 409 | pass |
+| `update_rejectsGrandchildAsParentOfRoot` | parent = cháu → 409 | pass |
+| `update_persistsAndReturnsProductCount` | đổi name/sort/active + productCount | pass |
+| `update_notFoundWhenCategoryMissing` | id không có → 404 | pass |
+| `update_rejectsDuplicateCodeOnOtherId` | mã trùng loại khác → 409 | pass |
+| `update_allowsSameCodeAsSelf` | giữ mã của chính nó → OK | pass |
+| `update_rejectsBlankCodeAndName` | blank code/name → 400 | pass |
+| `list_includesParentNameAndProductCount` | list có parentName + productCount | pass |
 
-*(Cường thay dòng `…` bằng danh sách method thật + kết quả Maven.)*
+#### ProductServiceReadTest
+
+File: `hbsisms-api/src/test/java/com/hbsisms/feature/catalog/ProductServiceReadTest.java`
+
+| Test method | Hành vi | Pass/Fail |
+|-------------|---------|-----------|
+| `list_noFilter_usesNameThenIdSort_andMapsEmptyVariants` | sort name/id ASC; variants rỗng | pass |
+| `list_blankQ_stillQueriesWithoutRequiringCategoryTree` | q whitespace → bỏ search; không load cây category | pass |
+| `list_qWithLikeWildcards_usesEscapedPatternContract` | `Strings.escapeLike` + list với `%`/`_` | pass |
+| `categoryIdsIncludingDescendants_includesSelfChildAndGrandchild` | cây root→child→grandchild | pass |
+| `list_withCategoryId_loadsCategoryTreeThenQueriesProducts` | categoryId → load cây rồi query | pass |
+| `get_returnsVariantsTiersAndAvailable` | detail kèm variant/tier/available | pass |
+| `get_missing_returns404` | 404 `"Không tìm thấy sản phẩm"` | pass |
+| `get_productWithoutVariants_returnsEmptyVariants` | không variant → `variants` rỗng | pass |
+
+#### CategoryDtoJacksonTest
+
+File: `hbsisms-api/src/test/java/com/hbsisms/feature/catalog/CategoryDtoJacksonTest.java` (giữ nguyên)
+
+| Test method | Hành vi | Pass/Fail |
+|-------------|---------|-----------|
+| `request_readsIsActiveFalse` | JSON `isActive:false` | pass |
+| `request_readsIsActiveTrue` | JSON `isActive:true` | pass |
+| `response_writesIsActiveNotActive` | serialize `isActive`, không ghi `active` | pass |
 
 Nhánh gợi ý: theo GIT.md (`feature/api-catalog-…` / test catalog).
 

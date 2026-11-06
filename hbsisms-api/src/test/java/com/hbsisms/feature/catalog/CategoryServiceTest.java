@@ -139,6 +139,132 @@ class CategoryServiceTest {
         assertThat(list.get(1).productCount()).isEqualTo(2L);
     }
 
+    @Test
+    void create_rejectsBlankCode() {
+        assertThatThrownBy(() -> categoryService.create(req("  ", "Chả mực", null, 1, true)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(api.getMessage()).isEqualTo("Vui lòng nhập mã loại");
+                });
+        verify(categoryRepository, never()).save(any());
+    }
+
+    @Test
+    void create_rejectsBlankName() {
+        assertThatThrownBy(() -> categoryService.create(req("cha-muc", "  ", null, 1, true)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(api.getMessage()).isEqualTo("Vui lòng nhập tên loại");
+                });
+        verify(categoryRepository, never()).save(any());
+    }
+
+    @Test
+    void create_withValidParent_persistsParentLink() {
+        Category parent = withId(newCategory("cha-hai-san", "Chả hải sản", null, true), 1L);
+        when(categoryRepository.existsByCodeIgnoreCase("cha-muc")).thenReturn(false);
+        when(categoryRepository.findWithParentById(1L)).thenReturn(Optional.of(parent));
+        when(categoryRepository.save(any(Category.class))).thenAnswer(inv -> withId(inv.getArgument(0), 2L));
+
+        CategoryResponse response = categoryService.create(req("cha-muc", "Chả mực", 1L, 2, true));
+
+        assertThat(response.id()).isEqualTo(2L);
+        assertThat(response.parentId()).isEqualTo(1L);
+        assertThat(response.parentName()).isEqualTo("Chả hải sản");
+    }
+
+    @Test
+    void create_persistsInactiveWhenRequested() {
+        when(categoryRepository.existsByCodeIgnoreCase("ngung")).thenReturn(false);
+        when(categoryRepository.save(any(Category.class))).thenAnswer(inv -> {
+            Category saved = inv.getArgument(0);
+            assertThat(saved.isActive()).isFalse();
+            return withId(saved, 3L);
+        });
+
+        CategoryResponse response = categoryService.create(req("ngung", "Ngừng", null, 1, false));
+
+        assertThat(response.isActive()).isFalse();
+    }
+
+    @Test
+    void update_notFoundWhenCategoryMissing() {
+        when(categoryRepository.findWithParentById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> categoryService.update(99L, req("x", "Y", null, 1, true)))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        verify(categoryRepository, never()).save(any());
+    }
+
+    @Test
+    void update_rejectsDuplicateCodeOnOtherId() {
+        Category existing = withId(newCategory("cha-muc", "Chả mực", null, true), 2L);
+        when(categoryRepository.findWithParentById(2L)).thenReturn(Optional.of(existing));
+        when(categoryRepository.existsByCodeIgnoreCaseAndIdNot("cha-tom", 2L)).thenReturn(true);
+
+        assertThatThrownBy(() -> categoryService.update(2L, req("cha-tom", "Chả mực", null, 1, true)))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+        verify(categoryRepository, never()).save(any());
+    }
+
+    @Test
+    void update_allowsSameCodeAsSelf() {
+        Category existing = withId(newCategory("cha-muc", "Chả mực", null, true), 2L);
+        when(categoryRepository.findWithParentById(2L)).thenReturn(Optional.of(existing));
+        when(categoryRepository.existsByCodeIgnoreCaseAndIdNot("cha-muc", 2L)).thenReturn(false);
+        when(categoryRepository.save(any(Category.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.countByCategory_Id(2L)).thenReturn(0L);
+
+        CategoryResponse response = categoryService.update(2L, req("cha-muc", "Chả mực mới", null, 3, true));
+
+        assertThat(response.code()).isEqualTo("cha-muc");
+        assertThat(response.name()).isEqualTo("Chả mực mới");
+    }
+
+    @Test
+    void update_rejectsBlankCodeAndName() {
+        Category existing = withId(newCategory("cha-muc", "Chả mực", null, true), 2L);
+        when(categoryRepository.findWithParentById(2L)).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> categoryService.update(2L, req("  ", "Chả mực", null, 1, true)))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+
+        assertThatThrownBy(() -> categoryService.update(2L, req("cha-muc", " ", null, 1, true)))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(categoryRepository, never()).save(any());
+    }
+
+    @Test
+    void update_rejectsGrandchildAsParentOfRoot() {
+        Category root = withId(newCategory("root", "Root", null, true), 1L);
+        Category child = withId(newCategory("child", "Child", root, true), 2L);
+        Category grandchild = withId(newCategory("grand", "Grand", child, true), 3L);
+        when(categoryRepository.findWithParentById(1L)).thenReturn(Optional.of(root));
+        when(categoryRepository.existsByCodeIgnoreCaseAndIdNot("root", 1L)).thenReturn(false);
+        when(categoryRepository.findAll(Sort.by("id"))).thenReturn(List.of(root, child, grandchild));
+
+        assertThatThrownBy(() -> categoryService.update(1L, req("root", "Root", 3L, 1, true)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(api.getMessage()).contains("Loại cha không được là chính nó");
+                });
+        verify(categoryRepository, never()).save(any());
+    }
+
     private static CategoryRequest req(
             String code, String name, Long parentId, int sortOrder, boolean active) {
         return new CategoryRequest(code, name, null, parentId, sortOrder, active);
