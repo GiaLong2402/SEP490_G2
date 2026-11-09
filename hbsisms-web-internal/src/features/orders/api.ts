@@ -9,4 +9,6 @@ export const ordersApi = {
   create: (body: OrderInput) => api.post<OrderDetail>('/orders', body),
   transition: (id: ID, state: OrderState) => api.post<void>(`/orders/${id}/transition`, { state }),
   cancel: (id: ID, reason: string) => api.post<void>(`/orders/${id}/cancel`, { reason }),
+  /** Hoàn tất bàn giao tại quầy — OUT đúng lô HOLD (idempotent). */
+  completeAtCounter: (id: ID) => api.post<OrderDetail>(`/orders/${id}/complete-at-counter`),
 };
