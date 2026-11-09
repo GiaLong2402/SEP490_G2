@@ -187,6 +187,61 @@ class ProductServiceReadTest {
         verify(stockRepository, never()).sumQtyAvailableByVariantId(any());
     }
 
+    @Test
+    void listPublic_masksAvailableAsBinary_andSkipsInactiveVariants() {
+        Category category = category(5L, "Hải sản", null);
+        Product product = product(10L, "P-TOM", "Tôm sú", category);
+        product.setPublished(true);
+        ProductVariant active = variant(20L, product, "TOM-05");
+        ProductVariant inactive = variant(21L, product, "TOM-OFF");
+        inactive.setActive(false);
+
+        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenAnswer(invocation -> {
+                    Pageable pageable = invocation.getArgument(1);
+                    return new PageImpl<>(List.of(product), pageable, 1);
+                });
+        when(productVariantRepository.findByProduct_IdOrderByIdAsc(10L)).thenReturn(List.of(active, inactive));
+        when(volumeTierRepository.findByVariant_IdOrderByMinQtyKhayAsc(20L)).thenReturn(List.of());
+        when(stockRepository.sumQtyAvailableByVariantId(20L)).thenReturn(42L);
+
+        PageResponse<ProductResponse> page = productService.listPublic(null, null, 1, 15);
+
+        assertThat(page.items()).hasSize(1);
+        assertThat(page.items().get(0).variants()).hasSize(1);
+        assertThat(page.items().get(0).variants().get(0).sku()).isEqualTo("TOM-05");
+        assertThat(page.items().get(0).variants().get(0).available()).isEqualTo(1L);
+    }
+
+    @Test
+    void getBySlugPublic_unpublished_returns404() {
+        Product product = product(10L, "P-DRAFT", "Nháp", null);
+        product.setSlug("nhap");
+        product.setPublished(false);
+        when(productRepository.findWithCategoryBySlugIgnoreCase("nhap")).thenReturn(Optional.of(product));
+
+        assertThatThrownBy(() -> productService.getBySlugPublic("nhap"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void getBySlugPublic_published_masksZeroStock() {
+        Product product = product(10L, "P-TOM", "Tôm sú", null);
+        product.setSlug("tom-su");
+        product.setPublished(true);
+        ProductVariant variant = variant(20L, product, "TOM-05");
+        when(productRepository.findWithCategoryBySlugIgnoreCase("tom-su")).thenReturn(Optional.of(product));
+        when(productVariantRepository.findByProduct_IdOrderByIdAsc(10L)).thenReturn(List.of(variant));
+        when(volumeTierRepository.findByVariant_IdOrderByMinQtyKhayAsc(20L)).thenReturn(List.of());
+        when(stockRepository.sumQtyAvailableByVariantId(20L)).thenReturn(0L);
+
+        ProductResponse response = productService.getBySlugPublic("tom-su");
+
+        assertThat(response.variants()).hasSize(1);
+        assertThat(response.variants().get(0).available()).isEqualTo(0L);
+    }
+
     private static Product product(Long id, String code, String name, Category category) {
         Product product = new Product();
         setId(product, id);
