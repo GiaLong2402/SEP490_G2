@@ -27,7 +27,18 @@ public class CategoryService {
     }
 
     public List<CategoryResponse> list() {
-        List<Category> categories = categoryRepository.findAll(LIST_SORT);
+        return mapCategories(categoryRepository.findAll(LIST_SORT));
+    }
+
+    /** B2C guest: only active categories for storefront filters. */
+    public List<CategoryResponse> listActive() {
+        List<Category> active = categoryRepository.findAll(LIST_SORT).stream()
+                .filter(Category::isActive)
+                .toList();
+        return mapCategories(active);
+    }
+
+    private List<CategoryResponse> mapCategories(List<Category> categories) {
         Map<Long, Long> productCounts = productCountsByCategoryId(categories);
         List<CategoryResponse> result = new ArrayList<>(categories.size());
         for (Category category : categories) {
