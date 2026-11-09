@@ -7,6 +7,9 @@ import com.hbsisms.feature.catalog.dto.ProductResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -33,16 +36,25 @@ public class ProductController {
             @RequestParam(required = false) Long categoryId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "" + PageRequests.DEFAULT_PAGE_SIZE) int pageSize) {
+        if (isGuest()) {
+            return productService.listPublic(q, categoryId, page, pageSize);
+        }
         return productService.list(q, categoryId, page, pageSize);
     }
 
     @GetMapping("/slug/{slug}")
     public ProductResponse getBySlug(@PathVariable String slug) {
+        if (isGuest()) {
+            return productService.getBySlugPublic(slug);
+        }
         return productService.getBySlug(slug);
     }
 
     @GetMapping("/{id}")
     public ProductResponse get(@PathVariable Long id) {
+        if (isGuest()) {
+            return productService.getPublic(id);
+        }
         return productService.get(id);
     }
 
@@ -57,5 +69,11 @@ public class ProductController {
     @PreAuthorize("hasAuthority('products')")
     public ProductResponse update(@PathVariable Long id, @Valid @RequestBody ProductRequest request) {
         return productService.update(id, request);
+    }
+
+    /** True when there is no JWT principal (AnonymousAuthenticationToken or null). */
+    private static boolean isGuest() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken;
     }
 }

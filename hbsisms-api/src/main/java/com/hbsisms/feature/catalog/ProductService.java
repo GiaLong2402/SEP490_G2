@@ -46,9 +46,25 @@ public class ProductService {
     }
 
     public PageResponse<ProductResponse> list(String q, Long categoryId, int page, int pageSize) {
+        return listInternal(q, categoryId, page, pageSize, false);
+    }
+
+    /**
+     * B2C guest catalog: only published + active products; stock exposed as binary availability.
+     */
+    public PageResponse<ProductResponse> listPublic(String q, Long categoryId, int page, int pageSize) {
+        return listInternal(q, categoryId, page, pageSize, true);
+    }
+
+    private PageResponse<ProductResponse> listInternal(
+            String q, Long categoryId, int page, int pageSize, boolean publicView) {
         List<Long> categoryIds = categoryId == null ? List.of() : categoryIdsIncludingDescendants(categoryId);
         Specification<Product> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+            if (publicView) {
+                predicates.add(cb.isTrue(root.get("published")));
+                predicates.add(cb.isTrue(root.get("active")));
+            }
             if (!categoryIds.isEmpty()) {
                 predicates.add(root.get("category").get("id").in(categoryIds));
             }
@@ -63,7 +79,7 @@ public class ProductService {
         };
         return PageResponse.from(productRepository
                 .findAll(spec, PageRequests.of(page, pageSize, LIST_SORT))
-                .map(this::toResponse));
+                .map(publicView ? this::toPublicResponse : this::toResponse));
     }
 
     /** Selected category plus every descendant in the category tree. */
@@ -99,14 +115,38 @@ public class ProductService {
     }
 
     public ProductResponse getBySlug(String slug) {
+        return toResponse(requireBySlug(slug));
+    }
+
+    /** B2C guest: 404 unless product is published and active. */
+    public ProductResponse getBySlugPublic(String slug) {
+        Product product = requireBySlug(slug);
+        assertPubliclyVisible(product);
+        return toPublicResponse(product);
+    }
+
+    public ProductResponse getPublic(Long id) {
+        Product product = productRepository
+                .findWithCategoryById(id)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy sản phẩm"));
+        assertPubliclyVisible(product);
+        return toPublicResponse(product);
+    }
+
+    private Product requireBySlug(String slug) {
         String normalized = Strings.trimToNull(slug);
         if (normalized == null) {
             throw ApiException.notFound("Không tìm thấy sản phẩm");
         }
-        Product product = productRepository
+        return productRepository
                 .findWithCategoryBySlugIgnoreCase(normalized)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy sản phẩm"));
-        return toResponse(product);
+    }
+
+    private static void assertPubliclyVisible(Product product) {
+        if (!product.isPublished() || !product.isActive()) {
+            throw ApiException.notFound("Không tìm thấy sản phẩm");
+        }
     }
 
     @Transactional
@@ -147,13 +187,27 @@ public class ProductService {
     }
 
     private ProductResponse toResponse(Product product) {
+        return toResponse(product, false);
+    }
+
+    private ProductResponse toPublicResponse(Product product) {
+        return toResponse(product, true);
+    }
+
+    private ProductResponse toResponse(Product product, boolean publicView) {
         List<ProductVariant> variants = product.getId() == null
                 ? List.of()
                 : productVariantRepository.findByProduct_IdOrderByIdAsc(product.getId());
-        List<VariantWithTiersResponse> variantRows = new ArrayList<>(variants.size());
+        List<VariantWithTiersResponse> variantRows = new ArrayList<>();
         for (ProductVariant variant : variants) {
+            if (publicView && !variant.isActive()) {
+                continue;
+            }
             List<VolumeTier> tiers = volumeTierRepository.findByVariant_IdOrderByMinQtyKhayAsc(variant.getId());
             long available = stockRepository.sumQtyAvailableByVariantId(variant.getId());
+            if (publicView) {
+                available = available > 0 ? 1L : 0L;
+            }
             variantRows.add(VariantWithTiersResponse.from(variant, tiers, available));
         }
         return ProductResponse.from(product, variantRows);
