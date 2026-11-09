@@ -16,6 +16,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.LocalDate;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -64,6 +65,28 @@ public class SalesRequest {
 
     @Column(columnDefinition = "text")
     private String note;
+
+    /**
+     * Kết quả khả thi do Sales ghi: {@code true}=Có, {@code false}=Không, {@code null}=chưa đánh giá.
+     */
+    @Column
+    private Boolean feasible;
+
+    /** SL (khay) Sales xác nhận đáp ứng được. */
+    @Column
+    private Integer fulfillableQty;
+
+    /** Phần thiếu (khay) so với nhu cầu khách. */
+    @Column
+    private Integer shortageQty;
+
+    /** Ngày dự kiến có hàng / giao được phần còn thiếu. */
+    @Column
+    private LocalDate expectedDate;
+
+    /** Lý do từ chối — bắt buộc khi {@link RequestStatus#REJECTED}. */
+    @Column(columnDefinition = "text")
+    private String rejectReason;
 
     @PrePersist
     void defaultReceivedAt() {

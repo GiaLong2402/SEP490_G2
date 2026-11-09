@@ -17,10 +17,11 @@ export const customerTypeMeta: Meta<CustomerType> = { b2c: { label: 'B2C', tone:
 export type SaleChannel = 'web' | 'phone' | 'zalo' | 'counter' | 'app';
 export const saleChannelLabels: Record<SaleChannel, string> = { web: 'Website', phone: 'Điện thoại', zalo: 'Zalo', counter: 'Tại quầy', app: 'Ứng dụng' };
 
-export type RequestStatus = 'new' | 'quoting' | 'ordered' | 'closed';
+export type RequestStatus = 'new' | 'quoting' | 'ordered' | 'rejected' | 'closed';
 export const requestStatusMeta: Meta<RequestStatus> = {
   new: { label: 'Mới', tone: 'blue' }, quoting: { label: 'Đang báo giá', tone: 'amber' },
-  ordered: { label: 'Đã lên đơn', tone: 'green' }, closed: { label: 'Đã đóng', tone: 'neutral' },
+  ordered: { label: 'Đã lên đơn', tone: 'green' }, rejected: { label: 'Từ chối', tone: 'red' },
+  closed: { label: 'Đã đóng', tone: 'neutral' },
 };
 
 export type QuoteStatus = 'draft' | 'sent' | 'approved' | 'rejected' | 'expired';

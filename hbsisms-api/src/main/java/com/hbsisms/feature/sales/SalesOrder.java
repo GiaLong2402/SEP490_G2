@@ -39,7 +39,8 @@ import org.hibernate.annotations.DynamicUpdate;
 @Table(name = "sales_order", indexes = {
         @Index(name = "idx_order_customer", columnList = "customer_id"),
         @Index(name = "idx_order_state", columnList = "state"),
-        @Index(name = "idx_order_type", columnList = "order_type")})
+        @Index(name = "idx_order_type", columnList = "order_type"),
+        @Index(name = "idx_order_hold_expires", columnList = "hold_expires_at")})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -128,6 +129,13 @@ public class SalesOrder extends AuditableEntity {
 
     @Column(nullable = false)
     private Instant placedAt;
+
+    /**
+     * Hết hạn giữ hàng (đơn online chờ thanh toán, mặc định +15 phút).
+     * {@code null} = không áp dụng (quầy / đã Paid / không hold).
+     */
+    @Column(name = "hold_expires_at")
+    private Instant holdExpiresAt;
 
     @Column(columnDefinition = "text")
     private String note;
