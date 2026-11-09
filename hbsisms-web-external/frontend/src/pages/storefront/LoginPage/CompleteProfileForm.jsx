@@ -25,8 +25,9 @@ export default function CompleteProfileForm({ phone, submitting, onComplete }) {
   const [isDefaultAddress, setIsDefaultAddress] = useState(true)
   const [error, setError] = useState('')
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
+    if (submitting) return
 
     if (!fullName.trim()) {
       setError('Vui lòng nhập họ và tên.')
@@ -38,17 +39,21 @@ export default function CompleteProfileForm({ phone, submitting, onComplete }) {
     }
 
     setError('')
-    onComplete({
-      fullName: fullName.trim(),
-      email: email.trim(),
-      address: {
-        street: street.trim(),
-        ward: ward.trim(),
-        district: district.trim(),
-        province: province.trim(),
-        isDefault: isDefaultAddress,
-      },
-    })
+    try {
+      await onComplete({
+        fullName: fullName.trim(),
+        email: email.trim(),
+        address: {
+          street: street.trim(),
+          ward: ward.trim(),
+          district: district.trim(),
+          province: province.trim(),
+          isDefault: isDefaultAddress,
+        },
+      })
+    } catch (err) {
+      setError(err?.message || 'Không tạo được tài khoản. Thử lại.')
+    }
   }
 
   return (

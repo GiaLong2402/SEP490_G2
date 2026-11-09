@@ -9,7 +9,7 @@ const AuthContext = createContext(null)
 /**
  * Auth nối Spring Boot JWT.
  * - login(username, password) → POST /auth/login
- * - loginDemo vẫn giữ cho luồng OTP/SĐT (chưa có API phone)
+ * - loginWithOtp / registerWithOtp → stub hoặc Firebase idToken
  */
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -34,25 +34,38 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false))
   }, [clearSession])
 
-  const login = useCallback(async ({ username, password }) => {
-    const result = await authApi.login({ username, password })
+  const applyLoginResult = useCallback((result) => {
     tokenStore.set(result.token)
-    setUser(mapApiUser(result.user))
-    return mapApiUser(result.user)
+    const mapped = mapApiUser(result.user)
+    setUser(mapped)
+    return mapped
   }, [])
 
-  const loginDemo = useCallback(({ name, role, phone, keepLoggedIn, email, address }) => {
-    tokenStore.set(null)
-    setUser({
-      id: `demo-${role}`,
-      name: name || 'Người dùng demo',
-      role,
-      phone: phone || null,
-      email: email || null,
-      address: address || null,
-      keepLoggedIn: Boolean(keepLoggedIn),
-    })
-  }, [])
+  const login = useCallback(
+    async ({ username, password }) => {
+      const result = await authApi.login({ username, password })
+      return applyLoginResult(result)
+    },
+    [applyLoginResult],
+  )
+
+  const loginWithOtp = useCallback(
+    async ({ idToken }) => {
+      const result = await authApi.loginOtp({ idToken })
+      return applyLoginResult(result)
+    },
+    [applyLoginResult],
+  )
+
+  const registerWithOtp = useCallback(
+    async ({ idToken, fullName, email }) => {
+      const body = { idToken, fullName }
+      if (email) body.email = email
+      const result = await authApi.registerOtp(body)
+      return applyLoginResult(result)
+    },
+    [applyLoginResult],
+  )
 
   const logout = useCallback(() => {
     if (tokenStore.get()) {
@@ -70,10 +83,11 @@ export function AuthProvider({ children }) {
       isLoggedIn,
       loading,
       login,
-      loginDemo,
+      loginWithOtp,
+      registerWithOtp,
       logout,
     }),
-    [user, isLoggedIn, loading, login, loginDemo, logout],
+    [user, isLoggedIn, loading, login, loginWithOtp, registerWithOtp, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

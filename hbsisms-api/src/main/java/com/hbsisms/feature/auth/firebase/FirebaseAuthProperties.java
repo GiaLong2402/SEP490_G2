@@ -7,6 +7,11 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties(prefix = "app.security.firebase")
 public record FirebaseAuthProperties(
-        /** {@code stub} for local/dev/tests; {@code firebase} reserved for Admin SDK (not wired yet). */
-        @NotBlank String mode) {
+        /** {@code stub} = local/dev/tests; {@code firebase} = Admin SDK verifyIdToken. */
+        @NotBlank String mode,
+        /**
+         * Path to Firebase service-account JSON.
+         * Empty → Application Default Credentials ({@code GOOGLE_APPLICATION_CREDENTIALS}).
+         */
+        String credentialsPath) {
 }

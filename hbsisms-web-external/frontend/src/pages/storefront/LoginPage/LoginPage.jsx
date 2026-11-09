@@ -1,12 +1,19 @@
 import { useId, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import Button from '@/components/ui/Button'
-import { ROLES, ROLE_LABELS } from '@/constants/roles'
+import { ROLE_LABELS } from '@/constants/roles'
 import { ROUTES } from '@/constants/routes'
 import { ApiError } from '@/api/client'
+import {
+  clearPhoneAuthSession,
+  confirmPhoneOtp,
+  mapFirebaseAuthError,
+  sendPhoneOtp,
+} from '@/auth/phoneAuth'
+import { buildStubIdToken } from '@/auth/stubIdToken'
 import { useAuth } from '@/context/AuthContext'
 import { getHomePathForRole } from '@/auth/roleUtils'
-import { isValidVietnamPhone, normalizeVietnamPhone } from '@/utils/phone'
+import { isValidVietnamPhone } from '@/utils/phone'
 import authSeaBoat from '@/assets/banners/auth-sea-boat.png'
 import waveTealSimple from '@/assets/decorations/wave-teal-simple.png'
 import PhoneLoginForm from './PhoneLoginForm'
@@ -28,7 +35,7 @@ const STEP = {
 }
 
 export default function LoginPage() {
-  const { login, loginDemo, isLoggedIn, role } = useAuth()
+  const { login, loginWithOtp, registerWithOtp, isLoggedIn, role } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const redirectTo = location.state?.from || null
@@ -43,6 +50,10 @@ export default function LoginPage() {
   const [keepLoggedIn, setKeepLoggedIn] = useState(false)
   const [error, setError] = useState('')
   const [status, setStatus] = useState('idle') // idle | sending | error
+  const [otpMode, setOtpMode] = useState('stub') // stub | firebase
+  const [otpSubmitting, setOtpSubmitting] = useState(false)
+  const [otpError, setOtpError] = useState('')
+  const [pendingIdToken, setPendingIdToken] = useState(null)
   const [creating, setCreating] = useState(false)
   const [infoMessage, setInfoMessage] = useState('')
 
@@ -59,20 +70,26 @@ export default function LoginPage() {
   }
 
   function goBackToPhone() {
+    clearPhoneAuthSession()
     setStep(STEP.PHONE)
     setStatus('idle')
     setError('')
+    setOtpError('')
+    setOtpSubmitting(false)
+    setPendingIdToken(null)
+    setOtpMode('stub')
     setCreating(false)
-    // Đợi render xong rồi focus ô SĐT
     window.setTimeout(() => focusPhoneInput(), 0)
   }
 
   function handleChangePhoneFinished(newPhoneDigits) {
+    clearPhoneAuthSession()
     setPhone(newPhoneDigits)
     setInfoMessage('Đã đổi số thành công. Hãy đăng nhập bằng số mới.')
     setStep(STEP.PHONE)
     setStatus('idle')
     setError('')
+    setPendingIdToken(null)
     window.setTimeout(() => focusPhoneInput(), 0)
   }
 
@@ -96,44 +113,74 @@ export default function LoginPage() {
     }
 
     setError('')
+    setOtpError('')
+    setPendingIdToken(null)
     setStatus('sending')
 
-    // Demo: giả lập gọi API gửi OTP — sau này thay bằng Spring Boot
     try {
-      await new Promise((resolve) => window.setTimeout(resolve, 700))
+      const { mode } = await sendPhoneOtp(phone)
+      setOtpMode(mode)
       setStatus('idle')
       setStep(STEP.OTP)
-    } catch {
+    } catch (err) {
       setStatus('error')
-      setError('Không gửi được mã. Vui lòng thử lại.')
+      setError(mapFirebaseAuthError(err) || 'Không gửi được mã. Vui lòng thử lại.')
+      clearPhoneAuthSession()
     }
   }
 
-  function handleOtpVerified() {
-    // Demo: luôn coi số mới → hiện khung tạo tài khoản (ảnh 3)
-    setStep(STEP.CREATE)
+  async function handleOtpVerified(code) {
+    setOtpError('')
+    setOtpSubmitting(true)
+    try {
+      const idToken = await confirmPhoneOtp(code, phone)
+      try {
+        const loggedIn = await loginWithOtp({ idToken })
+        clearPhoneAuthSession()
+        navigate(redirectTo || getHomePathForRole(loggedIn.role), { replace: true })
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 403) {
+          // Chưa có tài khoản — giữ idToken để register/otp
+          setPendingIdToken(idToken)
+          setStep(STEP.CREATE)
+          return
+        }
+        throw err
+      }
+    } catch (err) {
+      setOtpError(
+        err instanceof ApiError
+          ? err.message
+          : mapFirebaseAuthError(err) || 'Xác thực thất bại. Thử lại.',
+      )
+    } finally {
+      setOtpSubmitting(false)
+    }
   }
 
   function handleCreateAccount() {
-    // Sang form hoàn tất hồ sơ (chưa login ngay)
     setStep(STEP.PROFILE)
   }
 
   async function handleCompleteProfile(profile) {
     setCreating(true)
     try {
-      await new Promise((resolve) => window.setTimeout(resolve, 500))
-      const local = normalizeVietnamPhone(phone)
-      loginDemo({
-        name: profile.fullName,
-        role: ROLES.CUSTOMER,
-        phone: `+84${local}`,
-        keepLoggedIn,
-        // Demo: giữ địa chỉ/email trên user sau này khi nối API
-        email: profile.email || null,
-        address: profile.address,
+      let idToken = pendingIdToken
+      if (!idToken) {
+        idToken = otpMode === 'firebase' ? null : buildStubIdToken(phone)
+      }
+      if (!idToken) {
+        throw new Error('Phiên OTP hết hạn. Quay lại nhập số và nhận mã mới.')
+      }
+      const loggedIn = await registerWithOtp({
+        idToken,
+        fullName: profile.fullName,
+        email: profile.email || undefined,
       })
-      navigate(redirectTo || ROUTES.HOME, { replace: true })
+      clearPhoneAuthSession()
+      navigate(redirectTo || getHomePathForRole(loggedIn.role) || ROUTES.HOME, { replace: true })
+    } catch (err) {
+      throw err instanceof ApiError ? err : new Error(err?.message || 'Không tạo được tài khoản. Thử lại.')
     } finally {
       setCreating(false)
     }
@@ -178,9 +225,10 @@ export default function LoginPage() {
   return (
     <div className="auth-page">
       <img className="auth-page__bg" src={authSeaBoat} alt="" />
+      {/* Firebase invisible reCAPTCHA mount point */}
+      <div id="recaptcha-container" />
 
       <div className="auth-page__inner">
-        {/* Cột trái — brand */}
         <section className="auth-brand" aria-label="Giới thiệu Hòa Bình">
           <div className="auth-brand__smoke" aria-hidden="true" />
           <div className="auth-brand__content">
@@ -212,7 +260,6 @@ export default function LoginPage() {
           </div>
         </section>
 
-        {/* Cột phải — card đổi nội dung theo bước */}
         <section className="auth-card" aria-labelledby="auth-card-title">
           {step === STEP.PHONE && (
             <PhoneLoginForm
@@ -238,8 +285,11 @@ export default function LoginPage() {
           {step === STEP.OTP && (
             <OtpVerifyForm
               phone={phone}
+              otpMode={otpMode}
               onBackToPhone={goBackToPhone}
               onVerified={handleOtpVerified}
+              submitting={otpSubmitting}
+              error={otpError}
             />
           )}
 
@@ -272,7 +322,6 @@ export default function LoginPage() {
             />
           )}
 
-          {/* Đăng nhập nội bộ qua API — chỉ hiện ở bước nhập SĐT */}
           {step === STEP.PHONE && (
             <div className="auth-staff-demo">
               <button

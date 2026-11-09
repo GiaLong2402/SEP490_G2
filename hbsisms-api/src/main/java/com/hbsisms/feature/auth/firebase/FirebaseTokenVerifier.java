@@ -2,7 +2,7 @@ package com.hbsisms.feature.auth.firebase;
 
 import com.hbsisms.common.exception.ApiException;
 
-/** Verifies a Firebase Auth ID token. Local/dev uses a stub; production will use Firebase Admin SDK. */
+/** Verifies a Firebase Auth ID token (stub or Admin SDK depending on {@code app.security.firebase.mode}). */
 public interface FirebaseTokenVerifier {
 
     /**
