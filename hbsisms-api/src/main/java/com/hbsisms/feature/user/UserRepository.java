@@ -25,6 +25,9 @@ public interface UserRepository extends JpaRepository<AppUser, Long>, JpaSpecifi
 
     Optional<AppUser> findByPhone(String phone);
 
+    @EntityGraph(attributePaths = "role")
+    Optional<AppUser> findWithRoleByPhone(String phone);
+
     Optional<AppUser> findByEmployeeCode(String employeeCode);
 
     @Override
@@ -41,4 +44,9 @@ public interface UserRepository extends JpaRepository<AppUser, Long>, JpaSpecifi
     @Modifying
     @Query("update AppUser u set u.lastLoginAt = :at where u.id = :id")
     int updateLastLoginAt(@Param("id") Long id, @Param("at") Instant at);
+
+    @Transactional
+    @Modifying
+    @Query("update AppUser u set u.phoneVerifiedAt = :at where u.id = :id")
+    int updatePhoneVerifiedAt(@Param("id") Long id, @Param("at") Instant at);
 }
