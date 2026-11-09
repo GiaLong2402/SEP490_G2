@@ -213,6 +213,33 @@ export function ScaleIcon({ size = 22, className }) {
   )
 }
 
+export function PencilIcon({ size = 18, className }) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z" />
+      <path d="m13.5 6.5 4 4" />
+    </svg>
+  )
+}
+
+export function MailIcon({ size = 20, className }) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m4 7 8 6 8-6" />
+    </svg>
+  )
+}
+
+export function MapPinIcon({ size = 20, className }) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <path d="M12 21s7-5.2 7-11a7 7 0 1 0-14 0c0 5.8 7 11 7 11z" />
+      <circle cx="12" cy="10" r="2.5" />
+    </svg>
+  )
+}
+
 export function ClipboardIcon({ size = 22, className }) {
   return (
     <svg {...baseProps(size, className)}>

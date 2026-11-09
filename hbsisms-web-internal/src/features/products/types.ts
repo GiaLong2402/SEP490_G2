@@ -56,6 +56,8 @@ export interface CategoryInput {
   code: string;
   name: string;
   description: string | null;
+  /** Ảnh danh mục — Home storefront dùng cho loại cha. */
+  imageUrl: string | null;
   parentId: ID | null;
   sortOrder: number;
   isActive: boolean;

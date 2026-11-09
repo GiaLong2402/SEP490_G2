@@ -154,7 +154,7 @@
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: var(--color-brand);
+  background: linear-gradient(135deg, #2ccbe0 0%, #0e94b4 100%);
   color: var(--color-white);
   font-size: 11px;
   font-weight: 700;
@@ -183,55 +183,202 @@
 
 .site-account__menu {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 12px);
   right: 0;
-  z-index: 40;
-  min-width: 260px;
-  padding: 8px;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
+  z-index: 60;
+  width: 340px;
+  /* Cùng kiểu khung thông báo: viền xanh nhạt 2px, bo góc 14px */
+  border: 2px solid #bfdbe7;
+  border-radius: 16px;
   background: var(--color-white);
-  box-shadow: 0 12px 32px rgba(7, 54, 83, 0.14);
+  box-shadow: 0 18px 44px rgba(7, 54, 83, 0.14), 0 2px 6px rgba(7, 54, 83, 0.04);
+  animation: account-drop 0.2s ease;
+}
+
+/* Mũi nhọn nhỏ chỉ lên nút tài khoản (cùng màu nền phần đầu khung) */
+.site-account__menu::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  right: 18px;
+  width: 14px;
+  height: 14px;
+  border-top: 2px solid #bfdbe7;
+  border-left: 2px solid #bfdbe7;
+  background: #eefafd;
+  transform: rotate(45deg);
+}
+
+@keyframes account-drop {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Tiêu đề: avatar lớn + tên */
+/* Phần đầu: nền gradient xanh nhạt, sáng và mềm */
+.site-account__head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 20px 18px;
+  border-radius: 14px 14px 0 0;
+  background: linear-gradient(135deg, #e3f6fb 0%, #f6fcfe 100%);
+  border-bottom: 1px solid #e3eff4;
+}
+
+.site-account__head-avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border: 3px solid var(--color-white);
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2ccbe0 0%, #0e94b4 100%);
+  box-shadow: 0 4px 12px rgba(18, 184, 208, 0.35);
+  color: var(--color-white);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.site-account__head-text {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.site-account__head-text strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-brand);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.site-account__head-text span {
+  color: #4b7f95;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Danh sách mục */
+.site-account__list {
+  display: grid;
+  gap: 2px;
+  padding: 10px;
 }
 
 .site-account__item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   width: 100%;
-  min-height: 44px;
-  padding: 0 12px;
+  padding: 9px 10px;
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
   background: transparent;
-  color: var(--color-brand);
-  font-size: 14px;
-  font-weight: 500;
   text-align: left;
   cursor: pointer;
+  transition: background 0.18s ease;
 }
 
-.site-account__item:hover {
-  background: var(--color-surface);
+.site-account__item:hover,
+.site-account__item:focus-visible {
+  background: #f0fafd;
 }
 
-.site-account__item svg {
+/* Ô icon vuông bo góc nền xanh rất nhạt, icon giữ nguyên màu */
+.site-account__icon {
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #ebf8fb;
+  color: var(--color-accent);
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.site-account__item:hover .site-account__icon {
+  background: var(--color-white);
+  box-shadow: 0 2px 8px rgba(18, 184, 208, 0.18);
+  transform: scale(1.05);
+}
+
+.site-account__text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.site-account__text strong {
+  color: var(--color-brand);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.site-account__text span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--color-muted);
+  font-size: 13px;
 }
 
-.site-account__item--danger {
+/* Mũi tên bên phải: hiện rõ và trượt nhẹ khi rê chuột */
+.site-account__arrow {
+  flex-shrink: 0;
+  color: #b6cbd5;
+  transition: color 0.18s ease, transform 0.18s ease;
+}
+
+.site-account__item:hover .site-account__arrow {
+  color: var(--color-accent);
+  transform: translateX(3px);
+}
+
+/* Đăng xuất */
+.site-account__foot {
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--color-border);
+}
+
+.site-account__item--danger .site-account__icon {
+  background: #fff1f1;
   color: var(--color-danger);
 }
 
-.site-account__item--danger svg {
+.site-account__item--danger .site-account__text strong {
   color: var(--color-danger);
 }
 
-.site-account__divider {
-  height: 1px;
-  margin: 6px 8px;
-  background: var(--color-border);
+.site-account__item--danger:hover {
+  background: #fff6f6;
+}
+
+.site-account__item--danger:hover .site-account__icon {
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.15);
+}
+
+/* Mobile: khung rộng gần hết màn hình (giống chuông) */
+@media (max-width: 600px) {
+  .site-account__menu {
+    position: fixed;
+    top: 70px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+
+  .site-account__menu::before {
+    display: none;
+  }
 }
 
 .site-header__nav {

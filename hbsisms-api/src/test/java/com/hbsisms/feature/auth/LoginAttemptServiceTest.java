@@ -24,7 +24,7 @@ class LoginAttemptServiceTest {
         SecurityProperties properties = new SecurityProperties(
                 new SecurityProperties.Jwt("x".repeat(32), "test", Duration.ofHours(1)),
                 new SecurityProperties.Cors(List.of("http://localhost")),
-                new SecurityProperties.Login(3, Duration.ofMinutes(15)));
+                new SecurityProperties.Login(3, Duration.ofMinutes(15), true));
         service = new LoginAttemptService(properties, clock);
     }
 

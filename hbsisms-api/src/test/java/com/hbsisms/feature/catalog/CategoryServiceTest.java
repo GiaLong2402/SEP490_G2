@@ -54,7 +54,7 @@ class CategoryServiceTest {
         when(categoryRepository.save(any(Category.class))).thenAnswer(inv -> withId(inv.getArgument(0), 10L));
 
         CategoryResponse response = categoryService.create(
-                new CategoryRequest(" cha-muc ", " Chả mực ", "  mô tả ", null, 1, true));
+                new CategoryRequest(" cha-muc ", " Chả mực ", "  mô tả ", null, null, 1, true));
 
         assertThat(response.id()).isEqualTo(10L);
         assertThat(response.code()).isEqualTo("cha-muc");
@@ -267,7 +267,7 @@ class CategoryServiceTest {
 
     private static CategoryRequest req(
             String code, String name, Long parentId, int sortOrder, boolean active) {
-        return new CategoryRequest(code, name, null, parentId, sortOrder, active);
+        return new CategoryRequest(code, name, null, null, parentId, sortOrder, active);
     }
 
     private static Category newCategory(String code, String name, Category parent, boolean active) {

@@ -36,7 +36,7 @@ public class SecurityConfig {
                 .logout(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/auth/login", "/auth/login/otp").permitAll()
-                        // Storefront B2C: guest có thể xem danh mục / sản phẩm đã đăng.
+                        // Storefront B2C: guest xem danh mục / sản phẩm (POST/PUT vẫn cần quyền).
                         .requestMatchers(HttpMethod.GET, "/categories", "/categories/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/products", "/products/**").permitAll()
                         .requestMatchers("/actuator/health", "/error").permitAll()

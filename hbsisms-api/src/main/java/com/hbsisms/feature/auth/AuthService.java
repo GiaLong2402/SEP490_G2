@@ -8,9 +8,11 @@ import com.hbsisms.feature.auth.dto.LoginResponse;
 import com.hbsisms.feature.auth.dto.OtpLoginRequest;
 import com.hbsisms.feature.auth.firebase.FirebaseTokenVerifier;
 import com.hbsisms.feature.auth.firebase.VerifiedFirebaseToken;
+import com.hbsisms.feature.role.DefaultRoles;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
 import com.hbsisms.security.PasswordPolicy;
+import com.hbsisms.security.SecurityProperties;
 import com.hbsisms.security.TokenService;
 import com.hbsisms.security.TokenService.IssuedToken;
 import java.time.Clock;
@@ -31,6 +33,9 @@ public class AuthService {
     /** Staff/customer phone not provisioned yet — do not auto-create accounts on OTP login (task 1). */
     static final String ACCOUNT_NOT_PROVISIONED =
             "Tài khoản chưa được cấp. Liên hệ Admin để gắn số điện thoại đăng nhập";
+    /** Inter 2 task 4 — non-admin password login blocked when AUTH_PASSWORD_LOGIN_ALL_ROLES=false. */
+    static final String PASSWORD_LOGIN_USE_OTP =
+            "Tài khoản này phải đăng nhập bằng OTP. Dùng POST /auth/login/otp";
 
     private final UserRepository userRepository;
     private final AuthIdentityRepository authIdentityRepository;
@@ -38,6 +43,7 @@ public class AuthService {
     private final TokenService tokenService;
     private final LoginAttemptService loginAttempts;
     private final FirebaseTokenVerifier firebaseTokenVerifier;
+    private final SecurityProperties securityProperties;
     private final Clock clock;
     /** Compared against when the username does not exist, so response time does not reveal valid usernames. */
     private final String dummyHash;
@@ -49,6 +55,7 @@ public class AuthService {
             TokenService tokenService,
             LoginAttemptService loginAttempts,
             FirebaseTokenVerifier firebaseTokenVerifier,
+            SecurityProperties securityProperties,
             Clock clock) {
         this.userRepository = userRepository;
         this.authIdentityRepository = authIdentityRepository;
@@ -56,6 +63,7 @@ public class AuthService {
         this.tokenService = tokenService;
         this.loginAttempts = loginAttempts;
         this.firebaseTokenVerifier = firebaseTokenVerifier;
+        this.securityProperties = securityProperties;
         this.clock = clock;
         this.dummyHash = passwordEncoder.encode(UUID.randomUUID().toString());
     }
@@ -78,10 +86,21 @@ public class AuthService {
         if (!user.isActive()) {
             throw ApiException.forbidden(ACCOUNT_LOCKED);
         }
+        if (!passwordLoginAllowed(user)) {
+            throw ApiException.forbidden(PASSWORD_LOGIN_USE_OTP);
+        }
         loginAttempts.recordSuccess(username);
         userRepository.updateLastLoginAt(user.getId(), clock.instant());
         IssuedToken token = tokenService.issue(user);
         return new LoginResponse(token.value(), token.expiresAt(), CurrentUserResponse.from(user));
+    }
+
+    /** Production: only admin. Dev: every role when {@code AUTH_PASSWORD_LOGIN_ALL_ROLES=true}. */
+    private boolean passwordLoginAllowed(AppUser user) {
+        if (securityProperties.login().passwordLoginAllRoles()) {
+            return true;
+        }
+        return user.getRole() != null && DefaultRoles.ADMIN.equals(user.getRole().getCode());
     }
 
     /**

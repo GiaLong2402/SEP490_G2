@@ -64,6 +64,57 @@
   transform: translateX(3px);
 }
 
+.filter-sidebar__option--tree {
+  justify-content: space-between;
+  gap: 8px;
+  transform: none;
+}
+
+.filter-sidebar__option--tree:hover {
+  transform: none;
+}
+
+.filter-sidebar__option--tree.is-selected .filter-sidebar__option-main span {
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.filter-sidebar__option-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+  cursor: pointer;
+}
+
+.filter-sidebar__expand {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-brand);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.2s ease;
+}
+
+.filter-sidebar__expand:hover {
+  background: rgba(7, 54, 83, 0.08);
+}
+
+.filter-sidebar__expand.is-open {
+  transform: rotate(-180deg);
+}
+
+.filter-sidebar__children {
+  margin: 0 0 4px;
+}
+
 /* Ô tròn / ô vuông to hơn, màu xanh ngọc khi được chọn
    (accent-color là cách đơn giản nhất để đổi màu radio/checkbox) */
 .filter-sidebar__option input {

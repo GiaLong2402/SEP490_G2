@@ -16,6 +16,10 @@ public record CategoryRequest(
 
         String description,
 
+        /** Ảnh danh mục (home storefront dùng cho loại cha). */
+        @Size(max = 500, message = "URL ảnh tối đa 500 ký tự")
+        String imageUrl,
+
         Long parentId,
 
         @NotNull(message = "Thứ tự hiển thị là bắt buộc")
