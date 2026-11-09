@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/products")
-@PreAuthorize("hasAuthority('products')")
 public class ProductController {
 
     private final ProductService productService;
@@ -37,6 +36,11 @@ public class ProductController {
         return productService.list(q, categoryId, page, pageSize);
     }
 
+    @GetMapping("/slug/{slug}")
+    public ProductResponse getBySlug(@PathVariable String slug) {
+        return productService.getBySlug(slug);
+    }
+
     @GetMapping("/{id}")
     public ProductResponse get(@PathVariable Long id) {
         return productService.get(id);
@@ -44,11 +48,13 @@ public class ProductController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAuthority('products')")
     public ProductResponse create(@Valid @RequestBody ProductRequest request) {
         return productService.create(request);
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('products')")
     public ProductResponse update(@PathVariable Long id, @Valid @RequestBody ProductRequest request) {
         return productService.update(id, request);
     }

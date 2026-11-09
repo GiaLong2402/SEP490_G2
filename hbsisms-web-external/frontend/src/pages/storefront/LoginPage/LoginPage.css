@@ -916,13 +916,29 @@
   margin-top: 12px;
 }
 
-.auth-staff-demo__form select {
+.auth-staff-demo__form select,
+.auth-staff-demo__field input {
   min-height: 42px;
   padding: 0 12px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: white;
   color: var(--color-brand);
+  width: 100%;
+}
+
+.auth-staff-demo__field {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.auth-staff-demo__error {
+  margin: 0;
+  font-size: 13px;
+  color: #b42318;
 }
 
 .visually-hidden {

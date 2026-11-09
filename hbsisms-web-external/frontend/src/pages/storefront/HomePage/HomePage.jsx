@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import ProductCard from '@/components/storefront/ProductCard/ProductCard'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons/Icons'
 import { HOME_CATEGORIES } from '@/constants/categories'
 import { ROUTES } from '@/constants/routes'
+import { productsApi } from '@/api/products'
 import { DEMO_PRODUCTS } from '@/data/demoProducts'
 import { getDefaultVariant } from '@/utils/productFilters'
 
@@ -105,13 +106,29 @@ const FEATURED_TABS = [
 export default function HomePage() {
   const [slideIndex, setSlideIndex] = useState(0)
   const [tab, setTab] = useState('all')
+  const [catalog, setCatalog] = useState(DEMO_PRODUCTS)
+
+  useEffect(() => {
+    let cancelled = false
+    productsApi
+      .list({ page: 1, pageSize: 50 })
+      .then((data) => {
+        if (!cancelled && data.items.length > 0) setCatalog(data.items)
+      })
+      .catch(() => {
+        // Giữ DEMO_PRODUCTS nếu API chưa sẵn sàng
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const slide = HERO_SLIDES[slideIndex]
 
   const featured = useMemo(() => {
-    if (tab === 'all') return DEMO_PRODUCTS
-    return DEMO_PRODUCTS.filter((p) => p.categoryId === tab)
-  }, [tab])
+    if (tab === 'all') return catalog
+    return catalog.filter((p) => p.categoryId === tab)
+  }, [tab, catalog])
 
   function prevSlide() {
     setSlideIndex((i) => (i - 1 + HERO_SLIDES.length) % HERO_SLIDES.length)

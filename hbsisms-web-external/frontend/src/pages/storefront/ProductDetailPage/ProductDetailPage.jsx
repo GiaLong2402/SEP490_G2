@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Breadcrumbs from '@/components/storefront/Breadcrumbs/Breadcrumbs'
 import ProductCard from '@/components/storefront/ProductCard/ProductCard'
 import { ROUTES } from '@/constants/routes'
 import { useCart } from '@/context/CartContext'
+import { productsApi } from '@/api/products'
 import { findProductBySlug, getRelatedProducts } from '@/data/demoProducts'
 import { getDefaultVariant } from '@/utils/productFilters'
 import hoaPhuong from '@/assets/decorations/hoa-phuong.png'
@@ -13,27 +14,56 @@ import ProductBuyBox from './components/ProductBuyBox'
 import ProductInfoTabs from './components/ProductInfoTabs'
 import './ProductDetailPage.css'
 
-/**
- * TRANG CHI TIẾT SẢN PHẨM — /san-pham/:slug
- *
- * Trang này chỉ "ghép" các khối lại với nhau:
- *   ┌───────────────────┬────────────────────┐
- *   │ ProductGallery    │ ProductBuyBox      │
- *   │ (ảnh)             │ (giá, quy cách,    │
- *   │                   │  nút mua,          │
- *   │                   │  BulkOrderForm)    │
- *   ├───────────────────┴────────────────────┤
- *   │ ProductInfoTabs (thông tin / bảo quản) │
- *   ├────────────────────────────────────────┤
- *   │ Sản phẩm liên quan (ProductCard)       │
- *   └────────────────────────────────────────┘
- * Muốn sửa khối nào thì mở file tương ứng trong thư mục ./components
- */
 export default function ProductDetailPage() {
-  const { slug } = useParams() // lấy "tom-su-so-che" từ URL
-  const product = findProductBySlug(slug)
+  const { slug } = useParams()
+  const [product, setProduct] = useState(null)
+  const [related, setRelated] = useState([])
+  const [status, setStatus] = useState('loading') // loading | ready | missing
 
-  if (!product) {
+  useEffect(() => {
+    let cancelled = false
+    setStatus('loading')
+    ;(async () => {
+      try {
+        const apiProduct = await productsApi.getBySlug(slug)
+        if (cancelled) return
+        setProduct(apiProduct)
+        try {
+          const list = await productsApi.list({ page: 1, pageSize: 20 })
+          if (!cancelled) {
+            setRelated(list.items.filter((p) => p.id !== apiProduct.id).slice(0, 3))
+          }
+        } catch {
+          if (!cancelled) setRelated([])
+        }
+        setStatus('ready')
+      } catch {
+        if (cancelled) return
+        const demo = findProductBySlug(slug)
+        if (demo) {
+          setProduct(demo)
+          setRelated(getRelatedProducts(demo, 3))
+          setStatus('ready')
+        } else {
+          setProduct(null)
+          setStatus('missing')
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [slug])
+
+  if (status === 'loading') {
+    return (
+      <div className="container product-missing">
+        <p>Đang tải sản phẩm…</p>
+      </div>
+    )
+  }
+
+  if (status === 'missing' || !product) {
     return (
       <div className="container product-missing">
         <h1>Không tìm thấy sản phẩm</h1>
@@ -42,20 +72,15 @@ export default function ProductDetailPage() {
     )
   }
 
-  // key={product.id}: khi chuyển sang sản phẩm khác, React tạo lại trang từ đầu
-  // => quy cách, số lượng... tự reset về mặc định
-  return <ProductDetailContent key={product.id} product={product} />
+  return <ProductDetailContent key={product.id} product={product} related={related} />
 }
 
-function ProductDetailContent({ product }) {
+function ProductDetailContent({ product, related }) {
   const navigate = useNavigate()
   const { addToCart } = useCart()
 
-  // Quy cách đang chọn — đặt ở đây vì cả BuyBox lẫn InfoTabs đều cần
   const [variantId, setVariantId] = useState(product.defaultVariantId)
   const variant = product.variants.find((v) => v.id === variantId) || getDefaultVariant(product)
-
-  const related = getRelatedProducts(product, 3)
 
   function handleAddToCart(quantity) {
     addToCart({ product, variant, quantity })
@@ -68,7 +93,6 @@ function ProductDetailContent({ product }) {
 
   return (
     <div className="product-detail">
-      {/* Họa tiết trang trí */}
       <img className="decoration product-detail__flowers" src={hoaPhuong} alt="" aria-hidden="true" />
       <img className="decoration product-detail__wave-top" src={songLine} alt="" aria-hidden="true" />
       <img className="decoration product-detail__wave-mid" src={songLine} alt="" aria-hidden="true" />
@@ -83,7 +107,6 @@ function ProductDetailContent({ product }) {
           ]}
         />
 
-        {/* Ảnh | Mua hàng */}
         <div className="product-detail__top">
           <ProductGallery images={product.galleryImages} name={product.name} />
 
@@ -98,23 +121,24 @@ function ProductDetailContent({ product }) {
 
         <ProductInfoTabs product={product} variant={variant} />
 
-        {/* Sản phẩm liên quan */}
-        <section className="product-related">
-          <h2>Sản phẩm liên quan</h2>
-          <img className="product-related__wave" src={songLine} alt="" aria-hidden="true" />
+        {related.length > 0 ? (
+          <section className="product-related">
+            <h2>Sản phẩm liên quan</h2>
+            <img className="product-related__wave" src={songLine} alt="" aria-hidden="true" />
 
-          <div className="product-related__grid">
-            {related.map((item) => (
-              <ProductCard
-                key={item.id}
-                product={item}
-                variant={getDefaultVariant(item)}
-                cartVariant="full"
-                imageRatio="wide"
-              />
-            ))}
-          </div>
-        </section>
+            <div className="product-related__grid">
+              {related.map((item) => (
+                <ProductCard
+                  key={item.id}
+                  product={item}
+                  variant={getDefaultVariant(item)}
+                  cartVariant="full"
+                  imageRatio="wide"
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
     </div>
   )

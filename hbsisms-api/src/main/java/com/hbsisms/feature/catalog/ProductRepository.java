@@ -21,4 +21,9 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     @EntityGraph(attributePaths = "category")
     Optional<Product> findWithCategoryById(Long id);
+
+    @EntityGraph(attributePaths = "category")
+    Optional<Product> findWithCategoryBySlugIgnoreCase(String slug);
+
+    Optional<Product> findByCodeIgnoreCase(String code);
 }

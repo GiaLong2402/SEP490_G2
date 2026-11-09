@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import Button from '@/components/ui/Button'
 import { ROLES, ROLE_LABELS } from '@/constants/roles'
 import { ROUTES } from '@/constants/routes'
+import { ApiError } from '@/api/client'
 import { useAuth } from '@/context/AuthContext'
 import { getHomePathForRole } from '@/auth/roleUtils'
 import { isValidVietnamPhone, normalizeVietnamPhone } from '@/utils/phone'
@@ -26,16 +27,8 @@ const STEP = {
   CHANGE_PHONE: 'change-phone',
 }
 
-const DEMO_ACCOUNTS = [
-  { role: ROLES.CUSTOMER, name: 'Khách hàng Demo' },
-  { role: ROLES.SALE_STAFF, name: 'NV Bán hàng Demo' },
-  { role: ROLES.WAREHOUSE_STAFF, name: 'NV Kho Demo' },
-  { role: ROLES.OWNER, name: 'Chủ cửa hàng Demo' },
-  { role: ROLES.ADMIN, name: 'Admin Demo' },
-]
-
 export default function LoginPage() {
-  const { loginDemo, isLoggedIn, role } = useAuth()
+  const { login, loginDemo, isLoggedIn, role } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const redirectTo = location.state?.from || null
@@ -53,9 +46,12 @@ export default function LoginPage() {
   const [creating, setCreating] = useState(false)
   const [infoMessage, setInfoMessage] = useState('')
 
-  // --- demo nội bộ ---
+  // --- đăng nhập nội bộ qua API (username / password) ---
   const [showStaffDemo, setShowStaffDemo] = useState(false)
-  const [demoRole, setDemoRole] = useState(ROLES.CUSTOMER)
+  const [staffUsername, setStaffUsername] = useState('admin')
+  const [staffPassword, setStaffPassword] = useState('')
+  const [staffError, setStaffError] = useState('')
+  const [staffStatus, setStaffStatus] = useState('idle') // idle | sending | error
 
   function focusPhoneInput() {
     phoneInputRef.current?.focus()
@@ -143,11 +139,26 @@ export default function LoginPage() {
     }
   }
 
-  function handleStaffDemo(e) {
+  async function handleStaffLogin(e) {
     e.preventDefault()
-    const account = DEMO_ACCOUNTS.find((a) => a.role === demoRole)
-    loginDemo({ name: account.name, role: demoRole })
-    navigate(redirectTo || getHomePathForRole(demoRole), { replace: true })
+    if (staffStatus === 'sending') return
+    if (!staffUsername.trim() || !staffPassword) {
+      setStaffError('Nhập tên đăng nhập và mật khẩu.')
+      setStaffStatus('error')
+      return
+    }
+    setStaffError('')
+    setStaffStatus('sending')
+    try {
+      const loggedIn = await login({
+        username: staffUsername.trim(),
+        password: staffPassword,
+      })
+      navigate(redirectTo || getHomePathForRole(loggedIn.role), { replace: true })
+    } catch (err) {
+      setStaffStatus('error')
+      setStaffError(err instanceof ApiError ? err.message : 'Đăng nhập thất bại. Thử lại.')
+    }
   }
 
   if (isLoggedIn) {
@@ -261,7 +272,7 @@ export default function LoginPage() {
             />
           )}
 
-          {/* Demo nội bộ — chỉ hiện ở bước nhập SĐT */}
+          {/* Đăng nhập nội bộ qua API — chỉ hiện ở bước nhập SĐT */}
           {step === STEP.PHONE && (
             <div className="auth-staff-demo">
               <button
@@ -270,23 +281,38 @@ export default function LoginPage() {
                 aria-expanded={showStaffDemo}
                 onClick={() => setShowStaffDemo((v) => !v)}
               >
-                Đăng nhập nội bộ (demo role)
+                Đăng nhập nội bộ (API)
               </button>
               {showStaffDemo && (
-                <form className="auth-staff-demo__form" onSubmit={handleStaffDemo}>
-                  <select
-                    value={demoRole}
-                    onChange={(e) => setDemoRole(e.target.value)}
-                    aria-label="Chọn role demo"
-                  >
-                    {DEMO_ACCOUNTS.map((account) => (
-                      <option key={account.role} value={account.role}>
-                        {ROLE_LABELS[account.role]}
-                      </option>
-                    ))}
-                  </select>
-                  <Button type="submit" variant="navy" fullWidth>
-                    Vào khu vực theo role
+                <form className="auth-staff-demo__form" onSubmit={handleStaffLogin}>
+                  <label className="auth-staff-demo__field">
+                    <span>Tên đăng nhập</span>
+                    <input
+                      value={staffUsername}
+                      onChange={(e) => {
+                        setStaffUsername(e.target.value)
+                        if (staffError) setStaffError('')
+                      }}
+                      autoComplete="username"
+                      placeholder="admin"
+                    />
+                  </label>
+                  <label className="auth-staff-demo__field">
+                    <span>Mật khẩu</span>
+                    <input
+                      type="password"
+                      value={staffPassword}
+                      onChange={(e) => {
+                        setStaffPassword(e.target.value)
+                        if (staffError) setStaffError('')
+                      }}
+                      autoComplete="current-password"
+                      placeholder="SEED_ADMIN_PASSWORD"
+                    />
+                  </label>
+                  {staffError ? <p className="auth-staff-demo__error">{staffError}</p> : null}
+                  <Button type="submit" variant="navy" fullWidth disabled={staffStatus === 'sending'}>
+                    {staffStatus === 'sending' ? 'Đang đăng nhập…' : 'Đăng nhập API'}
                   </Button>
                 </form>
               )}
