@@ -21,7 +21,9 @@ public record UserRequest(
         @Size(max = 160, message = "Email tối đa 160 ký tự")
         String email,
 
-        @Pattern(regexp = "^$|^[0-9+ ().-]{6,20}$", message = "Số điện thoại không hợp lệ")
+        /** Required for staff OTP login (Inter 2 task 3). Accepts 0xxxxxxxxx or +84…; service normalizes. */
+        @NotBlank(message = "Số điện thoại là bắt buộc")
+        @Pattern(regexp = "^\\s*[0-9+ ().-]{9,20}\\s*$", message = "Số điện thoại không hợp lệ")
         String phone,
 
         @NotNull(message = "Vai trò là bắt buộc")
