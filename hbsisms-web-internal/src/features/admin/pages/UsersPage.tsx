@@ -27,6 +27,7 @@ export default function UsersPage() {
   const errors = {
     username: !form.username.trim() ? 'Bắt buộc' : undefined,
     fullName: !form.fullName.trim() ? 'Bắt buộc' : undefined,
+    phone: !form.phone.trim() ? 'Bắt buộc (đăng nhập OTP)' : undefined,
     roleId: !form.roleId ? 'Vui lòng chọn vai trò' : undefined,
     password: isNew && form.password.length < 8 ? 'Tối thiểu 8 ký tự' : undefined,
   };
@@ -75,7 +76,7 @@ export default function UsersPage() {
           <Field label="Họ tên" required error={touched ? errors.fullName : undefined}><Input value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} /></Field>
           <Field label="Tên đăng nhập" required error={touched ? errors.username : undefined}><Input autoComplete="off" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} /></Field>
           <Field label="Email"><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
-          <Field label="Điện thoại"><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
+          <Field label="Điện thoại" required hint="SĐT đăng nhập OTP" error={touched ? errors.phone : undefined}><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="090xxxxxxx" /></Field>
           <Field label="Vai trò" required error={touched ? errors.roleId : undefined}>
             <Select value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })}>
               <option value="">Chọn...</option>

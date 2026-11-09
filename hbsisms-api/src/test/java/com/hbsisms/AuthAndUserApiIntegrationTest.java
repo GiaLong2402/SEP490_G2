@@ -209,13 +209,19 @@ class AuthAndUserApiIntegrationTest {
         body.put("username", username);
         body.put("fullName", "Nguyễn Thị Mai");
         body.put("email", null);
-        body.put("phone", null);
+        // Staff phone required (OTP login) — stable per username so create→update keeps the same number.
+        body.put("phone", phoneFor(username));
         body.put("roleId", SALES_ROLE_ID);
         body.put("position", "Kinh doanh");
         body.put("employeeCode", null);
         body.put("isActive", active);
         body.put("password", password);
         return body;
+    }
+
+    private static String phoneFor(String username) {
+        int n = Math.floorMod(username.hashCode(), 100_000_000);
+        return "09" + String.format("%08d", n);
     }
 
     private ResultActions postJson(String path, Object body, String token) throws Exception {
