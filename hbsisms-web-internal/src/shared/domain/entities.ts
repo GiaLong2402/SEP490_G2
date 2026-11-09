@@ -90,6 +90,12 @@ export interface DamageReport {
 export interface SalesRequest {
   id: ID; code: string; customerId: ID | null; customerName: string | null; channel: E.SaleChannel; summary: string | null;
   status: E.RequestStatus; receivedAt: ISODateTime; handledBy: ID | null; note: string | null;
+  /** Kết quả khả thi: true=Có, false=Không, null=chưa đánh giá. */
+  feasible: boolean | null;
+  fulfillableQty: number | null;
+  shortageQty: number | null;
+  expectedDate: ISODate | null;
+  rejectReason: string | null;
 }
 
 export interface Quote {
@@ -106,12 +112,13 @@ export interface SalesOrder {
   paymentMethod: E.PaymentMethod; paymentTermDays: number; paymentStatus: E.PaymentStatus; allocationStatus: E.AllocationStatus;
   fulfillmentMethod: E.FulfillmentMethod; shipAddressId: ID | null; state: E.OrderState; subtotal: number; discountTotal: number;
   shippingFee: number; total: number; voucherCode: string | null; isOverLimit: boolean; overLimitAmount: number; approvedBy: ID | null;
-  placedBy: ID | null; placedAt: ISODateTime; note: string | null; createdAt: ISODateTime; updatedAt: ISODateTime;
+  placedBy: ID | null; placedAt: ISODateTime; holdExpiresAt: ISODateTime | null; note: string | null;
+  createdAt: ISODateTime; updatedAt: ISODateTime;
 }
 
 export interface SalesOrderLine {
   id: ID; orderId: ID; variantId: ID; unit: E.SellUnit; qty: number; qtyKhay: number; unitPrice: number; discountPct: number;
-  lineTotal: number; priceBasis: E.PriceBasis; note: string | null;
+  lineTotal: number; priceBasis: E.PriceBasis; outstandingQty: number; note: string | null;
 }
 
 export interface DeliveryItem { orderLineId: ID; qtyKhay: number }

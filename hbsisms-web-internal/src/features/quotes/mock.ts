@@ -76,11 +76,11 @@ mock('POST', '/quotes/:id/convert', ({ params, userId }) => {
   const order: (typeof db.orders)[number] = {
     id, code: nextCode('SO-2026', db.orders), customerId: customer.id, orderType: isB2b ? 'b2b' : 'retail', channel: 'phone', sourceQuoteId: quote.id, paymentMethod, paymentTermDays: isB2b ? customer.netDays : 0,
     paymentStatus: 'unpaid', allocationStatus: 'none', fulfillmentMethod: address?.inDeliveryRadius === false ? 'partner_delivery' : 'shop_delivery', shipAddressId: address?.id ?? null, state: 'pending', subtotal: quote.subtotal, discountTotal: 0, shippingFee: 0,
-    total: quote.total, voucherCode: null, ...check, approvedBy: null, placedBy: userId, placedAt: now, note: `Từ báo giá ${quote.code}`, createdAt: now, updatedAt: now,
+    total: quote.total, voucherCode: null, ...check, approvedBy: null, placedBy: userId, placedAt: now, holdExpiresAt: null, note: `Từ báo giá ${quote.code}`, createdAt: now, updatedAt: now,
   };
   db.orders.push(order);
   // Giữ nguyên giá đã chốt trong báo giá (snapshot), nguồn giá = 'quote'.
-  db.quoteLines.filter((l) => l.quoteId === quote.id).forEach((l) => db.orderLines.push({ id: nextId(db.orderLines), orderId: id, variantId: l.variantId, unit: l.unit, qty: l.qty, qtyKhay: l.qtyKhay, unitPrice: l.unitPrice, discountPct: 0, lineTotal: l.lineTotal, priceBasis: 'quote', note: null }));
+  db.quoteLines.filter((l) => l.quoteId === quote.id).forEach((l) => db.orderLines.push({ id: nextId(db.orderLines), orderId: id, variantId: l.variantId, unit: l.unit, qty: l.qty, qtyKhay: l.qtyKhay, unitPrice: l.unitPrice, discountPct: 0, lineTotal: l.lineTotal, priceBasis: 'quote', outstandingQty: 0, note: null }));
   addOrderEvent(id, 'created', `Tạo đơn từ báo giá ${quote.code}`, userId);
   const request = db.requests.find((r) => r.id === quote.requestId);
   if (request) request.status = 'ordered';

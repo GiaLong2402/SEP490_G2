@@ -67,6 +67,13 @@ public class SalesOrderLine {
     @Column(nullable = false, length = 20)
     private PriceBasis priceBasis = PriceBasis.LIST;
 
+    /**
+     * SL (khay) còn thiếu chưa phân bổ — ghi khi tạo đơn từ yêu cầu đã khả thi
+     * nhưng tồn hiện tại chưa đủ.
+     */
+    @Column(name = "outstanding_qty", nullable = false)
+    private int outstandingQty;
+
     @Column(length = 200)
     private String note;
 }

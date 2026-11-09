@@ -219,8 +219,14 @@ function seed(): MockDb {
     [2, 'zalo', 'Hỏi giá 200 khay chả mực cho tháng 12', 'quoting', -1], [3, 'phone', 'Đặt định kỳ cho tiệc cuối năm, 150 khay mực', 'new', 0],
     [null, 'web', 'Khách lẻ hỏi giao hàng về Cẩm Phả', 'new', 0], [5, 'zalo', 'Bổ sung chả tôm cho quầy đông lạnh', 'ordered', -3],
     [4, 'phone', 'Báo giá chả tôm khay 0,5kg', 'closed', -9], [1, 'counter', 'Hỏi trước quà Tết cho công ty', 'new', -1],
+    [3, 'phone', 'Xin 500 khay mực giao gấp trong ngày — Sales từ chối', 'rejected', -2],
   ] as const).map(([customerId, channel, summary, status, day], i) => ({
     id: i + 1, code: `YC-${pad(i + 1, 4)}`, customerId, customerName: customerId ? customers[customerId - 1].name : 'Khách vãng lai', channel, summary, status, receivedAt: isoTime(day, 9 + i), handledBy: status === 'new' ? null : 3, note: null,
+    feasible: status === 'rejected' ? false : null,
+    fulfillableQty: null,
+    shortageQty: status === 'rejected' ? 500 : null,
+    expectedDate: null,
+    rejectReason: status === 'rejected' ? 'Không đủ hàng và không kịp nhập trong ngày' : null,
   }));
 
   const quotes: T.Quote[] = [];
@@ -274,7 +280,7 @@ function seed(): MockDb {
       const unitPrice = special?.unitPrice ?? tier?.unitPrice ?? v.listPrice;
       const lineTotal = unitPrice * qty;
       subtotal += lineTotal;
-      orderLines.push({ id: orderLines.length + 1, orderId: id, variantId, unit: 'pack', qty, qtyKhay: qty, unitPrice, discountPct: 0, lineTotal, priceBasis: special ? 'customer' : tier ? 'tier' : 'list', note: null });
+      orderLines.push({ id: orderLines.length + 1, orderId: id, variantId, unit: 'pack', qty, qtyKhay: qty, unitPrice, discountPct: 0, lineTotal, priceBasis: special ? 'customer' : tier ? 'tier' : 'list', outstandingQty: 0, note: null });
     });
     const addressId = addresses.find((a) => a.customerId === customerId)?.id ?? null;
     const distance = addresses.find((a) => a.id === addressId)?.distanceKm ?? 0;
@@ -288,7 +294,7 @@ function seed(): MockDb {
       id, code: `SO-2026-${pad(id, 4)}`, customerId, orderType: isB2b ? 'b2b' : channel === 'web' ? 'online_b2c' : 'retail', channel, sourceQuoteId: null, paymentMethod: method,
       paymentTermDays: c.netDays, paymentStatus, allocationStatus: allocation, fulfillmentMethod: channel === 'counter' ? 'pickup' : distance <= 8 ? 'shop_delivery' : 'partner_delivery',
       shipAddressId: addressId, state, subtotal, discountTotal: 0, shippingFee, total, voucherCode: null, isOverLimit: false, overLimitAmount: 0, approvedBy: null,
-      placedBy: channel === 'web' ? null : 3, placedAt, note: null, createdAt: placedAt, updatedAt: placedAt,
+      placedBy: channel === 'web' ? null : 3, placedAt, holdExpiresAt: null, note: null, createdAt: placedAt, updatedAt: placedAt,
     });
     pushEvent(id, 'created', channel === 'web' ? 'Khách đặt đơn trên website' : 'Tạo đơn', placedAt, channel === 'web' ? null : 3);
     if (state !== 'pending' && state !== 'cancelled') pushEvent(id, 'confirmed', 'Xác nhận đơn, giữ hàng theo FEFO', placedAt);

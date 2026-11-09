@@ -8,6 +8,8 @@ public enum RequestStatus {
     NEW,
     QUOTING,
     ORDERED,
+    /** Sales từ chối yêu cầu (lý do bắt buộc trên {@code rejectReason}). */
+    REJECTED,
     CLOSED;
 
     @JsonValue

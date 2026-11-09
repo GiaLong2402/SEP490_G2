@@ -67,10 +67,10 @@ mock('POST', '/orders', ({ body, userId }) => {
     id, code: nextCode('SO-2026', db.orders), customerId: customer.id, orderType: body.orderType, channel: body.channel, sourceQuoteId: body.sourceQuoteId ?? null, paymentMethod: body.paymentMethod,
     paymentTermDays: body.paymentMethod === 'credit_net' ? customer.netDays : 0, paymentStatus: 'unpaid' as const, allocationStatus: 'none' as const, fulfillmentMethod: body.fulfillmentMethod,
     shipAddressId: body.shipAddressId, state: 'pending' as const, subtotal, discountTotal: Number(body.discountTotal ?? 0), shippingFee: Number(body.shippingFee ?? 0), total, voucherCode: body.voucherCode,
-    ...creditCheck(customer.id, body.paymentMethod, total), approvedBy: null, placedBy: userId, placedAt: now, note: body.note, createdAt: now, updatedAt: now,
+    ...creditCheck(customer.id, body.paymentMethod, total), approvedBy: null, placedBy: userId, placedAt: now, holdExpiresAt: null, note: body.note, createdAt: now, updatedAt: now,
   };
   db.orders.push(order);
-  priced.forEach(({ available: _available, ...line }) => db.orderLines.push({ ...line, id: nextId(db.orderLines), orderId: id, note: null }));
+  priced.forEach(({ available: _available, ...line }) => db.orderLines.push({ ...line, id: nextId(db.orderLines), orderId: id, outstandingQty: 0, note: null }));
   addOrderEvent(id, 'created', 'Tạo đơn', userId);
   audit(userId, 'create', 'sales_order', id, { total });
   if (order.isOverLimit) {

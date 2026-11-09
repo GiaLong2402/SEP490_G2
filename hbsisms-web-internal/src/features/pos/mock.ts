@@ -47,12 +47,12 @@ mock('POST', '/pos/checkout', ({ body, userId }) => {
   const order: (typeof db.orders)[number] = {
     id, code: nextCode('SO-2026', db.orders), customerId: customer?.id ?? null, orderType: customer?.customerType === 'b2b' ? 'b2b' : 'retail', channel: 'counter', sourceQuoteId: null, paymentMethod: body.paymentMethod,
     paymentTermDays: isCredit ? customer!.netDays : 0, paymentStatus: isCredit ? 'debt' : 'paid', allocationStatus: 'full', fulfillmentMethod: 'pickup', shipAddressId: null, state: 'completed', subtotal, discountTotal, shippingFee: 0, total,
-    voucherCode: null, isOverLimit: false, overLimitAmount: 0, approvedBy: null, placedBy: cashier.id, placedAt: now, note: body.note, createdAt: now, updatedAt: now,
+    voucherCode: null, isOverLimit: false, overLimitAmount: 0, approvedBy: null, placedBy: cashier.id, placedAt: now, holdExpiresAt: null, note: body.note, createdAt: now, updatedAt: now,
   };
   db.orders.push(order);
   priced.forEach(({ available: _available, ...line }) => {
     const lineId = nextId(db.orderLines);
-    db.orderLines.push({ ...line, id: lineId, orderId: id, note: null });
+    db.orderLines.push({ ...line, id: lineId, orderId: id, outstandingQty: 0, note: null });
     sellFefo(line.variantId, line.qtyKhay, lineId, cashier.id);
   });
   addOrderEvent(id, 'completed', 'Bán tại quầy (POS), khách nhận hàng ngay', cashier.id);
