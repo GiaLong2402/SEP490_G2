@@ -57,6 +57,9 @@ app:
     login:
       max-failed-attempts: 5
       lock-duration: PT15M
+    firebase:
+      # stub = local/dev/tests (token "stub.<uid>.<phone>"); firebase = Admin SDK (wired later)
+      mode: ${FIREBASE_AUTH_MODE:stub}
   seed:
     # Creates the default roles and, if no user exists yet, an 'admin' account with this password.
     admin-password: ${SEED_ADMIN_PASSWORD:}

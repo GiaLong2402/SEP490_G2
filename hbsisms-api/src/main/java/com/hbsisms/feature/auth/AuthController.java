@@ -3,6 +3,7 @@ package com.hbsisms.feature.auth;
 import com.hbsisms.feature.auth.dto.CurrentUserResponse;
 import com.hbsisms.feature.auth.dto.LoginRequest;
 import com.hbsisms.feature.auth.dto.LoginResponse;
+import com.hbsisms.feature.auth.dto.OtpLoginRequest;
 import com.hbsisms.security.AuthUser;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -26,6 +27,12 @@ public class AuthController {
     @PostMapping("/login")
     public LoginResponse login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request);
+    }
+
+    /** Inter 2 task 1 — phone OTP via Firebase ID token (stub verifier in local/dev). */
+    @PostMapping("/login/otp")
+    public LoginResponse loginOtp(@Valid @RequestBody OtpLoginRequest request) {
+        return authService.loginWithOtp(request);
     }
 
     @GetMapping("/me")

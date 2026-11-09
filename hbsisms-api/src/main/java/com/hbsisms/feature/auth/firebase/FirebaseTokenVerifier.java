@@ -1,0 +1,12 @@
+package com.hbsisms.feature.auth.firebase;
+
+import com.hbsisms.common.exception.ApiException;
+
+/** Verifies a Firebase Auth ID token. Local/dev uses a stub; production will use Firebase Admin SDK. */
+public interface FirebaseTokenVerifier {
+
+    /**
+     * @throws ApiException 400 when the token is missing, malformed, expired, or not trusted
+     */
+    VerifiedFirebaseToken verify(String idToken);
+}

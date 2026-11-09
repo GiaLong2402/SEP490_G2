@@ -43,11 +43,15 @@ class AuthServiceTest {
     @Mock
     private UserRepository userRepository;
     @Mock
+    private AuthIdentityRepository authIdentityRepository;
+    @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
     private TokenService tokenService;
     @Mock
     private LoginAttemptService loginAttempts;
+    @Mock
+    private com.hbsisms.feature.auth.firebase.FirebaseTokenVerifier firebaseTokenVerifier;
 
     private AuthService authService;
     private AppUser user;
@@ -56,7 +60,13 @@ class AuthServiceTest {
     void setUp() {
         when(passwordEncoder.encode(anyString())).thenReturn("dummy-hash");
         when(loginAttempts.tryAcquire(anyString())).thenReturn(true);
-        authService = new AuthService(userRepository, passwordEncoder, tokenService, loginAttempts,
+        authService = new AuthService(
+                userRepository,
+                authIdentityRepository,
+                passwordEncoder,
+                tokenService,
+                loginAttempts,
+                firebaseTokenVerifier,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         AppRole role = TestFixtures.role((short) 1, "sales", Set.of(Permission.ORDERS));
         user = TestFixtures.staff(7L, "mai", role);
