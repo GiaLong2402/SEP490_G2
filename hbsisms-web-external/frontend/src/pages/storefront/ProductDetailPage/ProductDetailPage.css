@@ -24,6 +24,16 @@
   padding: 64px 0;
 }
 
+.product-missing h1 {
+  margin-bottom: 8px;
+  color: var(--color-brand);
+}
+
+.product-missing p {
+  margin-bottom: 16px;
+  color: var(--color-muted);
+}
+
 /* Bố cục 2 cột: ảnh (nhỏ hơn) | khung mua hàng */
 .product-detail__top {
   display: grid;

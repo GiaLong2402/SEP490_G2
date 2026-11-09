@@ -129,7 +129,17 @@ class PublicCatalogApiIntegrationTest {
         mockMvc.perform(get("/products/slug/" + slug))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(code))
-                .andExpect(jsonPath("$.isPublished").value(true));
+                .andExpect(jsonPath("$.isPublished").value(true))
+                .andExpect(jsonPath("$.variants").isArray())
+                .andExpect(jsonPath("$.variants.length()").value(1))
+                .andExpect(jsonPath("$.variants[0].listPrice").exists())
+                .andExpect(jsonPath("$.variants[0].available", lessThanOrEqualTo(1)));
+    }
+
+    @Test
+    void guestGetBySlug_unknown_returns404() throws Exception {
+        mockMvc.perform(get("/products/slug/khong-ton-tai-xyz-999"))
+                .andExpect(status().isNotFound());
     }
 
     @Test
