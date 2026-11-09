@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import BrandLogo from '@/components/brand/BrandLogo'
+import { MapPinIcon } from '@/components/icons/Icons'
 import songThuyen from '@/assets/decorations/song-thuyen.png'
 import hoaPhuong from '@/assets/decorations/hoa-phuong.png'
 import songLine from '@/assets/decorations/song-line.png'
@@ -31,10 +32,7 @@ export default function Footer() {
             Hải sản sơ chế, đóng khay tiện lợi cho bữa ăn gia đình.
           </p>
           <p className="site-footer__place">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M12 21s7-5.5 7-12a7 7 0 1 0-14 0c0 6.5 7 12 7 12z" />
-              <circle cx="12" cy="9" r="2.5" />
-            </svg>
+            <MapPinIcon size={14} />
             Hải Phòng
           </p>
         </div>

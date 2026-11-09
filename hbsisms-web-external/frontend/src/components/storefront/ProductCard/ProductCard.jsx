@@ -34,7 +34,10 @@ export default function ProductCard({
   const slug = product.slug
   const name = product.name
   const image = product.primaryImageUrl
-  const inStock = product.inStock !== false && (displayVariant?.stock ?? 1) > 0
+  const inStock =
+    product.inStock !== false &&
+    displayVariant?.inStock !== false &&
+    (displayVariant?.stock == null || displayVariant.stock > 0)
 
   function handleAdd(e) {
     e.preventDefault()

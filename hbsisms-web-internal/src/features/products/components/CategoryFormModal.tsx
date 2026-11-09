@@ -6,7 +6,7 @@ import { CategoryTreePicker } from './CategoryFilterMenu';
 import { useCategories } from '../hooks';
 import type { CategoryListItem } from '../types';
 
-const empty = { code: '', name: '', description: '', parentId: '', sortOrder: '0', isActive: true };
+const empty = { code: '', name: '', description: '', imageUrl: '', parentId: '', sortOrder: '0', isActive: true };
 
 /** "Chả hải sản" -> "cha-hai-san", cùng kiểu với mã trong seed.sql. */
 const toCode = (name: string) =>
@@ -46,6 +46,7 @@ export function CategoryFormModal({
             code: category.code,
             name: category.name,
             description: category.description ?? '',
+            imageUrl: category.imageUrl ?? '',
             parentId: category.parentId ? String(category.parentId) : '',
             sortOrder: String(category.sortOrder),
             isActive: category.isActive,
@@ -70,14 +71,22 @@ export function CategoryFormModal({
     return categories.filter((c) => !blocked.has(c.id));
   }, [categories, category]);
 
+  const isParentCategory = !form.parentId;
   const errors = {
     name: !form.name.trim() ? 'Vui lòng nhập tên loại' : undefined,
     code: !form.code.trim() ? 'Vui lòng nhập mã loại' : undefined,
   };
 
   const save = useAction(
-    (body: { code: string; name: string; description: string | null; parentId: number | null; sortOrder: number; isActive: boolean }) =>
-      category ? productsApi.updateCategory(category.id, body) : productsApi.createCategory(body),
+    (body: {
+      code: string;
+      name: string;
+      description: string | null;
+      imageUrl: string | null;
+      parentId: number | null;
+      sortOrder: number;
+      isActive: boolean;
+    }) => (category ? productsApi.updateCategory(category.id, body) : productsApi.createCategory(body)),
     {
       success: (saved) => `Đã lưu loại ${saved.name}`,
       onDone: (saved) => {
@@ -100,6 +109,8 @@ export function CategoryFormModal({
           code: form.code.trim(),
           name: form.name.trim(),
           description: form.description.trim() || null,
+          // Chỉ loại cha dùng ảnh Home; loại con luôn xóa imageUrl.
+          imageUrl: isParentCategory ? form.imageUrl.trim() || null : null,
           parentId: form.parentId ? Number(form.parentId) : null,
           sortOrder: Number(form.sortOrder),
           isActive: form.isActive,
@@ -122,6 +133,8 @@ export function CategoryFormModal({
               setForm({
                 ...form,
                 parentId,
+                // Loại con không dùng ảnh danh mục.
+                imageUrl: parentId ? '' : form.imageUrl,
                 // Thêm mới: đổi loại cha thì gợi lại thứ tự cuối nhóm mới (ẩn trên UI).
                 sortOrder: category ? form.sortOrder : nextSortOrder(categories, parentId ? Number(parentId) : null),
               });
@@ -151,6 +164,28 @@ export function CategoryFormModal({
         <Field label="Mô tả" className="sm:col-span-2">
           <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </Field>
+        {isParentCategory ? (
+          <>
+            <Field
+              label="Ảnh danh mục (URL)"
+              className="sm:col-span-2"
+              hint="Hiện ở Home (Bạn đang tìm món gì?). Dán URL — chưa upload file."
+            >
+              <Input
+                placeholder="Dán URL ảnh danh mục vào đây"
+                value={form.imageUrl}
+                onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
+              />
+            </Field>
+            {form.imageUrl.trim() ? (
+              <img
+                src={form.imageUrl.trim()}
+                alt=""
+                className="h-24 w-24 rounded border border-line object-cover sm:col-span-2"
+              />
+            ) : null}
+          </>
+        ) : null}
       </div>
     </Modal>
   );

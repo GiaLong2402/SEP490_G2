@@ -69,6 +69,7 @@ public class CategoryService {
         category.setCode(code);
         category.setName(name);
         category.setDescription(Strings.trimToNull(request.description()));
+        category.setImageUrl(Strings.trimToNull(request.imageUrl()));
         category.setParent(parent);
         category.setSortOrder(request.sortOrder());
         category.setActive(Boolean.TRUE.equals(request.isActive()));

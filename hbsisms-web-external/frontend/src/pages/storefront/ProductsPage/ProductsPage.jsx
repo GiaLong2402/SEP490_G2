@@ -5,11 +5,15 @@ import Pagination from '@/components/storefront/Pagination/Pagination'
 import ProductCard from '@/components/storefront/ProductCard/ProductCard'
 import Button from '@/components/ui/Button'
 import { SlidersIcon } from '@/components/icons/Icons'
-import { CATEGORIES, PRICE_RANGES, SORT_OPTIONS } from '@/constants/categories'
-import { ROUTES } from '@/constants/routes'
 import { getListingItemsFromProducts } from '@/api/mapProduct'
-import { productsApi } from '@/api/products'
-import { getListingItems } from '@/data/demoProducts'
+import { PRICE_RANGES, SORT_OPTIONS } from '@/constants/categories'
+import { ROUTES } from '@/constants/routes'
+import { useStoreCatalog } from '@/hooks/useStoreCatalog'
+import {
+  catId,
+  findCategory,
+  getCategoryAndDescendantIds,
+} from '@/utils/categoryTree'
 import FilterSidebar from './components/FilterSidebar'
 import './ProductsPage.css'
 
@@ -22,11 +26,14 @@ const DEFAULT_FILTERS = {
   sortId: 'default',
 }
 
-function filterAndSortItems(items, filters) {
+function filterAndSortItems(items, filters, categories) {
   let result = [...items]
 
   if (filters.categoryId !== 'all') {
-    result = result.filter((item) => item.categoryId === filters.categoryId)
+    const allowed = getCategoryAndDescendantIds(categories, filters.categoryId)
+    if (allowed) {
+      result = result.filter((item) => allowed.has(catId(item.categoryId)))
+    }
   }
 
   if (filters.priceRangeId !== 'all') {
@@ -45,7 +52,7 @@ function filterAndSortItems(items, filters) {
   } else if (filters.sortId === 'price-desc') {
     result.sort((a, b) => b.variant.price - a.variant.price)
   } else if (filters.sortId === 'newest') {
-    result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    result.sort((a, b) => String(b.productId).localeCompare(String(a.productId)))
   }
 
   return result
@@ -54,47 +61,33 @@ function filterAndSortItems(items, filters) {
 export default function ProductsPage() {
   const [searchParams] = useSearchParams()
   const categoryFromUrl = searchParams.get('category')
-  const isValidCategory = CATEGORIES.some((c) => c.id === categoryFromUrl)
 
-  const startFilters = {
-    ...DEFAULT_FILTERS,
-    categoryId: isValidCategory ? categoryFromUrl : 'all',
-  }
+  const { products, categories, loading, error } = useStoreCatalog({ pageSize: 100 })
 
-  const [draft, setDraft] = useState(startFilters)
-  const [applied, setApplied] = useState(startFilters)
+  const startCategory =
+    categoryFromUrl && findCategory(categories, categoryFromUrl)
+      ? catId(categoryFromUrl)
+      : 'all'
+
+  const [draft, setDraft] = useState({ ...DEFAULT_FILTERS, categoryId: startCategory })
+  const [applied, setApplied] = useState({ ...DEFAULT_FILTERS, categoryId: startCategory })
   const [page, setPage] = useState(1)
   const [filterOpen, setFilterOpen] = useState(false)
-  const [allItems, setAllItems] = useState(() => getListingItems())
-  const [loadState, setLoadState] = useState('loading') // loading | api | demo | error
-  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const data = await productsApi.list({ page: 1, pageSize: 100 })
-        if (cancelled) return
-        if (data.items.length > 0) {
-          setAllItems(getListingItemsFromProducts(data.items))
-          setLoadState('api')
-        } else {
-          setAllItems(getListingItems())
-          setLoadState('demo')
-        }
-      } catch (err) {
-        if (cancelled) return
-        setAllItems(getListingItems())
-        setLoadState('error')
-        setLoadError(err?.message || 'Không tải được API, đang dùng dữ liệu demo.')
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+    if (!categoryFromUrl) return
+    if (!findCategory(categories, categoryFromUrl)) return
+    const id = catId(categoryFromUrl)
+    setDraft((prev) => ({ ...prev, categoryId: id }))
+    setApplied((prev) => ({ ...prev, categoryId: id }))
+    setPage(1)
+  }, [categoryFromUrl, categories])
 
-  const filtered = useMemo(() => filterAndSortItems(allItems, applied), [allItems, applied])
+  const allItems = useMemo(() => getListingItemsFromProducts(products), [products])
+  const filtered = useMemo(
+    () => filterAndSortItems(allItems, applied, categories),
+    [allItems, applied, categories],
+  )
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const currentPage = Math.min(page, totalPages)
@@ -106,7 +99,7 @@ export default function ProductsPage() {
   const title =
     applied.categoryId === 'all'
       ? 'Tất cả sản phẩm'
-      : CATEGORIES.find((c) => c.id === applied.categoryId)?.name || 'Sản phẩm'
+      : findCategory(categories, applied.categoryId)?.name || 'Sản phẩm'
 
   function updateDraft(change) {
     setDraft((prev) => ({ ...prev, ...change }))
@@ -148,6 +141,7 @@ export default function ProductsPage() {
 
         <FilterSidebar
           draft={draft}
+          categories={categories}
           onChange={updateDraft}
           onApply={applyFilters}
           onClear={clearFilters}
@@ -160,10 +154,12 @@ export default function ProductsPage() {
             <div>
               <h2>{title}</h2>
               <p>
-                Hiển thị {showingFrom}–{showingTo} trong {filtered.length} sản phẩm
-                {loadState === 'api' ? ' · API' : loadState === 'demo' || loadState === 'error' ? ' · demo' : ''}
+                {loading
+                  ? 'Đang tải sản phẩm từ hệ thống…'
+                  : error
+                    ? `Không tải được dữ liệu: ${error.message}`
+                    : `Hiển thị ${showingFrom}–${showingTo} trong ${filtered.length} sản phẩm`}
               </p>
-              {loadError ? <p className="products-load-error">{loadError}</p> : null}
             </div>
 
             <label className="products-sort">
@@ -178,11 +174,11 @@ export default function ProductsPage() {
             </label>
           </div>
 
-          {loadState === 'loading' ? (
+          {loading ? (
             <div className="products-empty">
               <p>Đang tải sản phẩm…</p>
             </div>
-          ) : pageItems.length === 0 ? (
+          ) : !error && pageItems.length === 0 ? (
             <div className="products-empty">
               <p>Không có sản phẩm phù hợp.</p>
               <Button variant="link" onClick={clearFilters}>

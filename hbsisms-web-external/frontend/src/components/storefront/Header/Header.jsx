@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import BrandLogo from '@/components/brand/BrandLogo'
 import {
@@ -8,7 +8,7 @@ import {
   SearchIcon,
   UserIcon,
 } from '@/components/icons/Icons'
-import { HOME_CATEGORIES } from '@/constants/categories'
+import { api } from '@/api/client'
 import { ROUTES } from '@/constants/routes'
 import { useAuth } from '@/context/AuthContext'
 import { useCart } from '@/context/CartContext'
@@ -28,6 +28,22 @@ const NAV_ITEMS = [
 export default function Header() {
   const { user, isLoggedIn, role, logout } = useAuth()
   const { totalItems } = useCart()
+  const [navCategories, setNavCategories] = useState([])
+
+  useEffect(() => {
+    const ac = new AbortController()
+    api
+      .get('/categories', null, ac.signal)
+      .then((rows) => {
+        const list = (rows || [])
+          .filter((c) => c.parentId == null)
+          .map((c) => ({ id: String(c.id), name: c.name }))
+        setNavCategories(list)
+      })
+      .catch(() => setNavCategories([]))
+    return () => ac.abort()
+  }, [])
+
   const navigate = useNavigate()
   const [keyword, setKeyword] = useState('')
   const [openCategories, setOpenCategories] = useState(false)
@@ -107,17 +123,25 @@ export default function Header() {
 
             {openCategories && (
               <ul id="category-menu" className="site-cats__menu" role="menu">
-                {HOME_CATEGORIES.map((cat) => (
-                  <li key={cat.id} role="none">
-                    <Link
-                      role="menuitem"
-                      to={`${ROUTES.PRODUCTS}?category=${cat.id}`}
-                      onClick={() => setOpenCategories(false)}
-                    >
-                      {cat.name}
+                {navCategories.length === 0 ? (
+                  <li role="none">
+                    <Link role="menuitem" to={ROUTES.PRODUCTS} onClick={() => setOpenCategories(false)}>
+                      Tất cả sản phẩm
                     </Link>
                   </li>
-                ))}
+                ) : (
+                  navCategories.map((cat) => (
+                    <li key={cat.id} role="none">
+                      <Link
+                        role="menuitem"
+                        to={`${ROUTES.PRODUCTS}?category=${cat.id}`}
+                        onClick={() => setOpenCategories(false)}
+                      >
+                        {cat.name}
+                      </Link>
+                    </li>
+                  ))
+                )}
               </ul>
             )}
           </div>

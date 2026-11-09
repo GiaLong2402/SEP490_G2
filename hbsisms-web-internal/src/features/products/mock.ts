@@ -45,7 +45,13 @@ function validateCategory(body: any, id: number | null) {
 mock('GET', '/categories', () => db.categories.map(toCategoryItem).sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'vi')));
 
 mock('POST', '/categories', ({ body, userId }) => {
-  const row = { ...body, code: validateCategory(body, null), name: body.name.trim(), id: nextId(db.categories), imageUrl: null };
+  const row = {
+    ...body,
+    code: validateCategory(body, null),
+    name: body.name.trim(),
+    id: nextId(db.categories),
+    imageUrl: typeof body.imageUrl === 'string' && body.imageUrl.trim() ? body.imageUrl.trim() : null,
+  };
   db.categories.push(row);
   audit(userId, 'create', 'category', row.id);
   return toCategoryItem(row);
@@ -54,7 +60,11 @@ mock('POST', '/categories', ({ body, userId }) => {
 mock('PUT', '/categories/:id', ({ params, body, userId }) => {
   const row = db.categories.find((c) => c.id === Number(params.id));
   if (!row) fail(404, 'Không tìm thấy loại sản phẩm');
-  Object.assign(row, body, { code: validateCategory(body, row.id), name: body.name.trim() });
+  Object.assign(row, body, {
+    code: validateCategory(body, row.id),
+    name: body.name.trim(),
+    imageUrl: typeof body.imageUrl === 'string' && body.imageUrl.trim() ? body.imageUrl.trim() : null,
+  });
   audit(userId, 'update', 'category', row.id);
   return toCategoryItem(row);
 });
