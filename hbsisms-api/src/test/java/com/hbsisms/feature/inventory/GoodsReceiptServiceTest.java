@@ -52,6 +52,8 @@ class GoodsReceiptServiceTest {
     private StockService stockService;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private com.hbsisms.feature.sales.OrderAllocationService orderAllocationService;
 
     private GoodsReceiptService service;
     private ProductVariant variant;
@@ -67,7 +69,8 @@ class GoodsReceiptServiceTest {
                 lotRepository,
                 rawMaterialRepository,
                 stockService,
-                userRepository);
+                userRepository,
+                orderAllocationService);
         Product product = new Product();
         product.setName("Tôm");
         variant = new ProductVariant();
@@ -121,6 +124,7 @@ class GoodsReceiptServiceTest {
         assertThat(captor.getValue().refType()).isEqualTo("goods_receipt");
         assertThat(captor.getValue().refId()).isEqualTo(5L);
         assertThat(captor.getValue().qty()).isEqualTo(15);
+        verify(orderAllocationService).allocateOutstandingAfterReceipt(1L);
     }
 
     @Test

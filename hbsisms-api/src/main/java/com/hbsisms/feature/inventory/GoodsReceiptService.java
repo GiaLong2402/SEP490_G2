@@ -11,6 +11,7 @@ import com.hbsisms.feature.inventory.dto.GoodsReceiptRequest;
 import com.hbsisms.feature.inventory.dto.GoodsReceiptResponse;
 import com.hbsisms.feature.inventory.dto.RawReceiptLineRequest;
 import com.hbsisms.feature.inventory.dto.ReceiptItemResponse;
+import com.hbsisms.feature.sales.OrderAllocationService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
 import jakarta.persistence.criteria.Predicate;
@@ -48,6 +49,7 @@ public class GoodsReceiptService {
     private final RawMaterialRepository rawMaterialRepository;
     private final StockService stockService;
     private final UserRepository userRepository;
+    private final OrderAllocationService orderAllocationService;
 
     public GoodsReceiptService(
             GoodsReceiptRepository goodsReceiptRepository,
@@ -57,7 +59,8 @@ public class GoodsReceiptService {
             LotRepository lotRepository,
             RawMaterialRepository rawMaterialRepository,
             StockService stockService,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            OrderAllocationService orderAllocationService) {
         this.goodsReceiptRepository = goodsReceiptRepository;
         this.stockLedgerRepository = stockLedgerRepository;
         this.productVariantRepository = productVariantRepository;
@@ -66,6 +69,7 @@ public class GoodsReceiptService {
         this.rawMaterialRepository = rawMaterialRepository;
         this.stockService = stockService;
         this.userRepository = userRepository;
+        this.orderAllocationService = orderAllocationService;
     }
 
     public PageResponse<GoodsReceiptResponse> list(String q, String receiptType, int page, int pageSize) {
@@ -114,6 +118,8 @@ public class GoodsReceiptService {
         List<ReceiptItemResponse> items;
         if (request.receiptType() == ReceiptType.FINISHED) {
             items = receiveFinished(receipt, request.finishedLines(), actorId);
+            // Inter 2: sau nhập TP — phân bổ ưu tiên đơn Paid còn outstanding.
+            orderAllocationService.allocateOutstandingAfterReceipt(actorId);
         } else if (request.receiptType() == ReceiptType.RAW) {
             items = receiveRaw(request.rawLines());
             // Persist a human summary so list can show lines until a raw-line table exists.

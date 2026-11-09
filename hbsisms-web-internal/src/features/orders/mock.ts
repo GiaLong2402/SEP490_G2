@@ -98,6 +98,22 @@ mock('POST', '/orders/:id/transition', ({ params, body, userId }) => {
   order.updatedAt = new Date().toISOString();
 });
 
+mock('POST', '/orders/:id/complete-at-counter', ({ params, userId }) => {
+  const order = db.orders.find((o) => o.id === Number(params.id));
+  if (!order) fail(404, 'Không tìm thấy đơn hàng');
+  if (order.state === 'cancelled') fail(409, 'Đơn đã hủy');
+  if (order.state === 'completed') return toDetail(order.id);
+  if (!['paid', 'debt'].includes(order.paymentStatus)) fail(409, 'Đơn chưa thu đủ — không thể hoàn tất tại quầy');
+  if (order.state === 'pending') fail(409, 'Đơn chưa xác nhận');
+  order.state = 'completed';
+  order.allocationStatus = 'full';
+  order.holdExpiresAt = null;
+  order.updatedAt = new Date().toISOString();
+  addOrderEvent(order.id, 'completed_counter', 'Hoàn tất quầy — xuất kho theo hold', userId);
+  audit(userId, 'complete_counter', 'sales_order', order.id, {});
+  return toDetail(order.id);
+});
+
 mock('POST', '/orders/:id/cancel', ({ params, body, userId }) => {
   const order = db.orders.find((o) => o.id === Number(params.id));
   if (!order) fail(404, 'Không tìm thấy đơn hàng');

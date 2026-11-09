@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CreditCard, RotateCcw, Truck, XCircle } from 'lucide-react';
+import { CheckCircle2, CreditCard, RotateCcw, Truck, XCircle } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/features/auth';
 import { DeliveryFormModal, DeliveryStateActions } from '@/features/deliveries';
@@ -26,6 +26,7 @@ export default function OrderDetailPage() {
 
   const transition = useAction((state: OrderState) => ordersApi.transition(id, state), { success: 'Đã cập nhật trạng thái đơn' });
   const cancel = useAction((reason: string) => ordersApi.cancel(id, reason), { success: 'Đã hủy đơn, hàng giữ đã được nhả', onDone: () => setCancelling(false) });
+  const completeCounter = useAction(() => ordersApi.completeAtCounter(id), { success: 'Đã hoàn tất bàn giao tại quầy' });
 
   if (isLoading) return <PageLoading />;
   if (error || !order) return <ErrorState error={error} onRetry={refetch} />;
@@ -37,6 +38,12 @@ export default function OrderDetailPage() {
   // Đơn công nợ chỉ phát sinh nợ sau khi xác nhận, nên chưa thể thu trước đó.
   const canPay = can('debt') && order.state !== 'cancelled' && outstanding > 0 && !(order.paymentMethod === 'credit_net' && order.state === 'pending');
   const canReturn = ['delivered', 'completed', 'partial'].includes(order.state);
+  const canCompleteCounter =
+    order.fulfillmentMethod === 'pickup'
+    && order.state !== 'completed'
+    && order.state !== 'cancelled'
+    && order.state !== 'pending'
+    && (order.paymentStatus === 'paid' || order.paymentStatus === 'debt');
 
   const lineColumns: Column<OrderLineView>[] = [
     { key: 'product', header: 'Sản phẩm', cell: (l) => <div><div className="font-medium">{l.productName}</div><div className="num text-ink-faint">{l.sku} · {l.packLabel}</div></div> },
@@ -74,6 +81,11 @@ export default function OrderDetailPage() {
             {canReturn && <LinkButton to={`/returns?orderId=${order.id}`} icon={<RotateCcw size={14} />}>Trả hàng</LinkButton>}
             {canPay && <Button icon={<CreditCard size={14} />} onClick={() => setPaymentOpen(true)}>Ghi nhận thanh toán</Button>}
             {canDeliver && <Button variant="primary" icon={<Truck size={14} />} onClick={() => setDeliveryOpen(true)}>Tạo đợt giao</Button>}
+            {canCompleteCounter && (
+              <Button variant="primary" icon={<CheckCircle2 size={14} />} loading={completeCounter.isPending} onClick={() => completeCounter.mutate()}>
+                Hoàn tất quầy
+              </Button>
+            )}
             {order.nextStates.map((state) => (
               <Button key={state} variant="primary" loading={transition.isPending} onClick={() => transition.mutate(state)}>{NEXT_LABEL[state] ?? state}</Button>
             ))}
