@@ -624,7 +624,7 @@ class StockServiceTest {
     void adjustByStockId_increasesAndWritesLedger() {
         Stock source = stock(1L, 5);
         when(stockRepository.findWithDetailsById(1L)).thenReturn(Optional.of(source));
-        when(locationRepository.findById(100L)).thenReturn(Optional.of(locationA));
+        when(locationRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(locationA));
         when(stockRepository.sumQtyByLocationId(100L)).thenReturn(5L);
         when(stockRepository.sumQtyByWarehouseId(1L)).thenReturn(5L);
         when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 10L, 100L))
@@ -698,6 +698,27 @@ class StockServiceTest {
         ArgumentCaptor<StockLedger> captor = ArgumentCaptor.forClass(StockLedger.class);
         verify(stockLedgerRepository).save(captor.capture());
         assertThat(captor.getValue().getEntryType()).isEqualTo(LedgerEntryType.EXPIRE);
+        assertThat(captor.getValue().getQtyDelta()).isEqualTo(-3);
+    }
+
+    @Test
+    void issueHeldOut_reducesHeldWithoutTouchingAvailable() {
+        Stock held = stock(1L, 10);
+        held.setQtyHeld(5);
+        when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 10L, 100L))
+                .thenReturn(Optional.of(held));
+        when(stockRepository.adjustQtyHeld(1L, -3)).thenReturn(1);
+        when(stockRepository.findById(1L)).thenReturn(Optional.of(held));
+        when(stockLedgerRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        stockService.issueHeldOut(mutation(3));
+
+        verify(stockRepository).adjustQtyHeld(1L, -3);
+        verify(stockRepository, never()).adjustQtyAvailable(anyLong(), anyInt());
+        ArgumentCaptor<com.hbsisms.feature.inventory.StockLedger> captor =
+                ArgumentCaptor.forClass(com.hbsisms.feature.inventory.StockLedger.class);
+        verify(stockLedgerRepository).save(captor.capture());
+        assertThat(captor.getValue().getEntryType()).isEqualTo(LedgerEntryType.OUT);
         assertThat(captor.getValue().getQtyDelta()).isEqualTo(-3);
     }
 

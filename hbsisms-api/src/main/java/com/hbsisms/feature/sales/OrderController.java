@@ -29,9 +29,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class OrderController {
 
     private final SalesOrderService salesOrderService;
+    private final CounterFulfillmentService counterFulfillmentService;
 
-    public OrderController(SalesOrderService salesOrderService) {
+    public OrderController(
+            SalesOrderService salesOrderService, CounterFulfillmentService counterFulfillmentService) {
         this.salesOrderService = salesOrderService;
+        this.counterFulfillmentService = counterFulfillmentService;
     }
 
     @GetMapping
@@ -55,5 +58,12 @@ public class OrderController {
     public OrderDetailResponse create(
             @Valid @RequestBody OrderInputRequest request, @AuthenticationPrincipal AuthUser actor) {
         return salesOrderService.create(request, actor == null ? null : actor.id());
+    }
+
+    /** Hoàn tất bàn giao tại quầy — OUT đúng lô HOLD, idempotent. */
+    @PostMapping("/{id}/complete-at-counter")
+    public OrderDetailResponse completeAtCounter(
+            @PathVariable Long id, @AuthenticationPrincipal AuthUser actor) {
+        return counterFulfillmentService.completeAtCounter(id, actor == null ? null : actor.id());
     }
 }

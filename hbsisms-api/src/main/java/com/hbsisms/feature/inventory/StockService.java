@@ -116,6 +116,29 @@ public class StockService {
         return requireStock(stock.getId());
     }
 
+    /**
+     * Xuất kho từ hàng đang HOLD (không đụng {@code qty_available} — đã trừ lúc hold).
+     * Dùng khi hoàn tất đơn tại quầy theo đúng lô đã giữ.
+     */
+    @Transactional
+    public Stock issueHeldOut(StockMutation cmd) {
+        requirePositiveQty(cmd.qty());
+        Stock stock = requireExistingStock(cmd.variantId(), cmd.lotId(), cmd.locationId());
+        applyHeldDelta(stock.getId(), -cmd.qty());
+        int balance = requireStock(stock.getId()).getQtyAvailable();
+        appendLedger(
+                stock,
+                null,
+                LedgerEntryType.OUT,
+                -cmd.qty(),
+                balance,
+                cmd.refType(),
+                cmd.refId(),
+                cmd.note(),
+                cmd.actorId());
+        return requireStock(stock.getId());
+    }
+
     @Transactional
     public Stock move(StockMutation cmd) {
         requirePositiveQty(cmd.qty());

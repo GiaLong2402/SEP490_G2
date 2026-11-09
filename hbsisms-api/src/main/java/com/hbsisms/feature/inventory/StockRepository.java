@@ -101,6 +101,26 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
             """)
     int adjustQtyExpired(@Param("id") Long id, @Param("delta") int delta);
 
+    /**
+     * FEFO candidates: available &gt; 0, lot not past expiry, location not quarantine zone.
+     * Ordered by earliest {@code expDate} (nulls last), then stock id.
+     */
+    @Query("""
+            select distinct s from Stock s
+            join fetch s.lot l
+            join fetch s.location loc
+            where s.variant.id = :variantId
+              and s.qtyAvailable > 0
+              and (l.expDate is null or l.expDate >= :today)
+              and (loc.zone is null
+                   or (lower(loc.zone) not like '%quarantine%'
+                       and lower(loc.zone) not like '%cach ly%'
+                       and lower(loc.zone) not like '%cách ly%'))
+            order by case when l.expDate is null then 1 else 0 end, l.expDate asc, s.id asc
+            """)
+    List<Stock> findFefoCandidates(
+            @Param("variantId") Long variantId, @Param("today") java.time.LocalDate today);
+
     /** Khay bán được (không tính lô đã quá hạn) — dùng cho pricing preview. */
     @Query("""
             select coalesce(sum(s.qtyAvailable), 0)

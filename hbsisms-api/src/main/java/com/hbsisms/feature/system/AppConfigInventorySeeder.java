@@ -30,6 +30,10 @@ public class AppConfigInventorySeeder implements ApplicationRunner {
                 AppConfigService.EXPIRY_WARNING_DAYS,
                 String.valueOf(AppConfigService.DEFAULT_EXPIRY_WARNING_DAYS),
                 "Số ngày cảnh báo sắp hết hạn");
+        ensure(
+                AppConfigService.PAYMENT_HOLD_MINUTES,
+                String.valueOf(AppConfigService.DEFAULT_PAYMENT_HOLD_MINUTES),
+                "Phút giữ hàng đơn online chưa thanh toán");
     }
 
     private void ensure(String key, String value, String description) {

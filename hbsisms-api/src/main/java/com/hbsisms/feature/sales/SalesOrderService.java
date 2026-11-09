@@ -58,7 +58,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Sales order list/detail/create (Inter 2 Phase 2).
- * FEFO hold/release vẫn do Cường — lúc confirm tạm set {@link AllocationStatus#INCOMING}.
+ * Confirm gọi {@link OrderAllocationService} giữ hàng FEFO.
  */
 @Service
 public class SalesOrderService {
@@ -87,6 +87,7 @@ public class SalesOrderService {
     private final CustomerDebtLedgerRepository customerDebtLedgerRepository;
     private final PricingService pricingService;
     private final AuditLogService auditLogService;
+    private final OrderAllocationService orderAllocationService;
     private final Clock clock;
 
     public SalesOrderService(
@@ -102,6 +103,7 @@ public class SalesOrderService {
             CustomerDebtLedgerRepository customerDebtLedgerRepository,
             PricingService pricingService,
             AuditLogService auditLogService,
+            OrderAllocationService orderAllocationService,
             Clock clock) {
         this.salesOrderRepository = salesOrderRepository;
         this.orderEventRepository = orderEventRepository;
@@ -115,6 +117,7 @@ public class SalesOrderService {
         this.customerDebtLedgerRepository = customerDebtLedgerRepository;
         this.pricingService = pricingService;
         this.auditLogService = auditLogService;
+        this.orderAllocationService = orderAllocationService;
         this.clock = clock;
     }
 
@@ -225,7 +228,7 @@ public class SalesOrderService {
             createOverLimitApproval(order, customer, placedBy);
             addEvent(order, "approval", "Đơn vượt hạn mức, chờ Chủ cửa hàng duyệt", placedBy);
         } else {
-            confirmOrderWithoutFefo(order, placedBy);
+            confirmOrder(order, placedBy);
         }
 
         Map<String, Object> auditDetail = new HashMap<>();
@@ -236,24 +239,35 @@ public class SalesOrderService {
     }
 
     /**
-     * Xác nhận đơn theo mock FE, chưa gọi FEFO hold (Cường).
-     * allocationStatus = INCOMING cho đến khi có allocator.
+     * Xác nhận đơn + giữ hàng FEFO. Công nợ ghi trước để không áp hạn 15 phút hold.
      */
-    private void confirmOrderWithoutFefo(SalesOrder order, AppUser actor) {
+    private void confirmOrder(SalesOrder order, AppUser actor) {
         order.setState(OrderState.CONFIRMED);
-        // TODO(Cường): FEFO hold qua StockService → cập nhật HELD/FULL.
-        order.setAllocationStatus(AllocationStatus.INCOMING);
 
         if (order.getPaymentMethod() == PaymentMethod.CREDIT_NET && order.getCustomer() != null) {
             chargeDebt(order);
             order.setPaymentStatus(PaymentStatus.DEBT);
         }
 
+        Long actorId = actor == null ? null : actor.getId();
+        int held = orderAllocationService.holdForOrder(order, actorId);
         addEvent(
                 order,
                 "confirmed",
-                "Xác nhận đơn (chưa giữ hàng FEFO — chờ tích hợp kho)",
+                "Xác nhận đơn — giữ " + held + " khay (FEFO, " + order.getAllocationStatus().code() + ")",
                 actor);
+    }
+
+    /** Public hook: tạo đơn từ yêu cầu khả thi (SalesRequestService). */
+    @Transactional
+    public OrderDetailResponse createFromRequest(OrderInputRequest request, Long actorId) {
+        return create(request, actorId);
+    }
+
+    /** Hủy đơn: RELEASE hold nếu còn. */
+    @Transactional
+    public void releaseHoldsOnCancel(SalesOrder order, Long actorId) {
+        orderAllocationService.releaseForOrder(order, actorId, "Huỷ đơn — giải phóng hold");
     }
 
     private void chargeDebt(SalesOrder order) {
