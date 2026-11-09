@@ -14,6 +14,7 @@ import AboutPage from '@/pages/storefront/AboutPage/AboutPage'
 import ContactPage from '@/pages/storefront/ContactPage/ContactPage'
 import CartPage from '@/pages/storefront/CartPage/CartPage'
 import LoginPage from '@/pages/storefront/LoginPage/LoginPage'
+import AccountPage from '@/pages/storefront/AccountPage/AccountPage'
 import AccountPlaceholderPage from '@/pages/storefront/AccountPlaceholderPage'
 
 import SaleDashboardPage from '@/pages/staff/sale/SaleDashboardPage'
@@ -50,15 +51,7 @@ export default function App() {
           <Route path="ve-hoa-binh" element={<AboutPage />} />
           <Route path="lien-he" element={<ContactPage />} />
           <Route path="gio-hang" element={<CartPage />} />
-          <Route
-            path="tai-khoan"
-            element={
-              <AccountPlaceholderPage
-                title="Tài khoản"
-                description="Trang quản lý thông tin tài khoản (đang phát triển)."
-              />
-            }
-          />
+          <Route path="tai-khoan" element={<AccountPage />} />
           <Route
             path="don-hang"
             element={

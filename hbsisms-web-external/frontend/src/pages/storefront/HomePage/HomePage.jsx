@@ -2,17 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import ProductCard from '@/components/storefront/ProductCard/ProductCard'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons/Icons'
-import { HOME_CATEGORIES } from '@/constants/categories'
 import { ROUTES } from '@/constants/routes'
-import { productsApi } from '@/api/products'
-import { DEMO_PRODUCTS } from '@/data/demoProducts'
+import { useStoreCatalog } from '@/hooks/useStoreCatalog'
 import { getDefaultVariant } from '@/utils/productFilters'
 
 import heroSeafood from '@/assets/banners/hero-seafood.png'
 import collectionSoChe from '@/assets/banners/collection-so-che.png'
 import collectionCheBien from '@/assets/banners/collection-che-bien.png'
 import bannerChaMuc from '@/assets/banners/banner-cha-muc.png'
-import categoryCa from '@/assets/banners/category-ca.png'
 import storePacking from '@/assets/about/store-packing.png'
 import hoaPhuong from '@/assets/decorations/hoa-phuong.png'
 import songLine from '@/assets/decorations/song-line.png'
@@ -68,14 +65,6 @@ const BENEFITS = [
   },
 ]
 
-// Ảnh tròn cho từng danh mục (key = id danh mục)
-const CATEGORY_IMAGES = {
-  tom: '/images/demo-products/product-tom-su.png',
-  ca: categoryCa,
-  muc: '/images/demo-products/product-muc-ong.png',
-  'che-bien': '/images/demo-products/product-cha-muc.png',
-}
-
 const COLLECTIONS = [
   {
     id: 'so-che',
@@ -95,40 +84,50 @@ const COLLECTIONS = [
   },
 ]
 
-const FEATURED_TABS = [
-  { id: 'all', label: 'Tất cả' },
-  { id: 'tom', label: 'Tôm' },
-  { id: 'ca', label: 'Cá' },
-  { id: 'muc', label: 'Mực' },
-  { id: 'che-bien', label: 'Chế biến' },
-]
+const CATEGORY_PAGE_SIZE = 4
 
 export default function HomePage() {
   const [slideIndex, setSlideIndex] = useState(0)
+  const [catPage, setCatPage] = useState(0)
   const [tab, setTab] = useState('all')
-  const [catalog, setCatalog] = useState(DEMO_PRODUCTS)
-
-  useEffect(() => {
-    let cancelled = false
-    productsApi
-      .list({ page: 1, pageSize: 50 })
-      .then((data) => {
-        if (!cancelled && data.items.length > 0) setCatalog(data.items)
-      })
-      .catch(() => {
-        // Giữ DEMO_PRODUCTS nếu API chưa sẵn sàng
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const { products, categories, loading: catalogLoading } = useStoreCatalog({ pageSize: 24 })
 
   const slide = HERO_SLIDES[slideIndex]
 
+  // Chỉ danh mục cha có imageUrl (không fallback ảnh local)
+  const homeCategories = useMemo(
+    () =>
+      categories
+        .filter((c) => c.parentId == null && Boolean(c.imageUrl?.trim()))
+        .map((c) => ({
+          id: String(c.id),
+          name: c.name,
+          image: c.imageUrl.trim(),
+        })),
+    [categories],
+  )
+
+  const catPageCount = Math.max(1, Math.ceil(homeCategories.length / CATEGORY_PAGE_SIZE))
+  const safeCatPage = Math.min(catPage, catPageCount - 1)
+  const visibleCategories = homeCategories.slice(
+    safeCatPage * CATEGORY_PAGE_SIZE,
+    safeCatPage * CATEGORY_PAGE_SIZE + CATEGORY_PAGE_SIZE,
+  )
+  const showCatNav = homeCategories.length > CATEGORY_PAGE_SIZE
+
+  useEffect(() => {
+    setCatPage(0)
+  }, [homeCategories.length])
+
+  const featuredTabs = useMemo(
+    () => [{ id: 'all', label: 'Tất cả' }, ...homeCategories.map((c) => ({ id: c.id, label: c.name }))],
+    [homeCategories],
+  )
+
   const featured = useMemo(() => {
-    if (tab === 'all') return catalog
-    return catalog.filter((p) => p.categoryId === tab)
-  }, [tab, catalog])
+    if (tab === 'all') return products
+    return products.filter((p) => String(p.categoryId) === String(tab))
+  }, [tab, products])
 
   function prevSlide() {
     setSlideIndex((i) => (i - 1 + HERO_SLIDES.length) % HERO_SLIDES.length)
@@ -136,6 +135,14 @@ export default function HomePage() {
 
   function nextSlide() {
     setSlideIndex((i) => (i + 1) % HERO_SLIDES.length)
+  }
+
+  function prevCatPage() {
+    setCatPage((i) => (i - 1 + catPageCount) % catPageCount)
+  }
+
+  function nextCatPage() {
+    setCatPage((i) => (i + 1) % catPageCount)
   }
 
   return (
@@ -262,20 +269,54 @@ export default function HomePage() {
             </Link>
           </div>
 
-          <div className="home-categories__grid">
-            {HOME_CATEGORIES.map((cat) => (
-              <Link
-                key={cat.id}
-                to={`${ROUTES.PRODUCTS}?category=${cat.id}`}
-                className="home-cat-card"
+          {homeCategories.length === 0 && !catalogLoading ? (
+            <p className="home-categories__empty">
+              Chưa có danh mục cha có ảnh (imageUrl) trên hệ thống.
+            </p>
+          ) : (
+            <div className="home-categories__carousel">
+              {showCatNav && (
+                <button
+                  type="button"
+                  className="home-categories__arrow is-prev"
+                  aria-label="Danh mục trước"
+                  onClick={prevCatPage}
+                >
+                  <ChevronLeftIcon />
+                </button>
+              )}
+
+              <div
+                className="home-categories__grid"
+                data-count={visibleCategories.length}
+                aria-live="polite"
               >
-                <span className="home-cat-card__image">
-                  <img src={CATEGORY_IMAGES[cat.id]} alt="" />
-                </span>
-                <span className="home-cat-card__name">{cat.name}</span>
-              </Link>
-            ))}
-          </div>
+                {visibleCategories.map((cat) => (
+                  <Link
+                    key={cat.id}
+                    to={`${ROUTES.PRODUCTS}?category=${cat.id}`}
+                    className="home-cat-card"
+                  >
+                    <span className="home-cat-card__image">
+                      <img src={cat.image} alt="" />
+                    </span>
+                    <span className="home-cat-card__name">{cat.name}</span>
+                  </Link>
+                ))}
+              </div>
+
+              {showCatNav && (
+                <button
+                  type="button"
+                  className="home-categories__arrow is-next"
+                  aria-label="Danh mục sau"
+                  onClick={nextCatPage}
+                >
+                  <ChevronRightIcon />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </section>
 
@@ -305,7 +346,7 @@ export default function HomePage() {
           <div className="home-featured__title">
             <h2>Sản phẩm nổi bật</h2>
             <div className="home-tabs" role="tablist" aria-label="Lọc theo danh mục">
-              {FEATURED_TABS.map((t) => (
+              {featuredTabs.map((t) => (
                 <button
                   key={t.id}
                   type="button"
@@ -325,15 +366,21 @@ export default function HomePage() {
         </div>
 
         <div className="home-featured__grid">
-          {featured.map((product) => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              variant={getDefaultVariant(product)}
-              cartVariant="icon"
-              imageRatio="landscape"
-            />
-          ))}
+          {catalogLoading ? (
+            <p>Đang tải sản phẩm…</p>
+          ) : featured.length === 0 ? (
+            <p>Chưa có sản phẩm published trên hệ thống. Hãy publish SP trong app nội bộ.</p>
+          ) : (
+            featured.map((product) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                variant={getDefaultVariant(product)}
+                cartVariant="icon"
+                imageRatio="landscape"
+              />
+            ))
+          )}
         </div>
       </section>
 

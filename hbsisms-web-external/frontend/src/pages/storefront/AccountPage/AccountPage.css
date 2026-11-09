@@ -1,0 +1,723 @@
+/* =========================================================
+   TRANG TÀI KHOẢN — theo mock, màu hệ thống
+   ========================================================= */
+
+.account-page {
+  padding-bottom: 56px;
+}
+
+.account-page__body {
+  margin-top: 8px;
+}
+
+/* Tabs */
+.account-tabs {
+  display: flex;
+  gap: 28px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.account-tabs__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 2px 14px;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.account-tabs__icon {
+  width: 1.25em;
+  height: 1.25em;
+  flex-shrink: 0;
+}
+
+.account-tabs__item:hover {
+  color: var(--color-brand);
+}
+
+.account-tabs__item.is-active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+/* Layout 2 cột */
+.account-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 24px;
+  align-items: start;
+}
+
+.account-card {
+  padding: 28px 28px 24px;
+  border-radius: 16px;
+  background: var(--color-white);
+  border: 1px solid rgba(7, 54, 83, 0.06);
+  box-shadow: 0 10px 28px rgba(7, 54, 83, 0.06);
+}
+
+/* Thẻ không padding: các phần bên trong tự căn lề */
+.account-card--flush {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* ---------- Phần đầu hồ sơ ---------- */
+.account-hero {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 26px 28px;
+  background: linear-gradient(135deg, #e3f6fb 0%, #f6fcfe 70%, #ffffff 100%);
+  border-bottom: 1px solid #e3eff4;
+}
+
+.account-hero__avatar {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border: 4px solid #fff;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2ccbe0 0%, #0e94b4 100%);
+  box-shadow: 0 6px 16px rgba(18, 184, 208, 0.3);
+  color: #fff;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.account-hero__meta {
+  flex: 1;
+  min-width: 180px;
+}
+
+.account-hero__meta h2 {
+  margin: 0 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-brand);
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.account-hero__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.account-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid #d6e9f1;
+  color: #4b7f95;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.account-chip--accent {
+  border-color: transparent;
+  background: rgba(18, 184, 208, 0.14);
+  color: #0b7f95;
+}
+/* ---------- Các phần nội dung ---------- */
+.account-section {
+  padding: 24px 28px;
+}
+
+.account-section + .account-section {
+  border-top: 1px solid var(--color-border);
+}
+
+.account-section__head {
+  margin-bottom: 18px;
+}
+
+.account-section__head h3 {
+  margin: 0 0 4px;
+  color: var(--color-brand);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.account-section__head p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+/* Lưới ô nhập: 2 cột, họ tên chiếm cả dòng */
+.account-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 20px;
+}
+
+.account-field {
+  display: grid;
+  gap: 8px;
+}
+
+.account-field--full {
+  grid-column: 1 / -1;
+}
+
+.account-field__label {
+  color: var(--color-brand);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* Ô nhập có icon bên trái */
+.account-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 6px 0 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fbfdfe;
+  color: #8aa4b2;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.account-input:hover {
+  border-color: #c9dde6;
+}
+
+.account-input:focus-within {
+  border-color: var(--color-accent);
+  background: #fff;
+  color: var(--color-accent);
+  box-shadow: 0 0 0 4px rgba(18, 184, 208, 0.12);
+}
+
+.account-input svg {
+  flex-shrink: 0;
+}
+
+.account-input input {
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  padding: 0 8px 0 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 15px;
+  outline: none;
+}
+
+.account-input input::placeholder {
+  color: #9fb2bd;
+}
+
+.account-input__action {
+  flex-shrink: 0;
+  min-height: 34px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(18, 184, 208, 0.1);
+  color: #0b7f95;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.account-input__action:hover {
+  background: rgba(18, 184, 208, 0.18);
+}
+
+/* ---------- Công tắc thông báo ---------- */
+.account-note {
+  margin: -6px 0 14px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #fff8ec;
+  color: #9a5b00;
+  font-size: 13px;
+}
+
+.account-toggles {
+  display: grid;
+  gap: 10px;
+}
+
+.account-toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.account-toggle:hover {
+  border-color: #c9dde6;
+  background: #fbfdfe;
+}
+
+.account-toggle.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.account-toggle__icon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #ebf8fb;
+  color: var(--color-accent);
+}
+
+.account-toggle__text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.account-toggle__text strong {
+  color: var(--color-brand);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.account-toggle__text span {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.account-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.account-toggle__ui {
+  flex-shrink: 0;
+  position: relative;
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  background: #c9d8e2;
+  transition: background 0.2s ease;
+}
+
+.account-toggle__ui::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  transition: transform 0.2s ease;
+}
+
+.account-toggle input:checked + .account-toggle__ui {
+  background: var(--color-accent);
+}
+
+.account-toggle input:checked + .account-toggle__ui::after {
+  transform: translateX(20px);
+}
+
+.account-toggle input:focus-visible + .account-toggle__ui {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* ---------- Thanh lưu / hủy ---------- */
+.account-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 16px 28px;
+  border-top: 1px solid var(--color-border);
+  background: #f8fbfd;
+}
+
+.account-actions .btn--primary {
+  min-height: 46px;
+  padding-inline: 28px;
+  background: var(--color-action);
+  border-color: var(--color-action);
+  font-weight: 700;
+}
+
+.account-actions .btn--ghost {
+  min-height: 46px;
+  padding-inline: 20px;
+}
+
+.account-actions__flash {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  color: var(--color-success);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ---------- Cột phải ---------- */
+.account-side {
+  display: grid;
+  gap: 20px;
+}
+/* Addresses tab */
+.account-addresses__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.account-addresses__head h2 {
+  margin: 0 0 4px;
+  color: var(--color-brand);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.account-addresses__head p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+/* Nút cam Thêm địa chỉ (cùng màu nút Lưu thay đổi) */
+.account-addresses__add.btn--primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding-inline: 22px;
+  background: var(--color-action);
+  border-color: var(--color-action);
+  font-weight: 700;
+}
+
+.account-addresses__add.btn--primary:hover:not(:disabled) {
+  background: var(--color-action-hover);
+}
+
+.account-addresses__empty {
+  margin: 0;
+  padding: 28px 16px;
+  border: 1px dashed #c9dde6;
+  border-radius: 14px;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+/* Lưới thẻ địa chỉ: 2 cột */
+.account-address-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.account-address-card {
+  display: flex;
+  flex-direction: column;
+  padding: 20px 20px 0;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-white);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.account-address-card:hover {
+  border-color: #c9dde6;
+  box-shadow: 0 8px 22px rgba(7, 54, 83, 0.06);
+}
+
+/* Địa chỉ mặc định: viền xanh ngọc + nền gradient nhạt (như phần đầu hồ sơ) */
+.account-address-card.is-default {
+  border: 1.5px solid var(--color-accent);
+  background: linear-gradient(135deg, #e3f6fb 0%, #f6fcfe 70%, #ffffff 100%);
+}
+
+.account-address-card__top {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.account-address-card__icon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #ebf8fb;
+  color: var(--color-accent);
+}
+
+.account-address-card.is-default .account-address-card__icon {
+  background: var(--color-white);
+}
+
+.account-address-card__who {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.account-address-card__who strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-brand);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.account-address-card__who span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+  font-size: 15px;
+}
+
+.account-address-card__who svg {
+  flex-shrink: 0;
+  color: var(--color-accent);
+}
+
+/* Nhãn Mặc định: xanh lá */
+.account-address-card__badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #e5f6ea;
+  color: var(--color-success);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.account-address-card__line {
+  flex: 1;
+  margin: 16px 0;
+  color: var(--color-text);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+/* Hàng thao tác dưới thẻ */
+.account-address-card__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.account-address-card.is-default .account-address-card__actions {
+  border-top-color: rgba(18, 184, 208, 0.35);
+}
+
+.account-address-card__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #0b7f95;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.account-address-card__action:first-child {
+  margin-left: -12px;
+}
+
+.account-address-card__action + .account-address-card__action {
+  border-left: 1px solid var(--color-border);
+  border-radius: 0;
+}
+
+.account-address-card__action:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+.account-address-card__action.is-danger {
+  color: var(--color-danger);
+}
+
+/* Màn nhỏ: nhãn Mặc định nằm trên viền thẻ để tên + SĐT đủ chỗ */
+@media (max-width: 600px) {
+  .account-address-card {
+    position: relative;
+  }
+
+  .account-address-card__badge {
+    position: absolute;
+    top: -14px;
+    right: 16px;
+    border: 1.5px solid var(--color-white);
+  }
+}
+
+/* Shortcuts */
+.account-shortcuts {
+  padding: 22px 16px 16px;
+}
+
+.account-shortcuts h3 {
+  padding-inline: 6px;
+  margin: 0 0 14px;
+  color: var(--color-brand);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.account-shortcut {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 10px;
+  border-radius: 12px;
+  transition: background 0.15s ease;
+}
+
+.account-shortcut + .account-shortcut {
+  margin-top: 4px;
+}
+
+.account-shortcut:hover {
+  background: var(--color-surface);
+}
+
+.account-shortcut__icon {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: #ebf8fb;
+  color: var(--color-accent);
+}
+
+.account-shortcut__text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.account-shortcut__text strong {
+  color: var(--color-brand);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.account-shortcut__text span {
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.account-shortcut__chevron {
+  flex-shrink: 0;
+  color: var(--color-accent);
+}
+
+@media (max-width: 900px) {
+  .account-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .account-side {
+    order: 2;
+  }
+
+  .account-card {
+    padding: 22px 18px;
+  }
+
+  .account-card--flush {
+    padding: 0;
+  }
+
+  .account-hero,
+  .account-section,
+  .account-actions {
+    padding-inline: 18px;
+  }
+  .account-grid,
+  .account-address-list {
+    grid-template-columns: 1fr;
+  }
+
+  .account-actions .btn {
+    flex: 1;
+  }
+
+  .account-tabs {
+    gap: 18px;
+    overflow-x: auto;
+  }
+
+  .account-tabs__item {
+    white-space: nowrap;
+    font-size: 15px;
+  }
+}
