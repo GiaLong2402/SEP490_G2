@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import BrandLogo from '@/components/brand/BrandLogo'
 import {
   CartIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
   MenuIcon,
   SearchIcon,
   UserIcon,
@@ -14,6 +15,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useCart } from '@/context/CartContext'
 import { ROLES } from '@/constants/roles'
 import { getHomePathForRole } from '@/auth/roleUtils'
+import { getRootCategoriesWithChildren } from '@/utils/categoryTree'
 import NotificationBell from './NotificationBell'
 import UserAccountMenu from './UserAccountMenu'
 import './Header.css'
@@ -29,17 +31,13 @@ export default function Header() {
   const { user, isLoggedIn, role, logout } = useAuth()
   const { totalItems } = useCart()
   const [navCategories, setNavCategories] = useState([])
+  const catsRef = useRef(null)
 
   useEffect(() => {
     const ac = new AbortController()
     api
       .get('/categories', null, ac.signal)
-      .then((rows) => {
-        const list = (rows || [])
-          .filter((c) => c.parentId == null)
-          .map((c) => ({ id: String(c.id), name: c.name }))
-        setNavCategories(list)
-      })
+      .then((rows) => setNavCategories(getRootCategoriesWithChildren(rows)))
       .catch(() => setNavCategories([]))
     return () => ac.abort()
   }, [])
@@ -47,6 +45,27 @@ export default function Header() {
   const navigate = useNavigate()
   const [keyword, setKeyword] = useState('')
   const [openCategories, setOpenCategories] = useState(false)
+
+  useEffect(() => {
+    if (!openCategories) return undefined
+
+    function handlePointerDown(event) {
+      if (catsRef.current && !catsRef.current.contains(event.target)) {
+        setOpenCategories(false)
+      }
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') setOpenCategories(false)
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [openCategories])
 
   function handleSearch(e) {
     e.preventDefault()
@@ -75,7 +94,6 @@ export default function Header() {
           />
         </form>
 
-        {/* Thứ tự: Giỏ → Chuông → Đăng nhập / Menu tài khoản */}
         <div className="site-header__actions">
           <Link
             to={ROUTES.CART}
@@ -88,7 +106,6 @@ export default function Header() {
             )}
           </Link>
 
-          {/* Bấm chuông => xổ khung thông báo (xem NotificationBell.jsx) */}
           <NotificationBell isLoggedIn={isLoggedIn} />
 
           {isLoggedIn ? (
@@ -108,7 +125,7 @@ export default function Header() {
 
       <div className="site-header__nav">
         <div className="container site-header__nav-inner">
-          <div className="site-cats">
+          <div className="site-cats" ref={catsRef}>
             <button
               type="button"
               className="site-cats__toggle"
@@ -131,14 +148,35 @@ export default function Header() {
                   </li>
                 ) : (
                   navCategories.map((cat) => (
-                    <li key={cat.id} role="none">
+                    <li
+                      key={cat.id}
+                      role="none"
+                      className={`site-cats__item ${cat.children.length ? 'has-children' : ''}`}
+                    >
                       <Link
                         role="menuitem"
                         to={`${ROUTES.PRODUCTS}?category=${cat.id}`}
+                        className="site-cats__parent"
                         onClick={() => setOpenCategories(false)}
                       >
-                        {cat.name}
+                        <span>{cat.name}</span>
+                        {cat.children.length > 0 ? <ChevronRightIcon size={14} /> : null}
                       </Link>
+                      {cat.children.length > 0 ? (
+                        <ul className="site-cats__submenu" role="menu">
+                          {cat.children.map((child) => (
+                            <li key={child.id} role="none">
+                              <Link
+                                role="menuitem"
+                                to={`${ROUTES.PRODUCTS}?category=${child.id}`}
+                                onClick={() => setOpenCategories(false)}
+                              >
+                                {child.name}
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </li>
                   ))
                 )}
