@@ -29,3 +29,9 @@ export function formatPhoneDisplay(raw) {
   const groups = local.match(/.{1,3}/g) || [local]
   return `+84 ${groups.join(' ')}`
 }
+
+/** E.164 (+84912345678) — dùng cho Firebase Phone Auth */
+export function toE164VietnamPhone(raw) {
+  const local = normalizeVietnamPhone(raw)
+  return local ? `+84${local}` : ''
+}

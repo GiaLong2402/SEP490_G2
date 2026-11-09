@@ -5,16 +5,20 @@ const OTP_LENGTH = 6
 const RESEND_SECONDS = 45
 
 /**
- * Form nhập OTP 6 ô — dùng chung cho đăng nhập và đổi SĐT
- * Demo: đủ 6 số là xác nhận được (chưa nối API).
+ * Form nhập OTP 6 ô — dùng chung cho đăng nhập và đổi SĐT.
+ * Phase 1 stub: đủ 6 số là được; Phase 2 sẽ verify Firebase SMS.
  */
-export default function OtpCodeForm({ onConfirm, resetKey = 0 }) {
+export default function OtpCodeForm({
+  onConfirm,
+  resetKey = 0,
+  submitting = false,
+  externalError = '',
+}) {
   const [digits, setDigits] = useState(Array(OTP_LENGTH).fill(''))
   const [error, setError] = useState('')
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS)
   const inputsRef = useRef([])
 
-  // Mỗi lần đổi resetKey (sang bước OTP mới) → xóa mã + reset đếm ngược
   useEffect(() => {
     setDigits(Array(OTP_LENGTH).fill(''))
     setError('')
@@ -61,18 +65,20 @@ export default function OtpCodeForm({ onConfirm, resetKey = 0 }) {
     focusIndex(Math.min(pasted.length, OTP_LENGTH - 1))
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
+    if (submitting) return
     const code = digits.join('')
     if (code.length !== OTP_LENGTH) {
       setError('Vui lòng nhập đủ 6 số OTP.')
       return
     }
-    onConfirm(code)
+    setError('')
+    await onConfirm(code)
   }
 
   function handleResend() {
-    if (secondsLeft > 0) return
+    if (secondsLeft > 0 || submitting) return
     setDigits(Array(OTP_LENGTH).fill(''))
     setError('')
     setSecondsLeft(RESEND_SECONDS)
@@ -81,6 +87,7 @@ export default function OtpCodeForm({ onConfirm, resetKey = 0 }) {
 
   const mm = String(Math.floor(secondsLeft / 60)).padStart(2, '0')
   const ss = String(secondsLeft % 60).padStart(2, '0')
+  const showError = error || externalError
 
   return (
     <>
@@ -98,6 +105,7 @@ export default function OtpCodeForm({ onConfirm, resetKey = 0 }) {
               autoComplete={index === 0 ? 'one-time-code' : 'off'}
               maxLength={1}
               value={digit}
+              disabled={submitting}
               aria-label={`Số OTP thứ ${index + 1}`}
               onChange={(e) => handleChange(index, e.target.value)}
               onKeyDown={(e) => handleKeyDown(index, e)}
@@ -105,14 +113,20 @@ export default function OtpCodeForm({ onConfirm, resetKey = 0 }) {
           ))}
         </div>
 
-        {error && (
+        {showError ? (
           <p className="auth-field__error" role="alert">
-            {error}
+            {showError}
           </p>
-        )}
+        ) : null}
 
-        <Button type="submit" variant="secondary" fullWidth className="auth-submit">
-          Xác nhận
+        <Button
+          type="submit"
+          variant="secondary"
+          fullWidth
+          className="auth-submit"
+          disabled={submitting}
+        >
+          {submitting ? 'Đang xác thực…' : 'Xác nhận'}
         </Button>
       </form>
 
@@ -122,7 +136,7 @@ export default function OtpCodeForm({ onConfirm, resetKey = 0 }) {
             Nhận lại mã ({mm}:{ss})
           </span>
         ) : (
-          <button type="button" className="auth-step__link" onClick={handleResend}>
+          <button type="button" className="auth-step__link" onClick={handleResend} disabled={submitting}>
             Nhận lại mã
           </button>
         )}

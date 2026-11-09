@@ -6,10 +6,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
- * Dev/test verifier — no Firebase network calls.
+ * Dev/test verifier — no Firebase network calls ({@code FIREBASE_AUTH_MODE=stub}).
  * <p>
  * Token format: {@code stub.&lt;uid&gt;.&lt;phone&gt;} e.g. {@code stub.uid-kho1.0901234567}
- * or {@code stub.uid-kho1.+84901234567}.
+ * or {@code stub.uid-kho1.+84901234567}. Production uses {@link FirebaseAdminTokenVerifier}.
  */
 @Component
 @ConditionalOnProperty(prefix = "app.security.firebase", name = "mode", havingValue = "stub", matchIfMissing = true)

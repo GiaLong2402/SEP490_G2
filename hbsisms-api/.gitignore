@@ -3,6 +3,11 @@ target/
 .env.*.bak
 !.mvn/wrapper/maven-wrapper.properties
 
+### Firebase Admin (never commit) ###
+secrets/
+*-firebase-adminsdk*.json
+**/firebase-service-account.json
+
 ### IDE ###
 .idea/
 *.iml

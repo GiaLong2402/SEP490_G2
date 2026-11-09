@@ -60,8 +60,10 @@ app:
       # true = every role may use /auth/login (local/dev). false = admin only; others use OTP.
       password-login-all-roles: ${AUTH_PASSWORD_LOGIN_ALL_ROLES:true}
     firebase:
-      # stub = local/dev/tests (token "stub.<uid>.<phone>"); firebase = Admin SDK (wired later)
+      # stub = local/dev/tests (token "stub.<uid>.<phone>"); firebase = Admin SDK verifyIdToken
       mode: ${FIREBASE_AUTH_MODE:stub}
+      # Path to service-account JSON; empty = GOOGLE_APPLICATION_CREDENTIALS / ADC
+      credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
   seed:
     # Creates the default roles and, if no user exists yet, an 'admin' account with this password.
     admin-password: ${SEED_ADMIN_PASSWORD:}
