@@ -17,11 +17,14 @@ import com.hbsisms.feature.role.AppRole;
 import com.hbsisms.feature.role.Permission;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
+import com.hbsisms.security.SecurityProperties;
 import com.hbsisms.security.TokenService;
 import com.hbsisms.security.TokenService.IssuedToken;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,6 +65,10 @@ class AuthServiceOtpLoginTest {
     @BeforeEach
     void setUp() {
         when(passwordEncoder.encode(any())).thenReturn("dummy-hash");
+        SecurityProperties properties = new SecurityProperties(
+                new SecurityProperties.Jwt("x".repeat(32), "test", Duration.ofHours(1)),
+                new SecurityProperties.Cors(List.of("http://localhost")),
+                new SecurityProperties.Login(5, Duration.ofMinutes(15), true));
         authService = new AuthService(
                 userRepository,
                 authIdentityRepository,
@@ -69,6 +76,7 @@ class AuthServiceOtpLoginTest {
                 tokenService,
                 loginAttempts,
                 firebaseTokenVerifier,
+                properties,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         AppRole role = TestFixtures.role((short) 2, "warehouse", Set.of(Permission.INVENTORY));
         user = TestFixtures.staff(11L, "kho1", role);

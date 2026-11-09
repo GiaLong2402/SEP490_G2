@@ -17,11 +17,15 @@ import com.hbsisms.feature.role.AppRole;
 import com.hbsisms.feature.role.Permission;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
+import com.hbsisms.feature.role.DefaultRoles;
+import com.hbsisms.security.SecurityProperties;
 import com.hbsisms.security.TokenService;
 import com.hbsisms.security.TokenService.IssuedToken;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,21 +59,31 @@ class AuthServiceTest {
 
     private AuthService authService;
     private AppUser user;
+    private boolean passwordLoginAllRoles = true;
 
     @BeforeEach
     void setUp() {
         when(passwordEncoder.encode(anyString())).thenReturn("dummy-hash");
         when(loginAttempts.tryAcquire(anyString())).thenReturn(true);
-        authService = new AuthService(
+        authService = newAuthService();
+        AppRole role = TestFixtures.role((short) 1, "sales", Set.of(Permission.ORDERS));
+        user = TestFixtures.staff(7L, "mai", role);
+    }
+
+    private AuthService newAuthService() {
+        SecurityProperties properties = new SecurityProperties(
+                new SecurityProperties.Jwt("x".repeat(32), "test", Duration.ofHours(1)),
+                new SecurityProperties.Cors(List.of("http://localhost")),
+                new SecurityProperties.Login(5, Duration.ofMinutes(15), passwordLoginAllRoles));
+        return new AuthService(
                 userRepository,
                 authIdentityRepository,
                 passwordEncoder,
                 tokenService,
                 loginAttempts,
                 firebaseTokenVerifier,
+                properties,
                 Clock.fixed(NOW, ZoneOffset.UTC));
-        AppRole role = TestFixtures.role((short) 1, "sales", Set.of(Permission.ORDERS));
-        user = TestFixtures.staff(7L, "mai", role);
     }
 
     @Test
@@ -138,6 +152,37 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.login(new LoginRequest("mai", "secret123")))
                 .extracting("status").isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
         verify(userRepository, never()).findByUsername(anyString());
+    }
+
+    @Test
+    void login_nonAdmin_whenPasswordLoginRestricted_returns403() {
+        passwordLoginAllRoles = false;
+        authService = newAuthService();
+        when(userRepository.findByUsername("mai")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("secret123", "hash-mai")).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.login(new LoginRequest("mai", "secret123")))
+                .isInstanceOf(ApiException.class)
+                .hasMessage(AuthService.PASSWORD_LOGIN_USE_OTP)
+                .extracting("status")
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        verify(tokenService, never()).issue(any());
+    }
+
+    @Test
+    void login_admin_whenPasswordLoginRestricted_stillSucceeds() {
+        passwordLoginAllRoles = false;
+        authService = newAuthService();
+        AppRole adminRole = TestFixtures.role((short) 1, DefaultRoles.ADMIN, Set.of(Permission.ADMIN));
+        AppUser admin = TestFixtures.staff(1L, "admin", adminRole);
+        when(userRepository.findByUsername("admin")).thenReturn(Optional.of(admin));
+        when(passwordEncoder.matches("secret123", "hash-admin")).thenReturn(true);
+        when(tokenService.issue(admin)).thenReturn(new IssuedToken("jwt-admin", NOW.plusSeconds(60)));
+
+        LoginResponse response = authService.login(new LoginRequest("admin", "secret123"));
+
+        assertThat(response.token()).isEqualTo("jwt-admin");
+        assertThat(response.user().roleCode()).isEqualTo("admin");
     }
 
     @Test

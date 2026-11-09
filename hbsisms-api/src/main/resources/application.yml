@@ -57,6 +57,8 @@ app:
     login:
       max-failed-attempts: 5
       lock-duration: PT15M
+      # true = every role may use /auth/login (local/dev). false = admin only; others use OTP.
+      password-login-all-roles: ${AUTH_PASSWORD_LOGIN_ALL_ROLES:true}
     firebase:
       # stub = local/dev/tests (token "stub.<uid>.<phone>"); firebase = Admin SDK (wired later)
       mode: ${FIREBASE_AUTH_MODE:stub}
