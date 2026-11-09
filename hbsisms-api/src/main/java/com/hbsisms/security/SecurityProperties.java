@@ -32,6 +32,13 @@ public record SecurityProperties(@Valid @NotNull Jwt jwt, @Valid @NotNull Cors c
         }
     }
 
-    public record Login(@Min(1) int maxFailedAttempts, @NotNull Duration lockDuration) {
+    /**
+     * @param passwordLoginAllRoles when {@code true} (dev/local), any role may use {@code /auth/login}.
+     *     When {@code false} (production), only {@code admin} may use password login; others must use OTP.
+     */
+    public record Login(
+            @Min(1) int maxFailedAttempts,
+            @NotNull Duration lockDuration,
+            boolean passwordLoginAllRoles) {
     }
 }
