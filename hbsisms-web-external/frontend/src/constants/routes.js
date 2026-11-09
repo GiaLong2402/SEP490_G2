@@ -11,6 +11,7 @@ export const ROUTES = {
   LOGIN: '/dang-nhap',
   CART: '/gio-hang',
   ACCOUNT: '/tai-khoan',
+  ADDRESSES: '/tai-khoan/so-dia-chi',
   ORDERS: '/don-hang',
   DISPLAY_SETTINGS: '/cai-dat-hien-thi',
 

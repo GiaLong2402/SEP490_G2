@@ -12,11 +12,38 @@ import { ROUTES } from '@/constants/routes'
 import { getInitials } from '@/utils/initials'
 
 /**
- * Nút avatar + tên → menu tài khoản (sau khi đăng nhập)
+ * Nút avatar + tên → menu tài khoản (sau khi đăng nhập).
+ * Chuột: rê vào là mở, rời ra là đóng. Cảm ứng / bàn phím: bấm để mở/đóng.
  */
 export default function UserAccountMenu({ userName, onLogout, workAreaLink }) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef(null)
+  const closeTimer = useRef(null)
+  const openedByHover = useRef(false)
+
+  useEffect(() => () => window.clearTimeout(closeTimer.current), [])
+
+  function handlePointerEnter(e) {
+    if (e.pointerType !== 'mouse') return
+    window.clearTimeout(closeTimer.current)
+    if (!open) openedByHover.current = true
+    setOpen(true)
+  }
+
+  function handlePointerLeave(e) {
+    if (e.pointerType !== 'mouse') return
+    // Trễ nhẹ để chuột kịp đi từ nút xuống khung menu
+    closeTimer.current = window.setTimeout(() => setOpen(false), 180)
+  }
+
+  function handleTriggerClick() {
+    // Đã mở do rê chuột thì bấm không đóng lại ngay
+    if (openedByHover.current) {
+      openedByHover.current = false
+      return
+    }
+    setOpen((v) => !v)
+  }
 
   useEffect(() => {
     if (!open) return undefined
@@ -40,17 +67,23 @@ export default function UserAccountMenu({ userName, onLogout, workAreaLink }) {
   }, [open])
 
   function closeMenu() {
+    openedByHover.current = false
     setOpen(false)
   }
 
   return (
-    <div className="site-account" ref={wrapRef}>
+    <div
+      className="site-account"
+      ref={wrapRef}
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
+    >
       <button
         type="button"
         className={`site-account__trigger ${open ? 'is-open' : ''}`}
         aria-expanded={open}
         aria-haspopup="menu"
-        onClick={() => setOpen((v) => !v)}
+        onClick={handleTriggerClick}
       >
         <span className="site-account__avatar" aria-hidden="true">
           {getInitials(userName)}

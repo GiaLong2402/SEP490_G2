@@ -18,11 +18,60 @@ export function buildChildrenMap(categories) {
   return map
 }
 
-/** Danh mục gốc (không có cha). */
+/** True nếu là danh mục cha (không có parent). */
+export function isRootCategory(category) {
+  return category?.parentId == null || category?.parentId === ''
+}
+
+function sortCategories(list) {
+  return list.slice().sort(
+    (a, b) =>
+      (a.sortOrder ?? 0) - (b.sortOrder ?? 0) ||
+      String(a.name || '').localeCompare(String(b.name || ''), 'vi'),
+  )
+}
+
+/** Con trực tiếp của một danh mục. */
+export function getDirectChildren(categories, parentId) {
+  const pid = catId(parentId)
+  return sortCategories(
+    (categories || []).filter((c) => catId(c.parentId) === pid && c.isActive !== false),
+  ).map((c) => ({
+    id: catId(c.id),
+    name: c.name,
+    parentId: pid,
+    imageUrl: c.imageUrl ?? null,
+    sortOrder: c.sortOrder ?? 0,
+  }))
+}
+
+/** Danh mục gốc (không có cha), ưu tiên đang dùng, sắp theo sortOrder. */
 export function getRootCategories(categories) {
-  return categories
-    .filter((c) => c.parentId == null)
-    .map((c) => ({ id: catId(c.id), name: c.name, parentId: null }))
+  return sortCategories(
+    (categories || []).filter((c) => isRootCategory(c) && c.isActive !== false),
+  ).map((c) => ({
+    id: catId(c.id),
+    name: c.name,
+    parentId: null,
+    imageUrl: c.imageUrl ?? null,
+    sortOrder: c.sortOrder ?? 0,
+  }))
+}
+
+/** Gốc kèm children — dùng cho menu Danh mục sản phẩm. */
+export function getRootCategoriesWithChildren(categories) {
+  return getRootCategories(categories).map((root) => ({
+    ...root,
+    children: getDirectChildren(categories, root.id),
+  }))
+}
+
+/**
+ * Gốc có ít nhất 1 con — dùng tab Home (Các loại chả/cá/mực, Hải sản một nắng…),
+ * bỏ các danh mục cha “phẳng” không có nhánh con.
+ */
+export function getBranchRootCategories(categories) {
+  return getRootCategoriesWithChildren(categories).filter((root) => root.children.length > 0)
 }
 
 /** id danh mục + mọi con cháu (để lọc sản phẩm theo nhánh). */

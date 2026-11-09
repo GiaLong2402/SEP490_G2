@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import ProductCard from '@/components/storefront/ProductCard/ProductCard'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons/Icons'
 import { ROUTES } from '@/constants/routes'
 import { useStoreCatalog } from '@/hooks/useStoreCatalog'
+import { getBranchRootCategories, getRootCategories } from '@/utils/categoryTree'
 import { getDefaultVariant } from '@/utils/productFilters'
 
 import heroSeafood from '@/assets/banners/hero-seafood.png'
@@ -84,12 +85,13 @@ const COLLECTIONS = [
   },
 ]
 
-const CATEGORY_PAGE_SIZE = 4
+const CATEGORY_PAGE_SIZE = 5
+const FEATURED_LIMIT = 8
 
 export default function HomePage() {
+  const navigate = useNavigate()
   const [slideIndex, setSlideIndex] = useState(0)
   const [catPage, setCatPage] = useState(0)
-  const [tab, setTab] = useState('all')
   const { products, categories, loading: catalogLoading } = useStoreCatalog({ pageSize: 24 })
 
   const slide = HERO_SLIDES[slideIndex]
@@ -97,13 +99,22 @@ export default function HomePage() {
   // Chỉ danh mục cha có imageUrl (không fallback ảnh local)
   const homeCategories = useMemo(
     () =>
-      categories
-        .filter((c) => c.parentId == null && Boolean(c.imageUrl?.trim()))
+      getRootCategories(categories)
+        .filter((c) => Boolean(c.imageUrl?.trim()))
         .map((c) => ({
-          id: String(c.id),
+          id: c.id,
           name: c.name,
           image: c.imageUrl.trim(),
         })),
+    [categories],
+  )
+
+  // Chỉ các danh mục cha có nhánh con (Các loại chả/cá/mực, Hải sản một nắng…)
+  const featuredTabs = useMemo(
+    () => [
+      { id: 'all', label: 'Tất cả' },
+      ...getBranchRootCategories(categories).map((c) => ({ id: c.id, label: c.name })),
+    ],
     [categories],
   )
 
@@ -119,15 +130,12 @@ export default function HomePage() {
     setCatPage(0)
   }, [homeCategories.length])
 
-  const featuredTabs = useMemo(
-    () => [{ id: 'all', label: 'Tất cả' }, ...homeCategories.map((c) => ({ id: c.id, label: c.name }))],
-    [homeCategories],
-  )
+  const featured = useMemo(() => products.slice(0, FEATURED_LIMIT), [products])
 
-  const featured = useMemo(() => {
-    if (tab === 'all') return products
-    return products.filter((p) => String(p.categoryId) === String(tab))
-  }, [tab, products])
+  function handleFeaturedTab(tabId) {
+    if (tabId === 'all') return
+    navigate(`${ROUTES.PRODUCTS}?category=${encodeURIComponent(tabId)}`)
+  }
 
   function prevSlide() {
     setSlideIndex((i) => (i - 1 + HERO_SLIDES.length) % HERO_SLIDES.length)
@@ -351,9 +359,9 @@ export default function HomePage() {
                   key={t.id}
                   type="button"
                   role="tab"
-                  aria-selected={tab === t.id}
-                  className={tab === t.id ? 'is-active' : ''}
-                  onClick={() => setTab(t.id)}
+                  aria-selected={t.id === 'all'}
+                  className={t.id === 'all' ? 'is-active' : ''}
+                  onClick={() => handleFeaturedTab(t.id)}
                 >
                   {t.label}
                 </button>
@@ -361,7 +369,7 @@ export default function HomePage() {
             </div>
           </div>
           <Link to={ROUTES.PRODUCTS} className="home-link-more">
-            Xem tất cả <span aria-hidden="true">→</span>
+            Xem tất cả sản phẩm <span aria-hidden="true">→</span>
           </Link>
         </div>
 
@@ -382,6 +390,14 @@ export default function HomePage() {
             ))
           )}
         </div>
+
+        {!catalogLoading && featured.length > 0 ? (
+          <div className="home-featured__more">
+            <Link to={ROUTES.PRODUCTS} className="home-btn-orange">
+              Xem tất cả sản phẩm <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+        ) : null}
       </section>
 
       {/* ===== 6. Câu chuyện cửa hàng ===== */}

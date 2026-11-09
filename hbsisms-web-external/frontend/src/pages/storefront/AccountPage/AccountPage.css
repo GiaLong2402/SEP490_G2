@@ -50,14 +50,6 @@
   border-bottom-color: var(--color-accent);
 }
 
-/* Layout 2 cột */
-.account-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
-  gap: 24px;
-  align-items: start;
-}
-
 .account-card {
   padding: 28px 28px 24px;
   border-radius: 16px;
@@ -394,11 +386,6 @@
   font-weight: 600;
 }
 
-/* ---------- Cột phải ---------- */
-.account-side {
-  display: grid;
-  gap: 20px;
-}
 /* Addresses tab */
 .account-addresses__head {
   display: flex;
@@ -615,80 +602,7 @@
   }
 }
 
-/* Shortcuts */
-.account-shortcuts {
-  padding: 22px 16px 16px;
-}
-
-.account-shortcuts h3 {
-  padding-inline: 6px;
-  margin: 0 0 14px;
-  color: var(--color-brand);
-  font-size: 18px;
-  font-weight: 800;
-}
-
-.account-shortcut {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 10px;
-  border-radius: 12px;
-  transition: background 0.15s ease;
-}
-
-.account-shortcut + .account-shortcut {
-  margin-top: 4px;
-}
-
-.account-shortcut:hover {
-  background: var(--color-surface);
-}
-
-.account-shortcut__icon {
-  flex-shrink: 0;
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: #ebf8fb;
-  color: var(--color-accent);
-}
-
-.account-shortcut__text {
-  flex: 1;
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.account-shortcut__text strong {
-  color: var(--color-brand);
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.account-shortcut__text span {
-  color: var(--color-muted);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.account-shortcut__chevron {
-  flex-shrink: 0;
-  color: var(--color-accent);
-}
-
 @media (max-width: 900px) {
-  .account-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .account-side {
-    order: 2;
-  }
-
   .account-card {
     padding: 22px 18px;
   }

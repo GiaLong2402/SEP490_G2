@@ -15,7 +15,9 @@ import ContactPage from '@/pages/storefront/ContactPage/ContactPage'
 import CartPage from '@/pages/storefront/CartPage/CartPage'
 import LoginPage from '@/pages/storefront/LoginPage/LoginPage'
 import AccountPage from '@/pages/storefront/AccountPage/AccountPage'
-import AccountPlaceholderPage from '@/pages/storefront/AccountPlaceholderPage'
+import AddressBookPage from '@/pages/storefront/AccountPage/AddressBookPage'
+import OrdersPage from '@/pages/storefront/OrdersPage/OrdersPage'
+import DisplaySettingsPage from '@/pages/storefront/DisplaySettingsPage/DisplaySettingsPage'
 
 import SaleDashboardPage from '@/pages/staff/sale/SaleDashboardPage'
 import WarehouseDashboardPage from '@/pages/staff/warehouse/WarehouseDashboardPage'
@@ -52,24 +54,9 @@ export default function App() {
           <Route path="lien-he" element={<ContactPage />} />
           <Route path="gio-hang" element={<CartPage />} />
           <Route path="tai-khoan" element={<AccountPage />} />
-          <Route
-            path="don-hang"
-            element={
-              <AccountPlaceholderPage
-                title="Đơn & Yêu cầu của tôi"
-                description="Danh sách đơn hàng và yêu cầu (đang phát triển)."
-              />
-            }
-          />
-          <Route
-            path="cai-dat-hien-thi"
-            element={
-              <AccountPlaceholderPage
-                title="Cài đặt chữ lớn & Hiển thị"
-                description="Tuỳ chọn chữ lớn / hiển thị (đang phát triển)."
-              />
-            }
-          />
+          <Route path="tai-khoan/so-dia-chi" element={<AddressBookPage />} />
+          <Route path="don-hang" element={<OrdersPage />} />
+          <Route path="cai-dat-hien-thi" element={<DisplaySettingsPage />} />
           <Route path="khong-co-quyen" element={<UnauthorizedPage />} />
         </Route>
 

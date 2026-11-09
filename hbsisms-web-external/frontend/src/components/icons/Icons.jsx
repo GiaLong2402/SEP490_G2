@@ -240,6 +240,79 @@ export function MapPinIcon({ size = 20, className }) {
   )
 }
 
+export function SunIcon({ size = 20, className }) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+    </svg>
+  )
+}
+
+export function MonitorIcon({ size = 20, className }) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M8 20h8M12 16v4" />
+    </svg>
+  )
+}
+
+export function SmartphoneIcon({ size = 20, className }) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <rect x="7" y="3" width="10" height="18" rx="2" />
+      <path d="M11 18h2" />
+    </svg>
+  )
+}
+
+export function HistoryIcon({ size = 20, className }) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <path d="M3 12a9 9 0 1 0 2.6-6.4" />
+      <path d="M3 4v4h4M12 8v4l3 2" />
+    </svg>
+  )
+}
+
+export function LoginIcon({ size = 20, className }) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
+      <path d="M4 12h10" />
+      <path d="m10 8 4 4-4 4" />
+    </svg>
+  )
+}
+
+export function ShieldIcon({ size = 20, className }) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <path d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  )
+}
+
+export function CalendarIcon({ size = 18, className }) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <rect x="4" y="5" width="16" height="15" rx="2" />
+      <path d="M8 3v4M16 3v4M4 10h16" />
+    </svg>
+  )
+}
+
+export function ClockIcon({ size = 18, className }) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  )
+}
+
 export function ClipboardIcon({ size = 22, className }) {
   return (
     <svg {...baseProps(size, className)}>

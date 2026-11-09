@@ -344,15 +344,19 @@
   padding-inline: 8px;
 }
 
-/* ≤4 ô: cân đều giữa; mỗi ô rộng gần bằng nhau */
+/* ≤5 ô/trang: cân đều giữa */
 .home-cat-card {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  flex: 0 1 clamp(140px, 18vw, 200px);
-  max-width: 200px;
+  flex: 0 1 clamp(120px, 16vw, 180px);
+  max-width: 180px;
   text-align: center;
+}
+
+.home-categories__grid[data-count='5'] .home-cat-card {
+  flex-basis: clamp(110px, 15vw, 170px);
 }
 
 .home-categories__arrow {
@@ -483,17 +487,31 @@
   margin-top: 28px;
 }
 
+.home-featured .home-section-head > .home-featured__title {
+  flex: 1;
+  min-width: 0;
+}
+
 .home-featured__title {
   display: flex;
   align-items: center;
-  gap: 28px;
-  flex-wrap: wrap;
+  gap: 20px;
+  flex-wrap: wrap; /* ít tab: cùng dòng; thêm danh mục cha: tự xuống dòng */
+  min-width: 0;
+}
+
+.home-featured__title h2 {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  margin: 0;
 }
 
 .home-tabs {
   display: flex;
-  gap: 8px;
+  gap: 4px 8px;
   flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
 }
 
 .home-tabs button {
@@ -519,6 +537,12 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
+}
+
+.home-featured__more {
+  display: flex;
+  justify-content: center;
+  margin-top: 28px;
 }
 
 /* =========================================================
