@@ -17,6 +17,9 @@ public interface CustomerRepository extends JpaRepository<Customer, Long>, JpaSp
     @EntityGraph(attributePaths = "accountUser")
     Optional<Customer> findWithAccountById(Long id);
 
+    /** Walk-in customer (created by staff) not yet linked to a portal login. */
+    Optional<Customer> findFirstByPhoneAndAccountUserIsNullOrderByIdAsc(String phone);
+
     Page<Customer> findAll(Specification<Customer> spec, Pageable pageable);
 
     /** Codes matching a generated-prefix pattern (e.g. {@code KH-%} / {@code KH-B%}) for next-code. */

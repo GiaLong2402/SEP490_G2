@@ -13,11 +13,14 @@ import com.hbsisms.TestFixtures;
 import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.feature.auth.dto.LoginRequest;
 import com.hbsisms.feature.auth.dto.LoginResponse;
+import com.hbsisms.feature.customer.CustomerRepository;
 import com.hbsisms.feature.role.AppRole;
+import com.hbsisms.feature.role.DefaultRoles;
 import com.hbsisms.feature.role.Permission;
+import com.hbsisms.feature.role.RoleRepository;
+import com.hbsisms.feature.system.AuditLogService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
-import com.hbsisms.feature.role.DefaultRoles;
 import com.hbsisms.security.SecurityProperties;
 import com.hbsisms.security.TokenService;
 import com.hbsisms.security.TokenService.IssuedToken;
@@ -49,6 +52,12 @@ class AuthServiceTest {
     @Mock
     private AuthIdentityRepository authIdentityRepository;
     @Mock
+    private CustomerRepository customerRepository;
+    @Mock
+    private RoleRepository roleRepository;
+    @Mock
+    private AuditLogService auditLogService;
+    @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
     private TokenService tokenService;
@@ -78,6 +87,9 @@ class AuthServiceTest {
         return new AuthService(
                 userRepository,
                 authIdentityRepository,
+                customerRepository,
+                roleRepository,
+                auditLogService,
                 passwordEncoder,
                 tokenService,
                 loginAttempts,

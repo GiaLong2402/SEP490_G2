@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
  * Sinh mã khách: B2C {@code KH-001}, B2B {@code KH-B001}.
  * Chỉ xét mã đúng pattern prefix + đúng 3 chữ số (bỏ qua {@code KH-KHOI-…}).
  */
-final class CustomerCodeGenerator {
+public final class CustomerCodeGenerator {
 
     static final String B2C_PREFIX = "KH-";
     static final String B2B_PREFIX = "KH-B";
@@ -16,11 +16,11 @@ final class CustomerCodeGenerator {
     private CustomerCodeGenerator() {
     }
 
-    static String prefixFor(CustomerType type) {
+    public static String prefixFor(CustomerType type) {
         return type == CustomerType.B2B ? B2B_PREFIX : B2C_PREFIX;
     }
 
-    static String nextCode(CustomerType type, List<String> existingCodes) {
+    public static String nextCode(CustomerType type, List<String> existingCodes) {
         String prefix = prefixFor(type);
         Pattern pattern = Pattern.compile("^" + Pattern.quote(prefix) + "(\\d{3})$");
         int max = 0;

@@ -13,8 +13,11 @@ import com.hbsisms.feature.auth.dto.LoginResponse;
 import com.hbsisms.feature.auth.dto.OtpLoginRequest;
 import com.hbsisms.feature.auth.firebase.FirebaseTokenVerifier;
 import com.hbsisms.feature.auth.firebase.VerifiedFirebaseToken;
+import com.hbsisms.feature.customer.CustomerRepository;
 import com.hbsisms.feature.role.AppRole;
 import com.hbsisms.feature.role.Permission;
+import com.hbsisms.feature.role.RoleRepository;
+import com.hbsisms.feature.system.AuditLogService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
 import com.hbsisms.security.SecurityProperties;
@@ -51,6 +54,12 @@ class AuthServiceOtpLoginTest {
     @Mock
     private AuthIdentityRepository authIdentityRepository;
     @Mock
+    private CustomerRepository customerRepository;
+    @Mock
+    private RoleRepository roleRepository;
+    @Mock
+    private AuditLogService auditLogService;
+    @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
     private TokenService tokenService;
@@ -72,6 +81,9 @@ class AuthServiceOtpLoginTest {
         authService = new AuthService(
                 userRepository,
                 authIdentityRepository,
+                customerRepository,
+                roleRepository,
+                auditLogService,
                 passwordEncoder,
                 tokenService,
                 loginAttempts,
