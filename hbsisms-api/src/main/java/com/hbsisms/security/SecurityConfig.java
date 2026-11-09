@@ -35,7 +35,14 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
+<<<<<<< Updated upstream
                         .requestMatchers(HttpMethod.POST, "/auth/login", "/auth/login/otp").permitAll()
+=======
+                        .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()
+                        // Storefront B2C: guest có thể xem danh mục / sản phẩm đã đăng.
+                        .requestMatchers(HttpMethod.GET, "/categories", "/categories/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/products", "/products/**").permitAll()
+>>>>>>> Stashed changes
                         .requestMatchers("/actuator/health", "/error").permitAll()
                         // Only served when SWAGGER_ENABLED=true (see application.yml).
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()

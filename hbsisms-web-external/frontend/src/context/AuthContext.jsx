@@ -1,19 +1,48 @@
-import { createContext, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { authApi } from '@/api/auth'
+import { setUnauthorizedHandler, tokenStore } from '@/api/client'
+import { mapApiUser } from '@/auth/mapRole'
 import { ROLES } from '@/constants/roles'
 
 const AuthContext = createContext(null)
 
 /**
- * Auth đơn giản cho beginner.
- * - Chưa gọi API thật; login demo chọn role để test phân quyền.
- * - Sau này thay loginDemo bằng gọi Spring Boot /api/auth/login.
+ * Auth nối Spring Boot JWT.
+ * - login(username, password) → POST /auth/login
+ * - loginDemo vẫn giữ cho luồng OTP/SĐT (chưa có API phone)
  */
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(() => Boolean(tokenStore.get()))
 
-  const isLoggedIn = Boolean(user)
+  const clearSession = useCallback(() => {
+    tokenStore.set(null)
+    setUser(null)
+  }, [])
 
-  function loginDemo({ name, role, phone, keepLoggedIn, email, address }) {
+  useEffect(() => {
+    setUnauthorizedHandler(clearSession)
+    const token = tokenStore.get()
+    if (!token) {
+      setLoading(false)
+      return
+    }
+    authApi
+      .me()
+      .then((me) => setUser(mapApiUser(me)))
+      .catch(() => clearSession())
+      .finally(() => setLoading(false))
+  }, [clearSession])
+
+  const login = useCallback(async ({ username, password }) => {
+    const result = await authApi.login({ username, password })
+    tokenStore.set(result.token)
+    setUser(mapApiUser(result.user))
+    return mapApiUser(result.user)
+  }, [])
+
+  const loginDemo = useCallback(({ name, role, phone, keepLoggedIn, email, address }) => {
+    tokenStore.set(null)
     setUser({
       id: `demo-${role}`,
       name: name || 'Người dùng demo',
@@ -23,21 +52,28 @@ export function AuthProvider({ children }) {
       address: address || null,
       keepLoggedIn: Boolean(keepLoggedIn),
     })
-  }
+  }, [])
 
-  function logout() {
-    setUser(null)
-  }
+  const logout = useCallback(() => {
+    if (tokenStore.get()) {
+      authApi.logout().catch(() => {})
+    }
+    clearSession()
+  }, [clearSession])
+
+  const isLoggedIn = Boolean(user)
 
   const value = useMemo(
     () => ({
       user,
       role: user?.role || ROLES.GUEST,
       isLoggedIn,
+      loading,
+      login,
       loginDemo,
       logout,
     }),
-    [user, isLoggedIn],
+    [user, isLoggedIn, loading, login, loginDemo, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -98,6 +98,17 @@ public class ProductService {
         return toResponse(product);
     }
 
+    public ProductResponse getBySlug(String slug) {
+        String normalized = Strings.trimToNull(slug);
+        if (normalized == null) {
+            throw ApiException.notFound("Không tìm thấy sản phẩm");
+        }
+        Product product = productRepository
+                .findWithCategoryBySlugIgnoreCase(normalized)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy sản phẩm"));
+        return toResponse(product);
+    }
+
     @Transactional
     public ProductResponse create(ProductRequest request) {
         String code = requireCode(request.code());

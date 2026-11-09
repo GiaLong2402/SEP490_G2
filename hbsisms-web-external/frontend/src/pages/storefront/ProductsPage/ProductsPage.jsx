@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import PageBanner from '@/components/storefront/PageBanner/PageBanner'
 import Pagination from '@/components/storefront/Pagination/Pagination'
@@ -7,11 +7,12 @@ import Button from '@/components/ui/Button'
 import { SlidersIcon } from '@/components/icons/Icons'
 import { CATEGORIES, PRICE_RANGES, SORT_OPTIONS } from '@/constants/categories'
 import { ROUTES } from '@/constants/routes'
+import { getListingItemsFromProducts } from '@/api/mapProduct'
+import { productsApi } from '@/api/products'
 import { getListingItems } from '@/data/demoProducts'
 import FilterSidebar from './components/FilterSidebar'
 import './ProductsPage.css'
 
-// Số sản phẩm trên 1 trang
 const PAGE_SIZE = 6
 
 const DEFAULT_FILTERS = {
@@ -21,10 +22,6 @@ const DEFAULT_FILTERS = {
   sortId: 'default',
 }
 
-/**
- * Lọc + sắp xếp danh sách sản phẩm theo bộ lọc.
- * Tách ra hàm riêng cho dễ đọc. Sau này có API thì backend sẽ làm việc này.
- */
 function filterAndSortItems(items, filters) {
   let result = [...items]
 
@@ -55,7 +52,6 @@ function filterAndSortItems(items, filters) {
 }
 
 export default function ProductsPage() {
-  // Đọc ?category=tom trên URL (khi bấm danh mục từ trang chủ)
   const [searchParams] = useSearchParams()
   const categoryFromUrl = searchParams.get('category')
   const isValidCategory = CATEGORIES.some((c) => c.id === categoryFromUrl)
@@ -65,16 +61,41 @@ export default function ProductsPage() {
     categoryId: isValidCategory ? categoryFromUrl : 'all',
   }
 
-  // draft = đang chọn trên bộ lọc; applied = đã bấm "Áp dụng"
   const [draft, setDraft] = useState(startFilters)
   const [applied, setApplied] = useState(startFilters)
   const [page, setPage] = useState(1)
-  const [filterOpen, setFilterOpen] = useState(false) // chỉ dùng trên mobile
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [allItems, setAllItems] = useState(() => getListingItems())
+  const [loadState, setLoadState] = useState('loading') // loading | api | demo | error
+  const [loadError, setLoadError] = useState('')
 
-  const allItems = useMemo(() => getListingItems(), [])
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await productsApi.list({ page: 1, pageSize: 100 })
+        if (cancelled) return
+        if (data.items.length > 0) {
+          setAllItems(getListingItemsFromProducts(data.items))
+          setLoadState('api')
+        } else {
+          setAllItems(getListingItems())
+          setLoadState('demo')
+        }
+      } catch (err) {
+        if (cancelled) return
+        setAllItems(getListingItems())
+        setLoadState('error')
+        setLoadError(err?.message || 'Không tải được API, đang dùng dữ liệu demo.')
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const filtered = useMemo(() => filterAndSortItems(allItems, applied), [allItems, applied])
 
-  // Tính phân trang
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const currentPage = Math.min(page, totalPages)
   const start = (currentPage - 1) * PAGE_SIZE
@@ -85,7 +106,7 @@ export default function ProductsPage() {
   const title =
     applied.categoryId === 'all'
       ? 'Tất cả sản phẩm'
-      : CATEGORIES.find((c) => c.id === applied.categoryId).name
+      : CATEGORIES.find((c) => c.id === applied.categoryId)?.name || 'Sản phẩm'
 
   function updateDraft(change) {
     setDraft((prev) => ({ ...prev, ...change }))
@@ -103,7 +124,6 @@ export default function ProductsPage() {
     setPage(1)
   }
 
-  // Sắp xếp được áp dụng ngay, không cần bấm "Áp dụng"
   function changeSort(sortId) {
     setDraft((prev) => ({ ...prev, sortId }))
     setApplied((prev) => ({ ...prev, sortId }))
@@ -118,7 +138,6 @@ export default function ProductsPage() {
       />
 
       <div className="container products-layout">
-        {/* Nút mở bộ lọc — chỉ hiện trên mobile */}
         <button
           type="button"
           className="products-filter-toggle"
@@ -142,7 +161,9 @@ export default function ProductsPage() {
               <h2>{title}</h2>
               <p>
                 Hiển thị {showingFrom}–{showingTo} trong {filtered.length} sản phẩm
+                {loadState === 'api' ? ' · API' : loadState === 'demo' || loadState === 'error' ? ' · demo' : ''}
               </p>
+              {loadError ? <p className="products-load-error">{loadError}</p> : null}
             </div>
 
             <label className="products-sort">
@@ -157,7 +178,11 @@ export default function ProductsPage() {
             </label>
           </div>
 
-          {pageItems.length === 0 ? (
+          {loadState === 'loading' ? (
+            <div className="products-empty">
+              <p>Đang tải sản phẩm…</p>
+            </div>
+          ) : pageItems.length === 0 ? (
             <div className="products-empty">
               <p>Không có sản phẩm phù hợp.</p>
               <Button variant="link" onClick={clearFilters}>

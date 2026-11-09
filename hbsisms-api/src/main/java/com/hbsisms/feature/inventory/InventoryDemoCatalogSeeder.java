@@ -40,6 +40,7 @@ public class InventoryDemoCatalogSeeder implements ApplicationRunner {
     @Transactional
     public void run(ApplicationArguments args) {
         if (productVariantRepository.count() > 0) {
+            publishDemoProductIfNeeded();
             return;
         }
         Category category = new Category();
@@ -51,20 +52,42 @@ public class InventoryDemoCatalogSeeder implements ApplicationRunner {
         Product product = new Product();
         product.setCode("SP-DEMO-01");
         product.setName("Tôm sú demo");
+        product.setSlug("tom-su-demo");
         product.setCategory(category);
+        product.setDescription("Tôm sú demo để kiểm thử cổng bán hàng và nhập kho.");
         product.setActive(true);
-        product.setPublished(false);
+        product.setPublished(true);
         product = productRepository.save(product);
 
         ProductVariant variant = new ProductVariant();
         variant.setProduct(product);
         variant.setSku("TOM-SU-05");
         variant.setPackLabel("Khay 0,5kg");
+        variant.setUnitWeightG(500);
         variant.setListPrice(new BigDecimal("180000.00"));
         variant.setPackPerCase((short) 10);
         variant.setActive(true);
         productVariantRepository.save(variant);
 
         log.info("Seeded demo catalog variant SKU=TOM-SU-05 for inventory testing");
+    }
+
+    /** Local DB đã seed trước đó: bật publish + slug để storefront gọi được. */
+    private void publishDemoProductIfNeeded() {
+        productRepository.findByCodeIgnoreCase("SP-DEMO-01").ifPresent(product -> {
+            boolean changed = false;
+            if (!product.isPublished()) {
+                product.setPublished(true);
+                changed = true;
+            }
+            if (product.getSlug() == null || product.getSlug().isBlank()) {
+                product.setSlug("tom-su-demo");
+                changed = true;
+            }
+            if (changed) {
+                productRepository.save(product);
+                log.info("Published demo catalog product SP-DEMO-01 for B2C storefront");
+            }
+        });
     }
 }
