@@ -4,8 +4,8 @@ import Breadcrumbs from '@/components/storefront/Breadcrumbs/Breadcrumbs'
 import ProductCard from '@/components/storefront/ProductCard/ProductCard'
 import { ROUTES } from '@/constants/routes'
 import { useCart } from '@/context/CartContext'
+import { ApiError } from '@/api/client'
 import { productsApi } from '@/api/products'
-import { findProductBySlug, getRelatedProducts } from '@/data/demoProducts'
 import { getDefaultVariant } from '@/utils/productFilters'
 import hoaPhuong from '@/assets/decorations/hoa-phuong.png'
 import songLine from '@/assets/decorations/song-line.png'
@@ -18,18 +18,24 @@ export default function ProductDetailPage() {
   const { slug } = useParams()
   const [product, setProduct] = useState(null)
   const [related, setRelated] = useState([])
-  const [status, setStatus] = useState('loading') // loading | ready | missing
+  const [status, setStatus] = useState('loading') // loading | ready | missing | error
+  const [errorMessage, setErrorMessage] = useState('')
 
   useEffect(() => {
     let cancelled = false
     setStatus('loading')
+    setErrorMessage('')
     ;(async () => {
       try {
         const apiProduct = await productsApi.getBySlug(slug)
         if (cancelled) return
         setProduct(apiProduct)
         try {
-          const list = await productsApi.list({ page: 1, pageSize: 20 })
+          const list = await productsApi.list({
+            page: 1,
+            pageSize: 20,
+            categoryId: apiProduct.categoryId !== 'all' ? apiProduct.categoryId : undefined,
+          })
           if (!cancelled) {
             setRelated(list.items.filter((p) => p.id !== apiProduct.id).slice(0, 3))
           }
@@ -37,16 +43,15 @@ export default function ProductDetailPage() {
           if (!cancelled) setRelated([])
         }
         setStatus('ready')
-      } catch {
+      } catch (err) {
         if (cancelled) return
-        const demo = findProductBySlug(slug)
-        if (demo) {
-          setProduct(demo)
-          setRelated(getRelatedProducts(demo, 3))
-          setStatus('ready')
-        } else {
-          setProduct(null)
+        setProduct(null)
+        setRelated([])
+        if (err instanceof ApiError && err.status === 404) {
           setStatus('missing')
+        } else {
+          setStatus('error')
+          setErrorMessage(err?.message || 'Không tải được chi tiết sản phẩm.')
         }
       }
     })()
@@ -63,10 +68,21 @@ export default function ProductDetailPage() {
     )
   }
 
-  if (status === 'missing' || !product) {
+  if (status === 'missing' || (!product && status !== 'error')) {
     return (
       <div className="container product-missing">
         <h1>Không tìm thấy sản phẩm</h1>
+        <p>Sản phẩm không tồn tại hoặc chưa được đăng bán công khai.</p>
+        <Link to={ROUTES.PRODUCTS}>← Quay lại danh sách</Link>
+      </div>
+    )
+  }
+
+  if (status === 'error') {
+    return (
+      <div className="container product-missing">
+        <h1>Không tải được sản phẩm</h1>
+        <p>{errorMessage}</p>
         <Link to={ROUTES.PRODUCTS}>← Quay lại danh sách</Link>
       </div>
     )
