@@ -39,4 +39,7 @@ public interface PaymentRepository
 
     @Query("select p.code from Payment p where p.code like concat(:prefix, '%')")
     List<String> findCodesByPrefix(@Param("prefix") String prefix);
+
+    @Query("select coalesce(max(p.payosOrderCode), 130000) from Payment p")
+    Long maxPayosOrderCode();
 }

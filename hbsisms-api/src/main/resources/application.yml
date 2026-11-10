@@ -67,6 +67,9 @@ app:
   seed:
     # Creates the default roles and, if no user exists yet, an 'admin' account with this password.
     admin-password: ${SEED_ADMIN_PASSWORD:}
+  payos:
+    # Stub checkoutUrl base until Long wires real PayOS (#33). Appends ?orderCode=
+    stub-return-base-url: ${PAYOS_STUB_RETURN_BASE_URL:http://localhost:5173/thanh-toan/ket-qua}
   inventory:
     expire-job:
       # Daily move of past-HSD available trays → qty_expired (task 38).

@@ -1,4 +1,5 @@
 import { api } from './client'
+import { CART_SESSION_HEADER, getCartSessionToken } from './cart'
 import { checkDto } from './mappers/checkDto'
 import { fromOrderDto } from './mappers/order'
 
@@ -26,7 +27,12 @@ export const checkoutApi = {
         imageUrl: item.image,
       })),
     }
-    const data = await api.post('/checkout', body, { 'Idempotency-Key': idempotencyKey })
+    const data = await api.post('/checkout', body, {
+      headers: {
+        'Idempotency-Key': idempotencyKey,
+        [CART_SESSION_HEADER]: getCartSessionToken(),
+      },
+    })
     checkDto(data, ['order', 'payment.payosOrderCode', 'payment.amount', 'payment.checkoutUrl', 'payment.expiresAt'], 'POST /checkout', '4. Checkout')
     return { order: fromOrderDto(data.order), payment: data.payment }
   },
