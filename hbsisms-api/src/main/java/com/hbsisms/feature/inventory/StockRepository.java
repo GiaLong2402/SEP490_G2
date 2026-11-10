@@ -106,7 +106,7 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
      * Ordered by earliest {@code expDate} (nulls last), then stock id.
      */
     @Query("""
-            select distinct s from Stock s
+            select s from Stock s
             join fetch s.lot l
             join fetch s.location loc
             where s.variant.id = :variantId
@@ -116,7 +116,7 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
                    or (lower(loc.zone) not like '%quarantine%'
                        and lower(loc.zone) not like '%cach ly%'
                        and lower(loc.zone) not like '%cách ly%'))
-            order by case when l.expDate is null then 1 else 0 end, l.expDate asc, s.id asc
+            order by l.expDate asc nulls last, s.id asc
             """)
     List<Stock> findFefoCandidates(
             @Param("variantId") Long variantId, @Param("today") java.time.LocalDate today);

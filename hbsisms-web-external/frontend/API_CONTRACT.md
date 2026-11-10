@@ -136,7 +136,9 @@ File FE: `src/api/salesRequests.js`, mapper `mappers/salesRequest.js`. Dùng ở
 
 File FE: `src/api/checkout.js`. Dùng ở bước "Đặt hàng & thanh toán".
 
-`POST /checkout` — header **`Idempotency-Key: <uuid>`** (FE tạo 1 key cho 1 lần đặt; bấm lại cùng key → trả lại đơn cũ, không tạo đơn mới).
+`POST /checkout` — header **`Idempotency-Key: <uuid>`** (FE tạo 1 key cho 1 lần đặt; bấm lại cùng key → trả lại đơn cũ, không tạo đơn mới). FE cũng gửi **`X-Cart-Session`** để backend xóa giỏ server sau khi tạo đơn.
+
+**Đã nối (#27):** backend tạo `ONLINE_B2C` `PENDING` + `WAITING`, hold FEFO 15 phút, snapshot giá. `checkoutUrl` / `qrCode` hiện là **stub** (trỏ trang kết quả FE) — Long thay bằng PayOS thật (#33).
 
 ```json
 {
@@ -174,7 +176,7 @@ FE gửi kèm `unitPrice, productName, packLabel, imageUrl` trong `lines` chỉ 
   "shortages": [{ "variantId": 12, "requestedQty": 3, "availableQty": 1 }] }
 ```
 
-Đơn tạo xong FE làm trống giỏ (giỏ hiện chỉ ở trình duyệt, `context/CartContext.jsx`).
+Đơn tạo xong: backend xóa giỏ theo `X-Cart-Session`; FE cũng `clearCart()` trên client.
 
 ## 5. PayOS — task "Trạng thái khi khách quay về" + tạo lại link (Long)
 
@@ -203,5 +205,5 @@ File FE: `src/api/payments.js`. Dùng ở màn quét QR (bước 4) và trang k�
 | Địa chỉ | Đã nối | `/me/addresses` |
 | Đơn của tôi + hủy | Xong (mock) | Chưa có `/me/orders` (đã có `/orders` cho nhân viên) |
 | Yêu cầu | Xong (mock) | Chưa có `/me/sales-requests` (đã có `/sales-requests` cho nhân viên) |
-| Checkout | Xong (mock) | Chưa có |
-| PayOS return / link | Xong (mock) | Chưa có |
+| Checkout | Đã nối | `POST /checkout` (+ Idempotency-Key, hold FEFO, stub PayOS) |
+| PayOS return / link | Xong (mock) | Chưa có (Long #33); checkout trả stub `checkoutUrl` |
