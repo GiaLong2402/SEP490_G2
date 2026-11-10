@@ -88,6 +88,22 @@ public class SalesRequest {
     @Column(columnDefinition = "text")
     private String rejectReason;
 
+    /** Ngày khách cần nhận (portal /me create). */
+    @Column
+    private LocalDate neededDate;
+
+    /** SL khay khách yêu cầu. */
+    @Column
+    private Integer requestedQty;
+
+    /** SL khay còn hàng lúc gửi yêu cầu. */
+    @Column
+    private Integer availableQty;
+
+    /** Mã đơn khi Sales chốt ORDERED — FE nút xem đơn / thanh toán. */
+    @Column(length = 30)
+    private String orderCode;
+
     @PrePersist
     void defaultReceivedAt() {
         if (receivedAt == null) {

@@ -110,11 +110,13 @@ Hủy đơn: chỉ khi `canCancel` (đơn chờ thanh toán) → giải phóng h
 
 File FE: `src/api/salesRequests.js`, mapper `mappers/salesRequest.js`. Dùng ở tab Yêu cầu, Chi tiết yêu cầu, hộp thoại thiếu hàng.
 
+**Đã nối:** `GET/POST /me/sales-requests`, `GET /me/sales-requests/{code}` (JWT + `MeCustomerResolver`). Status trên `/me` là **UPPERCASE** (`NEW`…); staff `/sales-requests` vẫn lowercase. `items` trong body bị bỏ qua (chỉ lưu summary + qty tổng). Seed demo: `YCM-DEMO-001` cho KH-001.
+
 | Method | URL | Body / Trả về |
 |---|---|---|
-| GET | `/me/sales-requests?page=1&pageSize=100` | `PageResponse<SalesRequestResponse>` |
-| GET | `/me/sales-requests/{code}` | `SalesRequestResponse` |
-| POST | `/me/sales-requests` | body dưới → `SalesRequestResponse` (status `NEW`) |
+| GET | `/me/sales-requests?page=1&pageSize=100` | `PageResponse<MeSalesRequestResponse>` |
+| GET | `/me/sales-requests/{code}` | `MeSalesRequestResponse` |
+| POST | `/me/sales-requests` | body dưới → `MeSalesRequestResponse` (status `NEW`) |
 
 ```json
 {
@@ -127,9 +129,8 @@ File FE: `src/api/salesRequests.js`, mapper `mappers/salesRequest.js`. Dùng ở
 }
 ```
 
-- `SalesRequestInputRequest` hiện chỉ có `summary` + `channel` → **đề xuất thêm** `neededDate, requestedQty, availableQty` (task ghi "lưu SL cần, SL đang có, phần thiếu, ngày cần"). `items` để dành, chưa lưu cũng được.
-- Đề xuất `SalesRequestResponse` trả thêm `neededDate, requestedQty, availableQty` và `orderCode` (khi `ORDERED`, để nút "Xem đơn & thanh toán"). Thiếu thì FE ẩn phần đó.
-- FE đang hiển thị: `code, summary, status, receivedAt, feasible, fulfillableQty, shortageQty, expectedDate, rejectReason, note`.
+- Body lưu: `summary`, `neededDate`, `requestedQty`, `availableQty` (channel portal cố định `WEB`). `items` chưa persist.
+- Response: `code, summary, status, receivedAt, neededDate, requestedQty, availableQty, feasible, fulfillableQty, shortageQty, expectedDate, rejectReason, note, orderCode` (`orderCode` khi Sales chốt `ORDERED`).
 - Nhãn: `NEW` Đang xem xét · `QUOTING` Đang báo giá · `ORDERED` Đã chốt · `REJECTED` Không đáp ứng được · `CLOSED` Đã đóng.
 
 ## 4. Checkout — task "Checkout" (Duy)
@@ -204,6 +205,6 @@ File FE: `src/api/payments.js`. Dùng ở màn quét QR (bước 4) và trang k�
 | Hồ sơ + đổi SĐT | Đã nối | `/me/profile`, `/me/phone` + `phone` trên `/auth/me` |
 | Địa chỉ | Đã nối | `/me/addresses` |
 | Đơn của tôi + hủy | Xong (mock) | Chưa có `/me/orders` (đã có `/orders` cho nhân viên) |
-| Yêu cầu | Xong (mock) | Chưa có `/me/sales-requests` (đã có `/sales-requests` cho nhân viên) |
+| Yêu cầu | Đã nối | `/me/sales-requests` (+ staff `/sales-requests`) |
 | Checkout | Đã nối | `POST /checkout` (+ Idempotency-Key, hold FEFO, stub PayOS) |
 | PayOS return / link | Xong (mock) | Chưa có (Long #33); checkout trả stub `checkoutUrl` |

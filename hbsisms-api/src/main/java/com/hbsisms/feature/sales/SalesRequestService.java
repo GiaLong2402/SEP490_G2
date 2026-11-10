@@ -102,6 +102,7 @@ public class SalesRequestService {
         row.setStatus(RequestStatus.NEW);
         row.setReceivedAt(Instant.now(clock));
         row.setHandledBy(handler);
+        applyCustomerQtyFields(row, request);
         salesRequestRepository.save(row);
         return SalesRequestResponse.from(row);
     }
@@ -141,9 +142,17 @@ public class SalesRequestService {
             }
             order = salesOrderService.createFromRequest(request.order(), actorId);
             row.setStatus(RequestStatus.ORDERED);
+            row.setOrderCode(order.code());
         }
 
         return new FeasibilityResultResponse(SalesRequestResponse.from(row), order);
+    }
+
+    /** Shared by staff create and portal {@code /me/sales-requests}. */
+    public static void applyCustomerQtyFields(SalesRequest row, SalesRequestInputRequest request) {
+        row.setNeededDate(request.neededDate());
+        row.setRequestedQty(request.requestedQty());
+        row.setAvailableQty(request.availableQty());
     }
 
     @Transactional

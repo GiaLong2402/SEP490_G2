@@ -18,6 +18,12 @@ public interface SalesRequestRepository
     Optional<SalesRequest> findByCode(String code);
 
     @EntityGraph(attributePaths = {"customer", "handledBy"})
+    Optional<SalesRequest> findByCodeAndCustomer_Id(String code, Long customerId);
+
+    @EntityGraph(attributePaths = {"customer", "handledBy"})
+    Page<SalesRequest> findByCustomer_IdOrderByReceivedAtDescIdDesc(Long customerId, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"customer", "handledBy"})
     Optional<SalesRequest> findWithDetailsById(Long id);
 
     @Override
