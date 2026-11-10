@@ -1,4 +1,4 @@
-import { api, ApiError } from './client'
+import { api } from './client'
 import { fromOrderDto } from './mappers/order'
 
 /**
@@ -7,14 +7,8 @@ import { fromOrderDto } from './mappers/order'
  */
 export const ordersApi = {
   async listMine(signal) {
-    try {
-      const data = await api.get('/me/orders', { page: 1, pageSize: 100 }, signal)
-      return (data?.items || []).map(fromOrderDto)
-    } catch (err) {
-      // /me/orders chưa nối backend — tránh chặn tab Yêu cầu (/me/sales-requests đã có).
-      if (err instanceof ApiError && err.status === 404) return []
-      throw err
-    }
+    const data = await api.get('/me/orders', { page: 1, pageSize: 100 }, signal)
+    return (data?.items || []).map(fromOrderDto)
   },
 
   async getMine(code, signal) {
