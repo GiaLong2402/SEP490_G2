@@ -3,7 +3,6 @@ import Breadcrumbs from '@/components/storefront/Breadcrumbs/Breadcrumbs'
 import Button from '@/components/ui/Button'
 import storePacking from '@/assets/about/store-packing.png'
 import { ROUTES } from '@/constants/routes'
-import './SimplePage.css'
 
 export default function AboutPage() {
   return (

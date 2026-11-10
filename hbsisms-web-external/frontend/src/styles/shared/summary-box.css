@@ -1,0 +1,177 @@
+/* Bố cục 2 cột + khung tóm tắt đơn (bên phải) — dùng ở Giỏ hàng và Thanh toán */
+
+/* Bố cục 2 cột: bảng sản phẩm | tóm tắt (360px) */
+.cart-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 24px;
+  align-items: start;
+}
+
+/* =========================================================
+   TÓM TẮT GIỎ HÀNG (bên phải)
+   ========================================================= */
+.cart-summary {
+  position: sticky; /* cuộn trang thì khung tóm tắt vẫn đứng yên */
+  top: 140px;
+  padding: 22px 20px;
+  border: 1px solid #cfe3ec;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.cart-summary h2 {
+  margin-bottom: 16px;
+  color: var(--color-brand);
+  font-size: 24px;
+  font-weight: 800;
+}
+
+/* Danh sách: mỗi sản phẩm là 1 thẻ trắng */
+.cart-summary__list {
+  display: grid;
+  gap: 10px;
+}
+
+.cart-summary__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px 8px 8px;
+  border: 1px solid #dbe8ef;
+  border-radius: 8px;
+  background: var(--color-white);
+}
+
+.cart-summary__item img {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.cart-summary__item p {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+}
+
+.cart-summary__item strong {
+  color: var(--color-brand);
+}
+
+.cart-summary__item p span {
+  color: var(--color-muted);
+}
+
+.cart-summary__item-price {
+  color: var(--color-brand);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* Tạm tính + phí giao hàng */
+.cart-summary__rows {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding-block: 16px;
+  border-top: 1px solid #cfe3ec;
+  border-bottom: 1px solid #cfe3ec;
+  font-size: 15px;
+}
+
+.cart-summary__rows p {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--color-muted);
+}
+
+.cart-summary__rows strong {
+  color: var(--color-brand);
+}
+
+/* Tổng tạm tính: chữ to, giá cam
+   - white-space: nowrap => chữ "Tổng tạm tính" và con số KHÔNG bị bẻ dòng giữa chừng
+   - flex-wrap: wrap    => nếu số quá dài (hàng trăm triệu) thì cả con số
+                           xuống dòng dưới, thay vì làm vỡ chữ bên trái */
+.cart-summary__total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  column-gap: 12px;
+  margin-top: 16px;
+}
+
+.cart-summary__total span {
+  color: var(--color-brand);
+  font-size: 18px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.cart-summary__total strong {
+  margin-left: auto; /* luôn nằm sát bên phải, kể cả khi xuống dòng */
+  color: var(--color-price);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.cart-summary__hint {
+  margin: 2px 0 16px;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+/* Nút "Thanh toán →" cam, to, kín chiều ngang */
+.cart-summary__pay {
+  width: 100%;
+  min-height: 54px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-action);
+  color: var(--color-white);
+  font-size: 18px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cart-summary__pay:hover {
+  background: var(--color-action-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(255, 101, 13, 0.25);
+}
+
+.cart-summary__pay svg {
+  transition: transform 0.2s ease;
+}
+
+.cart-summary__pay:hover svg {
+  transform: translateX(4px);
+}
+
+.cart-summary__note {
+  margin-top: 12px;
+  color: var(--color-muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+@media (max-width: 1023px) {
+  .cart-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .cart-summary {
+    position: static;
+  }
+}

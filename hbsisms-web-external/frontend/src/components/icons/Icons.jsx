@@ -240,6 +240,45 @@ export function MapPinIcon({ size = 20, className }) {
   )
 }
 
+export function ExternalLinkIcon({ size = 18, className }) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <path d="M14 4h6v6M20 4l-9 9" />
+      <path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" />
+    </svg>
+  )
+}
+
+export function CopyIcon({ size = 18, className }) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15V6a2 2 0 0 1 2-2h8" />
+    </svg>
+  )
+}
+
+export function StoreIcon({ size = 20, className }) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <path d="M4 9 5.5 4h13L20 9" />
+      <path d="M4 9a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0A2.7 2.7 0 0 0 20 9" />
+      <path d="M5 11v9h14v-9M10 20v-5h4v5" />
+    </svg>
+  )
+}
+
+export function QrIcon({ size = 20, className }) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <rect x="4" y="4" width="6" height="6" rx="1" />
+      <rect x="14" y="4" width="6" height="6" rx="1" />
+      <rect x="4" y="14" width="6" height="6" rx="1" />
+      <path d="M14 14h2v2h-2zM18 14h2M14 18v2M18 18h2v2" />
+    </svg>
+  )
+}
+
 export function SunIcon({ size = 20, className }) {
   return (
     <svg {...baseProps(size, className)}>

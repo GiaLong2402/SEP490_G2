@@ -13,8 +13,6 @@ import { api } from '@/api/client'
 import { ROUTES } from '@/constants/routes'
 import { useAuth } from '@/context/AuthContext'
 import { useCart } from '@/context/CartContext'
-import { ROLES } from '@/constants/roles'
-import { getHomePathForRole } from '@/auth/roleUtils'
 import { getRootCategoriesWithChildren } from '@/utils/categoryTree'
 import NotificationBell from './NotificationBell'
 import UserAccountMenu from './UserAccountMenu'
@@ -28,7 +26,7 @@ const NAV_ITEMS = [
 ]
 
 export default function Header() {
-  const { user, isLoggedIn, role, logout } = useAuth()
+  const { user, isLoggedIn, logout } = useAuth()
   const { totalItems } = useCart()
   const [navCategories, setNavCategories] = useState([])
   const catsRef = useRef(null)
@@ -73,9 +71,6 @@ export default function Header() {
     navigate(q ? `${ROUTES.PRODUCTS}?q=${encodeURIComponent(q)}` : ROUTES.PRODUCTS)
   }
 
-  const isStaff =
-    isLoggedIn && role !== ROLES.CUSTOMER && role !== ROLES.GUEST
-
   return (
     <header className="site-header">
       <div className="site-header__top container">
@@ -112,7 +107,6 @@ export default function Header() {
             <UserAccountMenu
               userName={user?.name || 'Tài khoản'}
               onLogout={logout}
-              workAreaLink={isStaff ? getHomePathForRole(role) : null}
             />
           ) : (
             <Link to={ROUTES.LOGIN} className="site-login">

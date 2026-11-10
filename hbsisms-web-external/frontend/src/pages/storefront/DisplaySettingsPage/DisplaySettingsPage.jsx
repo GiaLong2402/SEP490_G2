@@ -6,20 +6,15 @@ import {
   ArrowRightIcon,
   CheckIcon,
   HistoryIcon,
-  LoginIcon,
   LogoutIcon,
-  MailIcon,
-  MapPinIcon,
   MonitorIcon,
   RefreshIcon,
   ShieldIcon,
-  SmartphoneIcon,
   SunIcon,
   TextAaIcon,
 } from '@/components/icons/Icons'
 import { ROUTES } from '@/constants/routes'
 import { formatPrice } from '@/utils/formatPrice'
-import '../AccountPage/AccountPage.css'
 import './DisplaySettingsPage.css'
 
 const FONT_SIZES = [
@@ -30,22 +25,11 @@ const FONT_SIZES = [
 
 const DEFAULT_SETTINGS = { fontSize: 'normal', highContrast: false }
 
-// Demo: chưa có API phiên đăng nhập / nhật ký hoạt động
-const DEMO_DEVICES = [
-  { id: 'this', name: 'Chrome trên Windows', meta: 'Đang hoạt động', Icon: MonitorIcon, current: true },
-  { id: 'iphone', name: 'Safari trên iPhone', meta: 'Đăng nhập 20/10 lúc 18:05', Icon: SmartphoneIcon },
-]
-
-const DEMO_ACTIVITY = [
-  { title: 'Đăng nhập trên thiết bị mới', detail: 'Safari trên iPhone', time: '20/10 · 18:05', Icon: LoginIcon, tone: 'accent' },
-  { title: 'Đổi địa chỉ mặc định', detail: 'Nhà riêng · Hải Phòng', time: '18/10 · 09:30', Icon: MapPinIcon, tone: 'info' },
-  { title: 'Thêm email', detail: 'an.nguyen@gmail.com', time: '15/10 · 20:12', Icon: MailIcon, tone: 'warning' },
-]
-
 export default function DisplaySettingsPage() {
   const [saved, setSaved] = useState(DEFAULT_SETTINGS)
   const [settings, setSettings] = useState(DEFAULT_SETTINGS)
-  const [devices, setDevices] = useState(DEMO_DEVICES)
+  const [devices, setDevices] = useState([])
+  const [activity] = useState([])
   const [flash, setFlash] = useState(false)
 
   const isDirty = settings.fontSize !== saved.fontSize || settings.highContrast !== saved.highContrast
@@ -161,28 +145,32 @@ export default function DisplaySettingsPage() {
               </div>
             </div>
 
-            <ul className="settings-list">
-              {devices.map(({ id, name, meta, Icon, current }) => (
-                <li key={id} className="settings-device">
-                  <span className="settings-device__icon" aria-hidden="true">
-                    <Icon size={20} />
-                  </span>
-                  <span className="settings-device__text">
-                    <strong>{name}</strong>
-                    <span>{meta}</span>
-                  </span>
-                  {current ? (
-                    <span className="settings-badge">
-                      <CheckIcon size={14} /> Thiết bị này
+            {devices.length === 0 ? (
+              <p className="settings-empty">Chưa có dữ liệu phiên đăng nhập.</p>
+            ) : (
+              <ul className="settings-list">
+                {devices.map(({ id, name, meta, Icon, current }) => (
+                  <li key={id} className="settings-device">
+                    <span className="settings-device__icon" aria-hidden="true">
+                      <Icon size={20} />
                     </span>
-                  ) : (
-                    <button type="button" className="settings-link-danger" onClick={() => logoutDevice(id)}>
-                      Đăng xuất
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
+                    <span className="settings-device__text">
+                      <strong>{name}</strong>
+                      <span>{meta}</span>
+                    </span>
+                    {current ? (
+                      <span className="settings-badge">
+                        <CheckIcon size={14} /> Thiết bị này
+                      </span>
+                    ) : (
+                      <button type="button" className="settings-link-danger" onClick={() => logoutDevice(id)}>
+                        Đăng xuất
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
 
             <button
               type="button"
@@ -207,20 +195,24 @@ export default function DisplaySettingsPage() {
               </div>
             </div>
 
-            <ol className="settings-timeline">
-              {DEMO_ACTIVITY.map(({ title, detail, time, Icon, tone }) => (
-                <li key={title} className="settings-event">
-                  <span className={`settings-event__icon settings-event__icon--${tone}`} aria-hidden="true">
-                    <Icon size={18} />
-                  </span>
-                  <span className="settings-event__text">
-                    <strong>{title}</strong>
-                    <span>{detail}</span>
-                  </span>
-                  <time className="settings-event__time">{time}</time>
-                </li>
-              ))}
-            </ol>
+            {activity.length === 0 ? (
+              <p className="settings-empty">Chưa có hoạt động nào.</p>
+            ) : (
+              <ol className="settings-timeline">
+                {activity.map(({ title, detail, time, Icon, tone }) => (
+                  <li key={title} className="settings-event">
+                    <span className={`settings-event__icon settings-event__icon--${tone}`} aria-hidden="true">
+                      <Icon size={18} />
+                    </span>
+                    <span className="settings-event__text">
+                      <strong>{title}</strong>
+                      <span>{detail}</span>
+                    </span>
+                    <time className="settings-event__time">{time}</time>
+                  </li>
+                ))}
+              </ol>
+            )}
           </section>
         </div>
 

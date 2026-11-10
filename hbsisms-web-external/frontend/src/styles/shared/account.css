@@ -1,0 +1,120 @@
+/* Thẻ trắng + công tắc bật/tắt — dùng ở các trang tài khoản (Tài khoản, Sổ địa chỉ, Cài đặt hiển thị) */
+
+.account-card {
+  padding: 28px 28px 24px;
+  border-radius: 16px;
+  background: var(--color-white);
+  border: 1px solid rgba(7, 54, 83, 0.06);
+  box-shadow: 0 10px 28px rgba(7, 54, 83, 0.06);
+}
+
+/* Thẻ không padding: các phần bên trong tự căn lề */
+.account-card--flush {
+  padding: 0;
+  overflow: hidden;
+}
+
+.account-toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.account-toggle:hover {
+  border-color: #c9dde6;
+  background: #fbfdfe;
+}
+
+.account-toggle.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.account-toggle__icon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #ebf8fb;
+  color: var(--color-accent);
+}
+
+.account-toggle__text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.account-toggle__text strong {
+  color: var(--color-brand);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.account-toggle__text span {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.account-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.account-toggle__ui {
+  flex-shrink: 0;
+  position: relative;
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  background: #c9d8e2;
+  transition: background 0.2s ease;
+}
+
+.account-toggle__ui::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  transition: transform 0.2s ease;
+}
+
+.account-toggle input:checked + .account-toggle__ui {
+  background: var(--color-accent);
+}
+
+.account-toggle input:checked + .account-toggle__ui::after {
+  transform: translateX(20px);
+}
+
+.account-toggle input:focus-visible + .account-toggle__ui {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .account-card {
+    padding: 22px 18px;
+  }
+
+  .account-card--flush {
+    padding: 0;
+  }
+}

@@ -1,5 +1,5 @@
 import { api } from './client'
-import { mapApiProduct } from './mapProduct'
+import { mapApiProduct } from './mappers/product'
 
 export const productsApi = {
   async list({ q, categoryId, page = 1, pageSize = 50 } = {}) {

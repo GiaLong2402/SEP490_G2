@@ -84,10 +84,16 @@ ul {
   user-select: none;
 }
 
-/* Trang quản trị (staff/admin) nền xám nhẹ */
-.admin-shell {
-  min-height: 100vh;
-  background: #f1f5f9;
+/* Ẩn khỏi màn hình nhưng screen reader vẫn đọc */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -68,7 +68,7 @@ export default function AccountShell({ title, breadcrumbs, children }) {
               <NavLink
                 key={to}
                 to={to}
-                end
+                end={to === ROUTES.ACCOUNT}
                 className={({ isActive }) => `account-nav__item ${isActive ? 'is-active' : ''}`}
               >
                 <Icon size={20} />

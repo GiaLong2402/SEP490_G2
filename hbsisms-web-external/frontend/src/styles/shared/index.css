@@ -1,0 +1,10 @@
+/*
+ * Style dùng ở từ 2 nơi trở lên — xem README.md cùng thư mục.
+ * Nạp trong main.jsx TRƯỚC App để CSS riêng của từng trang (nạp sau) vẫn được ưu tiên.
+ */
+@import './summary-box.css';
+@import './result-card.css';
+@import './order.css';
+@import './detail-page.css';
+@import './account.css';
+@import './simple-page.css';

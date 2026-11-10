@@ -1,0 +1,82 @@
+/* Chi tiết yêu cầu — dựa trên khung .od-* (styles/shared/detail-page.css) */
+.rq-journey {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.od-journey__step.is-stopped .od-journey__dot {
+  border-color: var(--color-danger);
+  background: #fdecec;
+  color: var(--color-danger);
+  box-shadow: none;
+}
+
+.od-journey__step.is-stopped strong {
+  color: var(--color-danger) !important;
+}
+
+.rq-summary {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--color-surface);
+  color: var(--color-brand);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.rq-facts {
+  margin: 0;
+}
+
+.rq-facts > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.rq-facts > div:last-child {
+  border-bottom: none;
+}
+
+.rq-facts dt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+.rq-facts dt svg {
+  color: var(--color-accent);
+}
+
+.rq-facts dd {
+  margin: 0;
+  color: var(--color-brand);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.rq-facts dd.is-ok {
+  color: var(--color-success);
+}
+
+.rq-facts dd.is-bad {
+  color: var(--color-danger);
+}
+
+.rq-note,
+.rq-waiting {
+  margin: 12px 0 0;
+  color: var(--color-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.rq-reason {
+  margin: 14px 0 0;
+}

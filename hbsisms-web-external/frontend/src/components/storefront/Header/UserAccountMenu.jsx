@@ -15,7 +15,7 @@ import { getInitials } from '@/utils/initials'
  * Nút avatar + tên → menu tài khoản (sau khi đăng nhập).
  * Chuột: rê vào là mở, rời ra là đóng. Cảm ứng / bàn phím: bấm để mở/đóng.
  */
-export default function UserAccountMenu({ userName, onLogout, workAreaLink }) {
+export default function UserAccountMenu({ userName, onLogout }) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef(null)
   const closeTimer = useRef(null)
@@ -143,18 +143,6 @@ export default function UserAccountMenu({ userName, onLogout, workAreaLink }) {
               <ChevronRightIcon size={18} className="site-account__arrow" />
             </Link>
 
-            {workAreaLink && (
-              <Link role="menuitem" to={workAreaLink} className="site-account__item" onClick={closeMenu}>
-                <span className="site-account__icon">
-                  <ClipboardIcon size={24} />
-                </span>
-                <span className="site-account__text">
-                  <strong>Khu vực làm việc</strong>
-                  <span>Màn hình cho nhân viên</span>
-                </span>
-                <ChevronRightIcon size={18} className="site-account__arrow" />
-              </Link>
-            )}
           </div>
 
           <div className="site-account__foot">

@@ -6,7 +6,7 @@ Hệ thống bán hải sản **Hòa Bình** (Hải Phòng).
 
 | Thư mục / file | Nội dung |
 |---|---|
-| `frontend/` | Codebase React (Vite) — trang bán hàng + khung phân role |
+| `frontend/` | Codebase React (Vite) — web bán hàng cho khách vãng lai + khách hàng (nhân viên dùng web nội bộ) |
 
 ## Chạy frontend
 
@@ -16,4 +16,6 @@ npm install
 npm run dev
 ```
 
-Chi tiết cấu trúc code, roles, và cách thêm màn hình: xem [`frontend/README.md`](frontend/README.md).
+Quy tắc code (cấu trúc, gọi API, CSS, kiểm tra trước khi xong): xem [`AGENTS.md`](AGENTS.md).
+
+Chi tiết cấu trúc code và cách thêm màn hình: xem [`frontend/README.md`](frontend/README.md).

@@ -3,6 +3,14 @@
   gap: 20px;
 }
 
+.settings-empty {
+  margin: 0;
+  padding: 8px 2px 4px;
+  color: var(--color-muted, #5b6b7a);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
 .settings-card {
   padding: 24px;
 }
