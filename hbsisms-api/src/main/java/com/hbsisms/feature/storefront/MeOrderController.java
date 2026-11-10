@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Inter 2 #29 — B2C đơn của tôi (`/me/orders`). */
+/** Inter 2 #29 list/detail + #30 cancel unpaid (`/me/orders`). */
 @RestController
 @RequestMapping("/me/orders")
 public class MeOrderController {
