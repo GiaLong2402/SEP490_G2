@@ -58,7 +58,8 @@ class SalesRequestServiceTest {
         });
 
         var response = service.create(
-                new SalesRequestInputRequest(null, "Anh A", SaleChannel.PHONE, "Cần 10 khay tôm"), 9L);
+                new SalesRequestInputRequest(null, "Anh A", SaleChannel.PHONE, "Cần 10 khay tôm", null, null, null),
+                9L);
 
         assertThat(response.code()).isEqualTo("YC-2026-0001");
         assertThat(response.status()).isEqualTo(RequestStatus.NEW);

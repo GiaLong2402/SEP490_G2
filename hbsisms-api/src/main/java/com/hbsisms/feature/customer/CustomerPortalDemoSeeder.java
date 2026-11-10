@@ -4,11 +4,16 @@ import com.hbsisms.feature.auth.AuthIdentity;
 import com.hbsisms.feature.auth.AuthIdentityRepository;
 import com.hbsisms.feature.role.DefaultRoles;
 import com.hbsisms.feature.role.RoleRepository;
+import com.hbsisms.feature.sales.RequestStatus;
+import com.hbsisms.feature.sales.SaleChannel;
+import com.hbsisms.feature.sales.SalesRequest;
+import com.hbsisms.feature.sales.SalesRequestRepository;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
 import com.hbsisms.feature.user.UserType;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -18,7 +23,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Inter 2 #26 — đảm bảo KH-001 (0912345678) có tài khoản portal customer + 2 địa chỉ Hải Phòng để demo.
+ * Inter 2 #26/#portal — KH-001 portal + địa chỉ; seed yêu cầu vượt tồn demo ({@code YCM-DEMO-*}).
  * Idempotent: chạy được trên DB đã seed sẵn.
  */
 @Slf4j
@@ -29,24 +34,28 @@ public class CustomerPortalDemoSeeder implements ApplicationRunner {
     static final String DEMO_PHONE = "0912345678";
     static final String DEMO_CUSTOMER_CODE = "KH-001";
     static final String DEMO_FIREBASE_UID = "uid-demo-kh001";
+    static final String DEMO_REQUEST_CODE = "YCM-DEMO-001";
 
     private final CustomerRepository customerRepository;
     private final CustomerAddressRepository addressRepository;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final AuthIdentityRepository authIdentityRepository;
+    private final SalesRequestRepository salesRequestRepository;
 
     public CustomerPortalDemoSeeder(
             CustomerRepository customerRepository,
             CustomerAddressRepository addressRepository,
             UserRepository userRepository,
             RoleRepository roleRepository,
-            AuthIdentityRepository authIdentityRepository) {
+            AuthIdentityRepository authIdentityRepository,
+            SalesRequestRepository salesRequestRepository) {
         this.customerRepository = customerRepository;
         this.addressRepository = addressRepository;
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.authIdentityRepository = authIdentityRepository;
+        this.salesRequestRepository = salesRequestRepository;
     }
 
     @Override
@@ -68,8 +77,36 @@ public class CustomerPortalDemoSeeder implements ApplicationRunner {
         }
         ensureAuthIdentity(user);
         ensureAddresses(customer);
+        ensureDemoSalesRequest(customer, DEMO_REQUEST_CODE);
+        // Account portal khác (vd. Nguyễn Văn Mười đăng ký OTP) cũng có 1 yêu cầu demo để list không trống.
+        for (Customer linked : customerRepository.findAll()) {
+            if (linked.getAccountUser() == null) {
+                continue;
+            }
+            String code = "YCM-DEMO-C" + linked.getId();
+            ensureDemoSalesRequest(linked, code);
+        }
 
         log.info("Portal demo ready: customer {} phone {} userId={}", customer.getCode(), DEMO_PHONE, user.getId());
+    }
+
+    private void ensureDemoSalesRequest(Customer customer, String code) {
+        if (salesRequestRepository.findByCode(code).isPresent()) {
+            return;
+        }
+        SalesRequest row = new SalesRequest();
+        row.setCode(code);
+        row.setCustomer(customer);
+        row.setCustomerName(customer.getName());
+        row.setChannel(SaleChannel.WEB);
+        row.setSummary("Chả Cá · Khay 500 g × 3 khay (còn 1) — demo vượt tồn");
+        row.setStatus(RequestStatus.NEW);
+        row.setReceivedAt(Instant.now());
+        row.setNeededDate(LocalDate.now().plusDays(2));
+        row.setRequestedQty(3);
+        row.setAvailableQty(1);
+        salesRequestRepository.save(row);
+        log.info("Seeded portal sales request {} for customer {}", code, customer.getCode());
     }
 
     private AppUser ensurePortalUser(Customer customer) {
