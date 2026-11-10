@@ -11,12 +11,11 @@ import com.hbsisms.feature.customer.CustomerAddressRepository;
 import com.hbsisms.feature.customer.pricing.PriceResolver;
 import com.hbsisms.feature.customer.pricing.ResolvedPrice;
 import com.hbsisms.feature.inventory.StockRepository;
-import com.hbsisms.feature.payment.PayDirection;
-import com.hbsisms.feature.payment.PayTxnStatus;
 import com.hbsisms.feature.payment.Payment;
 import com.hbsisms.feature.payment.PaymentMethod;
 import com.hbsisms.feature.payment.PaymentRepository;
 import com.hbsisms.feature.payment.PaymentStatus;
+import com.hbsisms.feature.payment.payos.PayosLinkService;
 import com.hbsisms.feature.sales.AllocationStatus;
 import com.hbsisms.feature.sales.Delivery;
 import com.hbsisms.feature.sales.DeliveryRepository;
@@ -51,11 +50,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Inter 2 #27 — B2C checkout: stock check, ONLINE_B2C order, FEFO hold, PayOS stub. */
+/** Inter 2 #27 — B2C checkout: stock check, ONLINE_B2C order, FEFO hold; PayOS link via #33. */
 @Service
 public class CheckoutService {
 
@@ -78,8 +76,8 @@ public class CheckoutService {
     private final CartService cartService;
     private final UserRepository userRepository;
     private final AppConfigService appConfigService;
+    private final PayosLinkService payosLinkService;
     private final Clock clock;
-    private final String stubReturnBaseUrl;
 
     public CheckoutService(
             CheckoutIdempotencyRepository idempotencyRepository,
@@ -96,9 +94,8 @@ public class CheckoutService {
             CartService cartService,
             UserRepository userRepository,
             AppConfigService appConfigService,
-            Clock clock,
-            @Value("${app.payos.stub-return-base-url:http://localhost:5173/thanh-toan/ket-qua}")
-                    String stubReturnBaseUrl) {
+            PayosLinkService payosLinkService,
+            Clock clock) {
         this.idempotencyRepository = idempotencyRepository;
         this.customerAddressRepository = customerAddressRepository;
         this.productVariantRepository = productVariantRepository;
@@ -113,10 +110,8 @@ public class CheckoutService {
         this.cartService = cartService;
         this.userRepository = userRepository;
         this.appConfigService = appConfigService;
+        this.payosLinkService = payosLinkService;
         this.clock = clock;
-        this.stubReturnBaseUrl = stubReturnBaseUrl.endsWith("/")
-                ? stubReturnBaseUrl.substring(0, stubReturnBaseUrl.length() - 1)
-                : stubReturnBaseUrl;
     }
 
     @Transactional
@@ -238,8 +233,7 @@ public class CheckoutService {
         }
         salesOrderRepository.save(order);
 
-        Payment payment = createStubPayment(order, customer, holdExpires);
-        paymentRepository.save(payment);
+        payosLinkService.createForCheckout(order, customer, holdExpires);
 
         clearCartQuietly(cartSessionRaw);
 
@@ -258,48 +252,9 @@ public class CheckoutService {
                 .filter(p -> p.getMethod() == PaymentMethod.PAYOS)
                 .findFirst()
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy thanh toán PayOS"));
-        Instant expires = payment.getOrder() != null && payment.getOrder().getHoldExpiresAt() != null
-                ? payment.getOrder().getHoldExpiresAt()
-                : orderDetail.holdExpiresAt();
-        // Reload hold from detail if payment.order not fetched
-        if (expires == null) {
-            expires = orderDetail.holdExpiresAt();
-        }
-        String qr = payment.getRawPayload() != null && payment.getRawPayload().get("qrCode") != null
-                ? String.valueOf(payment.getRawPayload().get("qrCode"))
-                : "DEMO-QR-" + payment.getPayosOrderCode();
-        CheckoutPaymentResponse pay = new CheckoutPaymentResponse(
-                payment.getPayosOrderCode(),
-                payment.getAmount(),
-                payment.getCheckoutUrl(),
-                qr,
-                expires);
+        Instant expires = orderDetail.holdExpiresAt();
+        CheckoutPaymentResponse pay = payosLinkService.toCheckoutPayment(payment, expires);
         return new CheckoutResponse(orderDetail, pay);
-    }
-
-    private Payment createStubPayment(SalesOrder order, Customer customer, Instant expiresAt) {
-        long nextCode = paymentRepository.maxPayosOrderCode() + 1;
-        String checkoutUrl = stubReturnBaseUrl + "?orderCode=" + nextCode;
-
-        Payment payment = new Payment();
-        payment.setCode("PAY-" + order.getCode());
-        payment.setOrder(order);
-        payment.setCustomer(customer);
-        payment.setMethod(PaymentMethod.PAYOS);
-        payment.setDirection(PayDirection.IN);
-        payment.setAmount(order.getTotal());
-        payment.setStatus(PayTxnStatus.PENDING);
-        payment.setGateway("payos");
-        payment.setPayosOrderCode(nextCode);
-        payment.setCheckoutUrl(checkoutUrl);
-        // PENDING + status is source of truth. Avoid null until DB allows (legacy NOT NULL on Neon).
-        payment.setPaidAt(Instant.now());
-        payment.setNote("Stub PayOS — Inter 2 #27 (Long thay bằng link thật)");
-        payment.setRawPayload(java.util.Map.of(
-                "qrCode", "000201010212DEMO" + nextCode,
-                "stub", true,
-                "expiresAt", expiresAt.toString()));
-        return payment;
     }
 
     private void validateRequest(Customer customer, CheckoutRequest request) {
