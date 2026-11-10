@@ -5,6 +5,26 @@
    --color-price (cam), --color-surface (xanh rất nhạt)
    ========================================================= */
 
+.cart-page__error {
+  margin: 0 0 12px;
+  color: #b42318;
+  font-size: 14px;
+}
+
+.cart-page__loading {
+  margin: 0 0 12px;
+  color: var(--color-muted);
+}
+
+.cart-row__basis {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: uppercase;
+}
+
 .cart-page__body {
   padding-block: 28px 56px;
 }

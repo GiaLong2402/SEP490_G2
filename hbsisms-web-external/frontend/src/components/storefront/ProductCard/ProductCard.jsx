@@ -54,7 +54,7 @@ export default function ProductCard({
           primaryImageUrl: image,
         }
 
-    addToCart({ product: cartProduct, variant: displayVariant, quantity: 1 })
+    addToCart({ product: cartProduct, variant: displayVariant, quantity: 1 }).catch(() => {})
   }
 
   const cartLabel = `Thêm ${name}${displayVariant ? ` ${displayVariant.label}` : ''} vào giỏ`

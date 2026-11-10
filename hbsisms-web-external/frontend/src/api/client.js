@@ -36,6 +36,19 @@ export function setUnauthorizedHandler(handler) {
   onUnauthorized = handler
 }
 
+/** Hỗ trợ cả `{ headers }` (cart) lẫn map header thẳng (checkout Idempotency-Key). */
+function asRequestOpts(headersOrOpts) {
+  if (!headersOrOpts) return {}
+  if (
+    Object.prototype.hasOwnProperty.call(headersOrOpts, 'headers') ||
+    Object.prototype.hasOwnProperty.call(headersOrOpts, 'signal') ||
+    Object.prototype.hasOwnProperty.call(headersOrOpts, 'query')
+  ) {
+    return headersOrOpts
+  }
+  return { headers: headersOrOpts }
+}
+
 export async function apiRequest(method, path, { body, query, signal, headers } = {}) {
   // Dev: VITE_USE_MOCK=true → các endpoint phía khách (/me, /checkout, /payments) trả dữ liệu giả.
   // Bản build thật không có đoạn này (điều kiện là hằng số lúc build).
@@ -62,7 +75,7 @@ export async function apiRequest(method, path, { body, query, signal, headers } 
     headers: {
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...headers,
+      ...(headers || {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
@@ -80,8 +93,12 @@ export async function apiRequest(method, path, { body, query, signal, headers } 
 
 export const api = {
   get: (path, query, signal) => apiRequest('GET', path, { query, signal }),
-  post: (path, body, headers) => apiRequest('POST', path, { body, headers }),
-  put: (path, body) => apiRequest('PUT', path, { body }),
-  patch: (path, body) => apiRequest('PATCH', path, { body }),
-  delete: (path) => apiRequest('DELETE', path),
+  post: (path, body, headersOrOpts) =>
+    apiRequest('POST', path, { body, ...asRequestOpts(headersOrOpts) }),
+  put: (path, body, headersOrOpts) =>
+    apiRequest('PUT', path, { body, ...asRequestOpts(headersOrOpts) }),
+  patch: (path, body, headersOrOpts) =>
+    apiRequest('PATCH', path, { body, ...asRequestOpts(headersOrOpts) }),
+  delete: (path, headersOrOpts) => apiRequest('DELETE', path, { ...asRequestOpts(headersOrOpts) }),
+  request: apiRequest,
 }
