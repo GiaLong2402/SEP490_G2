@@ -82,7 +82,7 @@ public class CustomerDemoSeeder implements ApplicationRunner {
                 new BigDecimal("3.50"),
                 false);
 
-        // Một địa chỉ mặc định cho khách lẻ An
+        // Địa chỉ demo portal KH-001 (Inter 2 #26) — trong bán kính giao 8km
         saveAddress(
                 an,
                 AddressKind.SHIPPING,
@@ -92,8 +92,19 @@ public class CustomerDemoSeeder implements ApplicationRunner {
                 null,
                 "Cát Hải",
                 "Hải Phòng",
-                new BigDecimal("28.00"),
+                new BigDecimal("5.00"),
                 true);
+        saveAddress(
+                an,
+                AddressKind.SHIPPING,
+                "Nguyễn Văn An",
+                "0912345678",
+                "12 Lạch Tray",
+                "Máy Tơ",
+                "Ngô Quyền",
+                "Hải Phòng",
+                new BigDecimal("3.50"),
+                false);
 
         log.info("Seeded demo customers (KH-001..KH-003, KH-B001..KH-B002)");
     }

@@ -29,7 +29,7 @@ export function mapApiUser(apiUser) {
     roleCode: apiUser.roleCode,
     roleName: apiUser.roleName,
     permissions: apiUser.permissions || [],
-    phone: null,
+    phone: apiUser.phone || null,
     address: null,
     keepLoggedIn: true,
   }

@@ -86,6 +86,22 @@ export function AuthProvider({ children }) {
     clearSession()
   }, [clearSession])
 
+  /** Cập nhật user sau PATCH /me/profile hoặc POST /me/phone (giữ JWT hiện tại). */
+  const applyUser = useCallback((apiOrMappedUser) => {
+    const mapped = apiOrMappedUser?.role ? apiOrMappedUser : mapApiUser(apiOrMappedUser)
+    if (!mapped || isStaff(mapped.role)) {
+      clearSession()
+      return null
+    }
+    setUser(mapped)
+    return mapped
+  }, [clearSession])
+
+  const refreshMe = useCallback(async () => {
+    const me = await authApi.me()
+    return applyUser(me)
+  }, [applyUser])
+
   const isLoggedIn = Boolean(user)
 
   const value = useMemo(
@@ -98,8 +114,10 @@ export function AuthProvider({ children }) {
       loginWithOtp,
       registerWithOtp,
       logout,
+      applyUser,
+      refreshMe,
     }),
-    [user, isLoggedIn, loading, login, loginWithOtp, registerWithOtp, logout],
+    [user, isLoggedIn, loading, login, loginWithOtp, registerWithOtp, logout, applyUser, refreshMe],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
