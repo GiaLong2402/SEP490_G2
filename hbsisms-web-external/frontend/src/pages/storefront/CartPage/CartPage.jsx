@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import PageBanner from '@/components/storefront/PageBanner/PageBanner'
 import {
   ArrowLeftIcon,
@@ -36,11 +35,10 @@ function shortProductName(name) {
 export default function CartPage() {
   // Lấy dữ liệu + hàm xử lý giỏ hàng từ CartContext (dùng chung toàn app)
   const { items, totalItems, totalAmount, updateQuantity, removeItem, clearCart } = useCart()
-  const [checkoutNote, setCheckoutNote] = useState('')
+  const navigate = useNavigate()
 
   function handleCheckout() {
-    // DEMO: sau này chuyển sang trang Thanh toán
-    setCheckoutNote('Bước thanh toán sẽ được bổ sung ở giai đoạn sau.')
+    navigate(ROUTES.CHECKOUT)
   }
 
   return (
@@ -200,11 +198,6 @@ export default function CartPage() {
                 <ArrowRightIcon size={22} />
               </button>
 
-              {checkoutNote && (
-                <p className="cart-summary__note" role="status">
-                  {checkoutNote}
-                </p>
-              )}
             </aside>
           </div>
         )}

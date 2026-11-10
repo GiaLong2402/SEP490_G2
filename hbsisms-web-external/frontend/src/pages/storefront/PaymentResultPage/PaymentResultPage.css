@@ -1,0 +1,76 @@
+/* Trang kết quả PayOS — thẻ dùng .checkout-done (styles/shared/result-card.css), chỉ đổi màu icon theo trạng thái */
+.pay-result-page {
+  padding-bottom: 56px;
+}
+
+.pay-result-page__body {
+  margin-top: 24px;
+}
+
+.pay-result {
+  max-width: 520px;
+}
+
+.pay-result--accent .pay-result__icon {
+  background: #e0f6fa;
+  color: #0b8ea2;
+}
+
+.pay-result--warning .pay-result__icon {
+  background: #fff0dc;
+  color: #b45309;
+}
+
+.pay-result--danger .pay-result__icon {
+  background: #fdecec;
+  color: var(--color-danger);
+}
+
+.pay-result p strong {
+  color: var(--color-brand);
+}
+
+.pay-result__spinner {
+  width: 32px;
+  height: 32px;
+  border: 3.5px solid #b6e6ef;
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: pay-result-spin 0.9s linear infinite;
+}
+
+@keyframes pay-result-spin {
+  to { transform: rotate(360deg); }
+}
+
+.pay-result__hint {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--color-surface);
+  font-size: 14px;
+}
+
+.pay-result__amount {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--color-surface);
+  text-align: left;
+}
+
+.pay-result__amount strong {
+  color: var(--color-price) !important;
+  font-size: 20px;
+}
+
+.pay-result .modal-error {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #fdecec;
+  color: var(--color-danger);
+  font-size: 14px;
+}

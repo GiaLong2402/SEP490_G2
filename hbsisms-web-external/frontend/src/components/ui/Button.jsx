@@ -2,7 +2,7 @@ import './Button.css'
 
 /**
  * Nút dùng chung.
- * variant: primary | secondary | outline | navy | ghost | link
+ * variant: primary | secondary | outline | navy | ghost | link | danger
  */
 export default function Button({
   children,

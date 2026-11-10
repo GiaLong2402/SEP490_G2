@@ -21,13 +21,10 @@ export const ROLE_LABELS = {
   [ROLES.ADMIN]: 'Quản trị viên',
 }
 
-/** Role được vào khu vực bán hàng nội bộ */
+/** Tài khoản nội bộ — làm việc ở web nội bộ, không dùng web external */
 export const STAFF_ROLES = [
   ROLES.SALE_STAFF,
   ROLES.WAREHOUSE_STAFF,
   ROLES.OWNER,
   ROLES.ADMIN,
 ]
-
-/** Role quản trị cao */
-export const ADMIN_ROLES = [ROLES.OWNER, ROLES.ADMIN]

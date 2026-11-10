@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { authApi } from '@/api/auth'
-import { setUnauthorizedHandler, tokenStore } from '@/api/client'
+import { ApiError, setUnauthorizedHandler, tokenStore } from '@/api/client'
 import { mapApiUser } from '@/auth/mapRole'
+import { isStaff } from '@/auth/roleUtils'
 import { ROLES } from '@/constants/roles'
 
 const AuthContext = createContext(null)
@@ -10,6 +11,7 @@ const AuthContext = createContext(null)
  * Auth nối Spring Boot JWT.
  * - login(username, password) → POST /auth/login
  * - loginWithOtp / registerWithOtp → stub hoặc Firebase idToken
+ * Web external chỉ cho khách: tài khoản nội bộ (NV, chủ, admin) coi như không tồn tại.
  */
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -29,14 +31,24 @@ export function AuthProvider({ children }) {
     }
     authApi
       .me()
-      .then((me) => setUser(mapApiUser(me)))
+      .then((me) => {
+        const mapped = mapApiUser(me)
+        if (isStaff(mapped.role)) clearSession()
+        else setUser(mapped)
+      })
       .catch(() => clearSession())
       .finally(() => setLoading(false))
   }, [clearSession])
 
-  const applyLoginResult = useCallback((result) => {
-    tokenStore.set(result.token)
+  const applyLoginResult = useCallback(async (result) => {
     const mapped = mapApiUser(result.user)
+    tokenStore.set(result.token)
+    if (isStaff(mapped.role)) {
+      // Thu hồi token vừa cấp rồi báo như số chưa có tài khoản (404, không phải 403 = "tạo tài khoản")
+      await authApi.logout().catch(() => {})
+      tokenStore.set(null)
+      throw new ApiError(404, 'Tài khoản không tồn tại.')
+    }
     setUser(mapped)
     return mapped
   }, [])

@@ -1,65 +1,28 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import AccountShell from '@/components/storefront/AccountShell/AccountShell'
 import Pagination from '@/components/storefront/Pagination/Pagination'
+import LoadState from '@/components/ui/LoadState'
 import {
   CalendarIcon,
-  CheckIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   ClipboardIcon,
-  ClockIcon,
-  CloseIcon,
+  ExternalLinkIcon,
   InfoIcon,
   PackageIcon,
   SearchIcon,
-  TruckIcon,
 } from '@/components/icons/Icons'
-import { ROUTES } from '@/constants/routes'
-import { DEMO_ORDERS, DEMO_REQUESTS } from '@/data/demoOrders'
+import { ordersApi } from '@/api/orders'
+import { salesRequestsApi } from '@/api/salesRequests'
+import { ORDER_FILTERS, ORDER_STATUS, REQUEST_FILTERS, REQUEST_STATUS, needsCustomerAction } from '@/constants/orderStatus'
+import { ROUTES, orderDetailPath, requestDetailPath } from '@/constants/routes'
+import { useAsync } from '@/hooks/useAsync'
+import { formatDate, formatDateTime, formatSchedule } from '@/utils/date'
 import { formatPrice } from '@/utils/formatPrice'
-import '../AccountPage/AccountPage.css'
 import './OrdersPage.css'
 
 const PAGE_SIZE = 4
-const TODAY = new Date()
-
-const TABS = [
-  {
-    id: 'orders',
-    label: 'Đơn hàng',
-    Icon: PackageIcon,
-    list: DEMO_ORDERS,
-    filters: ['awaiting_payment', 'preparing', 'shipping', 'completed', 'cancelled'],
-  },
-  {
-    id: 'requests',
-    label: 'Yêu cầu',
-    Icon: ClipboardIcon,
-    list: DEMO_REQUESTS,
-    filters: ['reviewing', 'confirmed', 'rejected'],
-  },
-]
-
-/** Nhãn + màu + icon của từng trạng thái */
-const STATUS = {
-  awaiting_payment: { label: 'Chờ thanh toán', tone: 'warning', Icon: ClockIcon },
-  preparing: { label: 'Đang chuẩn bị', tone: 'info', Icon: PackageIcon },
-  shipping: { label: 'Đang giao', tone: 'accent', Icon: TruckIcon },
-  completed: { label: 'Hoàn thành', tone: 'success', Icon: CheckIcon },
-  cancelled: { label: 'Đã hủy', tone: 'muted', Icon: CloseIcon },
-  reviewing: { label: 'Đang xem xét', tone: 'warning', Icon: ClockIcon },
-  confirmed: { label: 'Đã chốt', tone: 'success', Icon: CheckIcon },
-  rejected: { label: 'Không đáp ứng được', tone: 'danger', Icon: CloseIcon },
-}
-
-/** Nút hành động chính theo trạng thái */
-const PRIMARY_ACTION = {
-  awaiting_payment: 'Thanh toán',
-  shipping: 'Theo dõi đơn',
-  completed: 'Mua lại',
-  cancelled: 'Mua lại',
-  confirmed: 'Thanh toán',
-}
 
 const TIME_OPTIONS = [
   { value: 'all', label: 'Mọi thời gian' },
@@ -67,35 +30,52 @@ const TIME_OPTIONS = [
   { value: '90', label: '3 tháng qua' },
 ]
 
-/** Trạng thái khách cần thanh toán → làm nổi */
-const NEEDS_ACTION = ['awaiting_payment', 'confirmed']
-const needsAction = (item) => NEEDS_ACTION.includes(item.status)
-
-function formatDate(iso) {
-  const [y, m, d] = iso.split('-')
-  return `${d}/${m}/${y}`
+function withinDays(iso, days, now) {
+  if (days === 'all' || !iso) return true
+  return (now - new Date(iso)) / 86400000 <= Number(days)
 }
 
-function withinDays(iso, days) {
-  if (days === 'all') return true
-  return (TODAY - new Date(iso)) / 86400000 <= Number(days)
+/** Dòng nhắn ở chân thẻ đơn */
+function orderMessage(order) {
+  switch (order.uiStatus) {
+    case 'awaiting_payment':
+      return order.holdExpiresAt
+        ? `Thanh toán trước ${formatDateTime(order.holdExpiresAt).split(' · ')[0]} để giữ hàng`
+        : 'Đơn đang chờ bạn thanh toán'
+    case 'preparing':
+      return 'Cửa hàng đang sơ chế và đóng khay'
+    case 'shipping':
+      return order.isDelivery ? 'Đơn hàng đang trên đường giao đến bạn' : 'Hàng đã sẵn sàng, mời bạn đến lấy'
+    case 'completed':
+      return order.isDelivery ? 'Đã giao hàng thành công' : 'Bạn đã nhận hàng'
+    default:
+      return 'Đơn hàng đã hủy'
+  }
 }
 
-function lineTotal(line) {
-  return line.price == null ? null : line.price * line.qty
+const REQUEST_MESSAGE = {
+  NEW: 'Cửa hàng đang xem xét yêu cầu',
+  QUOTING: 'Cửa hàng đang báo giá cho bạn',
+  ORDERED: 'Đã chốt đơn, thanh toán để cửa hàng chuẩn bị hàng',
+  REJECTED: 'Cửa hàng chưa đáp ứng được yêu cầu này',
+  CLOSED: 'Yêu cầu đã đóng',
 }
 
-function StatusChip({ status }) {
-  const { label, tone, Icon } = STATUS[status]
+function StatusChip({ meta }) {
   return (
-    <span className={`order-status order-status--${tone}`}>
-      <Icon size={16} />
-      {label}
+    <span className={`order-status order-status--${meta.tone}`}>
+      <meta.Icon size={16} />
+      {meta.label}
     </span>
   )
 }
 
+/** Đơn & Yêu cầu của tôi — GET /me/orders + GET /me/sales-requests */
 export default function OrdersPage() {
+  const ordersQuery = useAsync((signal) => ordersApi.listMine(signal), [])
+  const requestsQuery = useAsync((signal) => salesRequestsApi.listMine(signal), [])
+  const [now] = useState(() => Date.now())
+
   const [tab, setTab] = useState('orders')
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
@@ -103,16 +83,38 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1)
   const [openReason, setOpenReason] = useState(null)
 
-  const current = TABS.find((t) => t.id === tab)
   const isOrders = tab === 'orders'
+  const tabs = [
+    {
+      id: 'orders',
+      label: 'Đơn hàng',
+      Icon: PackageIcon,
+      list: (ordersQuery.data || []).map((o) => ({ ...o, status: o.uiStatus, date: o.placedAt })),
+      filters: ORDER_FILTERS,
+      meta: ORDER_STATUS,
+      q: ordersQuery,
+    },
+    {
+      id: 'requests',
+      label: 'Yêu cầu',
+      Icon: ClipboardIcon,
+      list: (requestsQuery.data || []).map((r) => ({ ...r, date: r.receivedAt })),
+      filters: REQUEST_FILTERS,
+      meta: REQUEST_STATUS,
+      q: requestsQuery,
+    },
+  ]
+  const current = tabs.find((t) => t.id === tab)
 
   const keyword = query.trim().toLowerCase()
   const matched = current.list.filter(
     (item) =>
-      withinDays(item.date, time) &&
+      withinDays(item.date, time, now) &&
       (keyword === '' ||
         item.code.toLowerCase().includes(keyword) ||
-        item.lines.some((l) => l.name.toLowerCase().includes(keyword))),
+        (isOrders
+          ? item.lines.some((l) => l.name.toLowerCase().includes(keyword))
+          : item.summary.toLowerCase().includes(keyword))),
   )
   const visible = filter === 'all' ? matched : matched.filter((i) => i.status === filter)
   const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE))
@@ -137,7 +139,7 @@ export default function OrdersPage() {
     >
       <div className="orders-page">
         <div className="account-tabs" role="tablist" aria-label="Đơn hàng và yêu cầu">
-          {TABS.map(({ id, label, Icon, list }) => (
+          {tabs.map(({ id, label, Icon, list }) => (
             <button
               key={id}
               type="button"
@@ -150,7 +152,7 @@ export default function OrdersPage() {
               <span>{label}</span>
               <span className="orders-tab__count">
                 {list.length}
-                {list.some(needsAction) && (
+                {list.some((i) => needsCustomerAction(i.status)) && (
                   <span className="orders-tab__dot" aria-label="Có mục cần xử lý" />
                 )}
               </span>
@@ -172,7 +174,7 @@ export default function OrdersPage() {
                   setPage(1)
                 }}
               >
-                {key === 'all' ? 'Tất cả' : STATUS[key].label}
+                {key === 'all' ? 'Tất cả' : current.meta[key].label}
                 <span>{count}</span>
               </button>
             )
@@ -189,7 +191,7 @@ export default function OrdersPage() {
                 setQuery(e.target.value)
                 setPage(1)
               }}
-              placeholder={isOrders ? 'Tìm theo mã đơn hoặc tên sản phẩm' : 'Tìm theo mã yêu cầu hoặc tên sản phẩm'}
+              placeholder={isOrders ? 'Tìm theo mã đơn hoặc tên sản phẩm' : 'Tìm theo mã yêu cầu hoặc nội dung'}
             />
           </label>
           <label className="orders-time">
@@ -212,101 +214,155 @@ export default function OrdersPage() {
           </label>
         </div>
 
-        {pageItems.length === 0 ? (
-          <p className="orders-empty">Không tìm thấy {isOrders ? 'đơn hàng' : 'yêu cầu'} nào phù hợp.</p>
-        ) : (
+        <LoadState
+          loading={current.q.loading}
+          error={current.q.error}
+          onRetry={current.q.reload}
+          empty={pageItems.length === 0}
+          emptyText={
+            current.list.length === 0
+              ? isOrders
+                ? 'Bạn chưa có đơn hàng nào.'
+                : 'Bạn chưa có yêu cầu nào.'
+              : `Không tìm thấy ${isOrders ? 'đơn hàng' : 'yêu cầu'} nào phù hợp.`
+          }
+          emptyAction={
+            current.list.length === 0 && (
+              <Link to={ROUTES.PRODUCTS} className="btn btn--primary btn--pill">
+                Xem sản phẩm
+              </Link>
+            )
+          }
+        >
           <ul className="order-list">
-            {pageItems.map((item) => {
-              const totals = item.lines.map(lineTotal)
-              const priced = totals.every((v) => v != null)
-              const total = priced ? totals.reduce((s, v) => s + v, 0) + (item.shippingFee || 0) : null
-              const action = PRIMARY_ACTION[item.status]
-              const isOpen = openReason === item.code
-              const { tone, Icon: MsgIcon } = STATUS[item.status]
-
-              return (
-                <li key={item.code} className={`order-card ${needsAction(item) ? 'is-action' : ''}`}>
-                  <div className="order-card__head">
-                    <strong>
-                      {isOrders ? 'Mã đơn' : 'Mã yêu cầu'}: {item.code}
-                    </strong>
-                    <span className="order-card__date">
-                      {isOrders ? 'Ngày đặt' : 'Ngày gửi'}: {formatDate(item.date)}
-                      {item.wantDate && <> · Muốn nhận: {formatDate(item.wantDate)}</>}
-                    </span>
-                    <StatusChip status={item.status} />
-                  </div>
-
-                  <ul className="order-card__lines">
-                    {item.lines.map((line) => (
-                      <li key={line.name + line.variant} className="order-line">
-                        <img className="order-line__thumb" src={line.image} alt="" />
-                        <div className="order-line__name">
-                          <strong>{line.name}</strong>
-                          <span>{line.variant}</span>
-                        </div>
-                        <span className="order-line__qty">Số lượng: {line.qty}</span>
-                        <span className={`order-line__price ${line.price == null ? 'is-pending' : ''}`}>
-                          {line.price != null
-                            ? formatPrice(lineTotal(line))
-                            : item.status === 'rejected'
-                              ? '—'
-                              : 'Chờ báo giá'}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-
-                  <div className="order-card__foot">
-                    {total != null && (
-                      <p className="order-card__total">
-                        {isOrders ? 'Tổng thanh toán' : 'Giá đã chốt'}: <strong>{formatPrice(total)}</strong>
-                      </p>
-                    )}
-                    <p className={`order-card__msg order-card__msg--${tone}`}>
-                      <MsgIcon size={18} />
-                      {item.message}
-                    </p>
-                    <div className="order-card__actions">
-                      {item.reason ? (
-                        <button
-                          type="button"
-                          className="order-btn"
-                          aria-expanded={isOpen}
-                          onClick={() => setOpenReason(isOpen ? null : item.code)}
-                        >
-                          Xem lý do
-                          {isOpen ? <ChevronUpIcon size={18} /> : <ChevronDownIcon size={18} />}
-                        </button>
-                      ) : (
-                        <button type="button" className="order-btn">
-                          Xem chi tiết
-                        </button>
-                      )}
-                      {action && (
-                        <button type="button" className="order-btn order-btn--primary">
-                          {action}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {isOpen && (
-                    <p className="order-card__reason">
-                      <InfoIcon size={20} />
-                      <span>
-                        <strong>Lý do:</strong> {item.reason}
-                      </span>
-                    </p>
-                  )}
-                </li>
-              )
-            })}
+            {pageItems.map((item) =>
+              isOrders ? (
+                <OrderCard key={item.code} order={item} />
+              ) : (
+                <RequestCard
+                  key={item.code}
+                  req={item}
+                  open={openReason === item.code}
+                  onToggle={() => setOpenReason(openReason === item.code ? null : item.code)}
+                />
+              ),
+            )}
           </ul>
-        )}
+        </LoadState>
 
         {pageCount > 1 && <Pagination page={safePage} totalPages={pageCount} onChange={setPage} />}
       </div>
     </AccountShell>
+  )
+}
+
+function OrderCard({ order }) {
+  const meta = ORDER_STATUS[order.uiStatus]
+  const awaiting = order.uiStatus === 'awaiting_payment'
+  return (
+    <li className={`order-card ${awaiting ? 'is-action' : ''}`}>
+      <div className="order-card__head">
+        <strong>Mã đơn: {order.displayCode}</strong>
+        <span className="order-card__date">Ngày đặt: {formatDate(order.placedAt)}</span>
+        <StatusChip meta={meta} />
+      </div>
+
+      <ul className="order-card__lines">
+        {order.lines.map((line) => (
+          <li key={line.id ?? line.name + line.packLabel} className="order-line">
+            <img className="order-line__thumb" src={line.imageUrl} alt="" />
+            <div className="order-line__name">
+              <strong>{line.name}</strong>
+              <span>{line.packLabel}</span>
+            </div>
+            <span className="order-line__qty">Số lượng: {line.qty}</span>
+            <span className="order-line__price">{formatPrice(line.lineTotal)}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="order-card__foot">
+        <p className="order-card__total">
+          Tổng thanh toán: <strong>{formatPrice(order.total)}</strong>
+        </p>
+        <p className={`order-card__msg order-card__msg--${meta.tone}`}>
+          <meta.Icon size={18} />
+          {orderMessage(order)}
+        </p>
+        <div className="order-card__actions">
+          <Link to={orderDetailPath(order.code)} className="order-btn">
+            Xem chi tiết
+          </Link>
+          {awaiting && order.payment?.checkoutUrl && (
+            <a href={order.payment.checkoutUrl} className="order-btn order-btn--primary">
+              Thanh toán <ExternalLinkIcon size={16} />
+            </a>
+          )}
+          {order.uiStatus === 'shipping' && (
+            <Link to={orderDetailPath(order.code)} className="order-btn order-btn--primary">
+              Theo dõi đơn
+            </Link>
+          )}
+        </div>
+      </div>
+    </li>
+  )
+}
+
+function RequestCard({ req, open, onToggle }) {
+  const meta = REQUEST_STATUS[req.status] || REQUEST_STATUS.NEW
+  const ordered = req.status === 'ORDERED'
+  return (
+    <li className={`order-card ${ordered ? 'is-action' : ''}`}>
+      <div className="order-card__head">
+        <strong>Mã yêu cầu: {req.code}</strong>
+        <span className="order-card__date">
+          Ngày gửi: {formatDate(req.receivedAt)}
+          {req.neededDate && <> · Cần nhận: {formatDate(req.neededDate)}</>}
+        </span>
+        <StatusChip meta={meta} />
+      </div>
+
+      <div className="request-body">
+        <p className="request-body__summary">{req.summary}</p>
+        <div className="request-body__facts">
+          {req.requestedQty != null && <span>Cần {req.requestedQty} khay</span>}
+          {req.fulfillableQty != null && <span className="is-ok">Đáp ứng {req.fulfillableQty} khay</span>}
+          {req.expectedDate && <span>Giao dự kiến {formatSchedule({ date: req.expectedDate })}</span>}
+        </div>
+      </div>
+
+      <div className="order-card__foot">
+        <p className={`order-card__msg order-card__msg--${meta.tone}`}>
+          <meta.Icon size={18} />
+          {REQUEST_MESSAGE[req.status]}
+        </p>
+        <div className="order-card__actions">
+          {req.rejectReason && (
+            <button type="button" className="order-btn" aria-expanded={open} onClick={onToggle}>
+              Xem lý do
+              {open ? <ChevronUpIcon size={18} /> : <ChevronDownIcon size={18} />}
+            </button>
+          )}
+          <Link to={requestDetailPath(req.code)} className="order-btn">
+            Xem chi tiết
+          </Link>
+          {ordered && req.orderCode && (
+            <Link to={orderDetailPath(req.orderCode)} className="order-btn order-btn--primary">
+              Thanh toán
+            </Link>
+          )}
+        </div>
+      </div>
+
+      {open && (
+        <p className="order-card__reason">
+          <InfoIcon size={20} />
+          <span>
+            <strong>Lý do:</strong> {req.rejectReason}
+          </span>
+        </p>
+      )}
+    </li>
   )
 }

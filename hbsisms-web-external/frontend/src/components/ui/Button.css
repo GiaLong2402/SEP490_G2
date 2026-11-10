@@ -68,6 +68,16 @@
   background: #052a41;
 }
 
+/* Đỏ — hành động không hoàn tác (hủy đơn, xóa) */
+.btn--danger {
+  background: var(--color-danger);
+  color: var(--color-white);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
 .btn--ghost {
   background: transparent;
   color: var(--color-brand);

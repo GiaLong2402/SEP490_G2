@@ -1,42 +1,45 @@
 import { useState } from 'react'
 import AccountShell from '@/components/storefront/AccountShell/AccountShell'
+import AddressFormDialog from '@/components/storefront/AddressFormDialog/AddressFormDialog'
 import Button from '@/components/ui/Button'
+import LoadState from '@/components/ui/LoadState'
+import Modal from '@/components/ui/Modal'
 import { CheckIcon, MapPinIcon, PencilIcon, PhoneIcon, PlusIcon, TrashIcon } from '@/components/icons/Icons'
+import { addressesApi } from '@/api/addresses'
 import { ROUTES } from '@/constants/routes'
 import { useAuth } from '@/context/AuthContext'
+import { useAsync } from '@/hooks/useAsync'
 import './AccountPage.css'
 
-/**
- * user.address có thể là chuỗi hoặc object {street, ward, district, province}
- * (form hoàn tất hồ sơ lưu dạng object) → luôn đổi về 1 dòng chữ.
- */
-function formatAddress(address) {
-  if (!address) return ''
-  if (typeof address === 'string') return address
-  return [address.street, address.ward, address.district, address.province].filter(Boolean).join(', ')
-}
-
+/** Sổ địa chỉ — dữ liệu qua addressesApi (GET/POST/PUT/DELETE /me/addresses) */
 export default function AddressBookPage() {
   const { user } = useAuth()
+  const { data: addresses, loading, error, reload } = useAsync((signal) => addressesApi.list(signal), [])
+  const list = addresses || []
 
-  const [addresses, setAddresses] = useState(() => [
-    {
-      id: 1,
-      isDefault: true,
-      receiver: user?.name || 'Khách hàng',
-      phone: user?.phone || '',
-      line: formatAddress(user?.address) || 'Chưa cập nhật địa chỉ',
-    },
-  ])
+  // dialog: null | { mode: 'add' } | { mode: 'edit', address }
+  const [dialog, setDialog] = useState(null)
+  const [deleting, setDeleting] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [actionError, setActionError] = useState('')
 
-  // Demo: đổi mặc định / xóa chỉ trên state, chưa gọi API
-  function setDefaultAddress(id) {
-    setAddresses((list) => list.map((a) => ({ ...a, isDefault: a.id === id })))
+  async function run(action) {
+    setBusy(true)
+    setActionError('')
+    try {
+      await action()
+      reload()
+      return true
+    } catch (err) {
+      setActionError(err.message || 'Thao tác không thành công.')
+      return false
+    } finally {
+      setBusy(false)
+    }
   }
 
-  function removeAddress(addr) {
-    if (!window.confirm(`Xóa địa chỉ "${addr.line}"?`)) return
-    setAddresses((list) => list.filter((a) => a.id !== addr.id))
+  async function confirmDelete() {
+    if (await run(() => addressesApi.remove(deleting.id))) setDeleting(null)
   }
 
   return (
@@ -52,28 +55,43 @@ export default function AddressBookPage() {
         <div className="account-addresses__head">
           <div>
             <h2>Địa chỉ nhận hàng</h2>
-            <p>{addresses.length} địa chỉ · Địa chỉ mặc định được chọn sẵn khi thanh toán</p>
+            <p>{list.length} địa chỉ · Địa chỉ mặc định được chọn sẵn khi thanh toán</p>
           </div>
-          <Button type="button" variant="primary" pill className="account-addresses__add">
+          <Button
+            type="button"
+            variant="primary"
+            pill
+            className="account-addresses__add"
+            onClick={() => setDialog({ mode: 'add' })}
+            disabled={loading || Boolean(error)}
+          >
             <PlusIcon size={18} />
             Thêm địa chỉ
           </Button>
         </div>
 
-        {addresses.length === 0 ? (
-          <p className="account-addresses__empty">
-            Bạn chưa có địa chỉ nào. Hãy thêm địa chỉ để đặt hàng nhanh hơn.
+        {actionError && (
+          <p className="account-note" role="alert">
+            {actionError}
           </p>
-        ) : (
+        )}
+
+        <LoadState
+          loading={loading}
+          error={error}
+          onRetry={reload}
+          empty={list.length === 0}
+          emptyText="Bạn chưa có địa chỉ nào. Hãy thêm địa chỉ để đặt hàng nhanh hơn."
+        >
           <ul className="account-address-list">
-            {addresses.map((addr) => (
+            {list.map((addr) => (
               <li key={addr.id} className={`account-address-card ${addr.isDefault ? 'is-default' : ''}`}>
                 <div className="account-address-card__top">
                   <span className="account-address-card__icon" aria-hidden="true">
                     <MapPinIcon size={22} />
                   </span>
                   <div className="account-address-card__who">
-                    <strong>{addr.receiver}</strong>
+                    <strong>{addr.recipientName}</strong>
                     <span>
                       <PhoneIcon size={15} />
                       {addr.phone || 'Chưa có số điện thoại'}
@@ -87,10 +105,14 @@ export default function AddressBookPage() {
                   )}
                 </div>
 
-                <p className="account-address-card__line">{addr.line}</p>
+                <p className="account-address-card__line">{addr.fullText}</p>
 
                 <div className="account-address-card__actions">
-                  <button type="button" className="account-address-card__action">
+                  <button
+                    type="button"
+                    className="account-address-card__action"
+                    onClick={() => setDialog({ mode: 'edit', address: addr })}
+                  >
                     <PencilIcon size={16} />
                     Sửa
                   </button>
@@ -99,7 +121,8 @@ export default function AddressBookPage() {
                       <button
                         type="button"
                         className="account-address-card__action"
-                        onClick={() => setDefaultAddress(addr.id)}
+                        disabled={busy}
+                        onClick={() => run(() => addressesApi.setDefault(addr))}
                       >
                         <CheckIcon size={16} />
                         Đặt làm mặc định
@@ -107,7 +130,7 @@ export default function AddressBookPage() {
                       <button
                         type="button"
                         className="account-address-card__action is-danger"
-                        onClick={() => removeAddress(addr)}
+                        onClick={() => setDeleting(addr)}
                       >
                         <TrashIcon size={16} />
                         Xóa
@@ -118,8 +141,41 @@ export default function AddressBookPage() {
               </li>
             ))}
           </ul>
-        )}
+        </LoadState>
       </div>
+
+      {dialog && (
+        <AddressFormDialog
+          key={dialog.address?.id || 'new'}
+          open
+          address={dialog.address || null}
+          forceDefault={list.length === 0}
+          defaults={{ recipientName: user?.name || '', phone: user?.phone || '' }}
+          onClose={() => setDialog(null)}
+          onSaved={reload}
+        />
+      )}
+
+      <Modal
+        open={Boolean(deleting)}
+        onClose={() => setDeleting(null)}
+        busy={busy}
+        size="sm"
+        tone="danger"
+        icon={<TrashIcon size={22} />}
+        title="Xóa địa chỉ này?"
+        description={deleting?.fullText}
+        footer={
+          <>
+            <Button variant="ghost" pill onClick={() => setDeleting(null)} disabled={busy}>
+              Giữ lại
+            </Button>
+            <Button variant="danger" pill onClick={confirmDelete} disabled={busy}>
+              {busy ? 'Đang xóa…' : 'Xóa địa chỉ'}
+            </Button>
+          </>
+        }
+      />
     </AccountShell>
   )
 }

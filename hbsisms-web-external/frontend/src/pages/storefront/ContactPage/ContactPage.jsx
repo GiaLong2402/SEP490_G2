@@ -1,6 +1,5 @@
 import Breadcrumbs from '@/components/storefront/Breadcrumbs/Breadcrumbs'
 import { ROUTES } from '@/constants/routes'
-import '../AboutPage/SimplePage.css'
 
 export default function ContactPage() {
   return (

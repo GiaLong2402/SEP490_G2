@@ -35,7 +35,7 @@ const STEP = {
 }
 
 export default function LoginPage() {
-  const { login, loginWithOtp, registerWithOtp, isLoggedIn, role } = useAuth()
+  const { loginWithOtp, registerWithOtp, isLoggedIn, role } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const redirectTo = location.state?.from || null
@@ -56,13 +56,6 @@ export default function LoginPage() {
   const [pendingIdToken, setPendingIdToken] = useState(null)
   const [creating, setCreating] = useState(false)
   const [infoMessage, setInfoMessage] = useState('')
-
-  // --- đăng nhập nội bộ qua API (username / password) ---
-  const [showStaffDemo, setShowStaffDemo] = useState(false)
-  const [staffUsername, setStaffUsername] = useState('admin')
-  const [staffPassword, setStaffPassword] = useState('')
-  const [staffError, setStaffError] = useState('')
-  const [staffStatus, setStaffStatus] = useState('idle') // idle | sending | error
 
   function focusPhoneInput() {
     phoneInputRef.current?.focus()
@@ -186,28 +179,6 @@ export default function LoginPage() {
     }
   }
 
-  async function handleStaffLogin(e) {
-    e.preventDefault()
-    if (staffStatus === 'sending') return
-    if (!staffUsername.trim() || !staffPassword) {
-      setStaffError('Nhập tên đăng nhập và mật khẩu.')
-      setStaffStatus('error')
-      return
-    }
-    setStaffError('')
-    setStaffStatus('sending')
-    try {
-      const loggedIn = await login({
-        username: staffUsername.trim(),
-        password: staffPassword,
-      })
-      navigate(redirectTo || getHomePathForRole(loggedIn.role), { replace: true })
-    } catch (err) {
-      setStaffStatus('error')
-      setStaffError(err instanceof ApiError ? err.message : 'Đăng nhập thất bại. Thử lại.')
-    }
-  }
-
   if (isLoggedIn) {
     return (
       <div className="auth-page auth-page--simple">
@@ -320,52 +291,6 @@ export default function LoginPage() {
               onLostPhone={() => setStep(STEP.LOST_PHONE)}
               onFinished={handleChangePhoneFinished}
             />
-          )}
-
-          {step === STEP.PHONE && (
-            <div className="auth-staff-demo">
-              <button
-                type="button"
-                className="auth-staff-demo__toggle"
-                aria-expanded={showStaffDemo}
-                onClick={() => setShowStaffDemo((v) => !v)}
-              >
-                Đăng nhập nội bộ (API)
-              </button>
-              {showStaffDemo && (
-                <form className="auth-staff-demo__form" onSubmit={handleStaffLogin}>
-                  <label className="auth-staff-demo__field">
-                    <span>Tên đăng nhập</span>
-                    <input
-                      value={staffUsername}
-                      onChange={(e) => {
-                        setStaffUsername(e.target.value)
-                        if (staffError) setStaffError('')
-                      }}
-                      autoComplete="username"
-                      placeholder="admin"
-                    />
-                  </label>
-                  <label className="auth-staff-demo__field">
-                    <span>Mật khẩu</span>
-                    <input
-                      type="password"
-                      value={staffPassword}
-                      onChange={(e) => {
-                        setStaffPassword(e.target.value)
-                        if (staffError) setStaffError('')
-                      }}
-                      autoComplete="current-password"
-                      placeholder="SEED_ADMIN_PASSWORD"
-                    />
-                  </label>
-                  {staffError ? <p className="auth-staff-demo__error">{staffError}</p> : null}
-                  <Button type="submit" variant="navy" fullWidth disabled={staffStatus === 'sending'}>
-                    {staffStatus === 'sending' ? 'Đang đăng nhập…' : 'Đăng nhập API'}
-                  </Button>
-                </form>
-              )}
-            </div>
           )}
         </section>
       </div>

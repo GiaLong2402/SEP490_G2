@@ -1,0 +1,101 @@
+.addr-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 14px;
+}
+
+.addr-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.addr-field--full {
+  grid-column: 1 / -1;
+}
+
+.addr-field > span {
+  color: var(--color-brand);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.addr-field b {
+  color: var(--color-danger);
+}
+
+.addr-field input {
+  height: 46px;
+  padding: 0 14px;
+  border: 1.5px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-white);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 15px;
+  transition: border-color 0.15s ease;
+}
+
+.addr-field input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.addr-field input[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
+.addr-field small {
+  color: var(--color-danger);
+  font-size: 13px;
+}
+
+.addr-default {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+.addr-default input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--color-accent);
+}
+
+.addr-default span {
+  display: grid;
+  color: var(--color-brand);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.addr-default small {
+  color: var(--color-muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.addr-default.is-locked {
+  cursor: default;
+}
+
+.addr-form__error {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #fdecec;
+  color: var(--color-danger);
+  font-size: 14px;
+}
+
+@media (max-width: 600px) {
+  .addr-form {
+    grid-template-columns: 1fr;
+  }
+}

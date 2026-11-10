@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BellIcon } from '@/components/icons/Icons'
 import { ROUTES } from '@/constants/routes'
-import { DEMO_NOTIFICATIONS } from '@/data/demoNotifications'
 import iconOrderConfirmed from '@/assets/notifications/order-confirmed.png'
 import iconOrderShipping from '@/assets/notifications/order-shipping.png'
 import iconBulkRequest from '@/assets/notifications/bulk-request.png'
@@ -11,7 +10,7 @@ import iconOrderCompleted from '@/assets/notifications/order-completed.png'
 import iconReviewRequest from '@/assets/notifications/review-request.png'
 import './NotificationBell.css'
 
-// Loại thông báo => icon. Thêm loại mới: thêm 1 dòng ở đây + 1 ảnh trong assets/notifications
+/** Map type → icon khi có API notifications */
 const NOTIFICATION_ICONS = {
   'order-confirmed': iconOrderConfirmed,
   'order-shipping': iconOrderShipping,
@@ -27,25 +26,19 @@ const TABS = [
 ]
 
 /**
- * Chuông thông báo + khung dropdown xổ xuống khi bấm.
- *
- * props:
- * - isLoggedIn: chưa đăng nhập => khung chỉ hiện lời mời đăng nhập
+ * Chuông thông báo + dropdown.
+ * Danh sách lấy từ state (sẵn để nối API); không còn data demo.
  */
 export default function NotificationBell({ isLoggedIn }) {
   const [isOpen, setIsOpen] = useState(false)
   const [activeTab, setActiveTab] = useState('all')
-  // DEMO: giữ danh sách ở đây. Sau này lấy từ API.
-  const [notifications, setNotifications] = useState(DEMO_NOTIFICATIONS)
+  const [notifications, setNotifications] = useState([])
   const wrapRef = useRef(null)
 
   const unreadCount = isLoggedIn ? notifications.filter((n) => !n.isRead).length : 0
-
-  // Tab "Chưa đọc" chỉ hiện thông báo isRead = false
   const visibleList =
     activeTab === 'unread' ? notifications.filter((n) => !n.isRead) : notifications
 
-  // Đóng khung khi bấm ra ngoài hoặc nhấn Esc (giống menu tài khoản)
   useEffect(() => {
     if (!isOpen) return undefined
 
@@ -65,7 +58,6 @@ export default function NotificationBell({ isLoggedIn }) {
     }
   }, [isOpen])
 
-  // Bấm 1 thông báo => đánh dấu đã đọc thông báo đó
   function markAsRead(id) {
     setNotifications((list) => list.map((n) => (n.id === id ? { ...n, isRead: true } : n)))
   }
@@ -76,7 +68,6 @@ export default function NotificationBell({ isLoggedIn }) {
 
   return (
     <div className="notif" ref={wrapRef}>
-      {/* ----- Nút chuông ----- */}
       <button
         type="button"
         className={`site-bell ${isOpen ? 'is-open' : ''}`}
@@ -92,10 +83,8 @@ export default function NotificationBell({ isLoggedIn }) {
         )}
       </button>
 
-      {/* ----- Khung dropdown ----- */}
       {isOpen && (
         <div className="notif__panel" role="dialog" aria-label="Thông báo">
-          {/* Tiêu đề */}
           <div className="notif__head">
             <h2>
               Thông báo
@@ -108,7 +97,6 @@ export default function NotificationBell({ isLoggedIn }) {
             )}
           </div>
 
-          {/* Chưa đăng nhập */}
           {!isLoggedIn && (
             <div className="notif__empty">
               <p>Đăng nhập để xem thông báo về đơn hàng của bạn.</p>
@@ -118,10 +106,8 @@ export default function NotificationBell({ isLoggedIn }) {
             </div>
           )}
 
-          {/* Đã đăng nhập */}
           {isLoggedIn && (
             <>
-              {/* Tab */}
               <div className="notif__tabs" role="tablist">
                 {TABS.map((tab) => (
                   <button
@@ -138,9 +124,10 @@ export default function NotificationBell({ isLoggedIn }) {
                 ))}
               </div>
 
-              {/* Danh sách (cuộn được khi dài) */}
               {visibleList.length === 0 ? (
-                <p className="notif__empty">Bạn đã đọc hết thông báo.</p>
+                <p className="notif__empty">
+                  {activeTab === 'unread' ? 'Không có thông báo chưa đọc.' : 'Chưa có thông báo.'}
+                </p>
               ) : (
                 <ul className="notif__list">
                   {visibleList.map((n) => (
@@ -150,13 +137,16 @@ export default function NotificationBell({ isLoggedIn }) {
                         className={`notif__item ${n.isRead ? '' : 'is-unread'}`}
                         onClick={() => markAsRead(n.id)}
                       >
-                        <img src={NOTIFICATION_ICONS[n.type]} alt="" className="notif__icon" />
+                        <img
+                          src={NOTIFICATION_ICONS[n.type] || iconOrderConfirmed}
+                          alt=""
+                          className="notif__icon"
+                        />
                         <span className="notif__text">
                           <strong>{n.title}</strong>
                           <span>{n.message}</span>
                           <small>{n.time}</small>
                         </span>
-                        {/* Chấm xanh = chưa đọc */}
                         {!n.isRead && <span className="notif__dot" aria-label="Chưa đọc" />}
                       </button>
                     </li>
