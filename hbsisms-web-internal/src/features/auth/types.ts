@@ -17,6 +17,10 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface OtpLoginRequest {
+  idToken: string;
+}
+
 export interface LoginResponse {
   token: string;
   user: CurrentUser;

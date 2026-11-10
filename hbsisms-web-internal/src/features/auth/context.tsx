@@ -6,12 +6,14 @@ import { setUnauthorizedHandler, tokenStore } from '@/shared/api/client';
 import type { Permission } from '@/shared/domain/enums';
 import { LinkButton, PageLoading } from '@/shared/ui';
 import { authApi } from './api';
-import type { CurrentUser, LoginRequest } from './types';
+import { assertInternalStaff, isCustomerRole, STAFF_ONLY_MESSAGE } from './staffGuard';
+import type { CurrentUser, LoginRequest, OtpLoginRequest } from './types';
 
 interface AuthValue {
   user: CurrentUser | null;
   loading: boolean;
-  login: (body: LoginRequest) => Promise<void>;
+  login: (body: LoginRequest) => Promise<CurrentUser>;
+  loginWithOtp: (body: OtpLoginRequest) => Promise<CurrentUser>;
   logout: () => void;
   can: (permission?: Permission | Permission[]) => boolean;
 }
@@ -29,13 +31,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.clear();
   }, [queryClient]);
 
+  const acceptStaffSession = useCallback(
+    (result: { token: string; user: CurrentUser }) => {
+      tokenStore.set(result.token);
+      try {
+        assertInternalStaff(result.user);
+      } catch (err) {
+        authApi.logout().catch(() => {});
+        clearSession();
+        throw err;
+      }
+      setUser(result.user);
+      return result.user;
+    },
+    [clearSession],
+  );
+
   useEffect(() => {
     setUnauthorizedHandler(clearSession);
-    if (!tokenStore.get()) return;
+    if (!tokenStore.get()) {
+      setLoading(false);
+      return;
+    }
     authApi
       .me()
-      .then(setUser)
-      .catch(() => tokenStore.set(null))
+      .then((me) => {
+        if (isCustomerRole(me.roleCode)) {
+          authApi.logout().catch(() => {});
+          clearSession();
+          return;
+        }
+        setUser(me);
+      })
+      .catch(() => clearSession())
       .finally(() => setLoading(false));
   }, [clearSession]);
 
@@ -43,11 +71,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       loading,
-      login: async (body) => {
-        const result = await authApi.login(body);
-        tokenStore.set(result.token);
-        setUser(result.user);
-      },
+      login: async (body) => acceptStaffSession(await authApi.login(body)),
+      loginWithOtp: async (body) => acceptStaffSession(await authApi.loginOtp(body)),
       logout: () => {
         authApi.logout().catch(() => {});
         clearSession();
@@ -58,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return needed.some((p) => user?.permissions.includes(p));
       },
     }),
-    [user, loading, clearSession],
+    [user, loading, clearSession, acceptStaffSession],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -70,8 +95,15 @@ export function useAuth() {
 }
 
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
   const location = useLocation();
+
+  useEffect(() => {
+    if (user && isCustomerRole(user.roleCode)) {
+      logout();
+    }
+  }, [user, logout]);
+
   if (loading) {
     return (
       <div className="p-6">
@@ -79,7 +111,9 @@ export function RequireAuth({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+  if (!user || isCustomerRole(user.roleCode)) {
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+  }
   return <>{children}</>;
 }
 
@@ -95,3 +129,5 @@ export function RequirePermission({ permission, children }: { permission?: Permi
     </div>
   );
 }
+
+export { STAFF_ONLY_MESSAGE };

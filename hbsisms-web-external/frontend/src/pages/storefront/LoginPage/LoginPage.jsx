@@ -132,8 +132,12 @@ export default function LoginPage() {
         clearPhoneAuthSession()
         navigate(redirectTo || getHomePathForRole(loggedIn.role), { replace: true })
       } catch (err) {
-        if (err instanceof ApiError && err.status === 403) {
-          // Chưa có tài khoản — giữ idToken để register/otp
+        // Chỉ "chưa cấp tài khoản" mới sang đăng ký — tránh 403 khóa/lỗi khác bị nhầm
+        if (
+          err instanceof ApiError &&
+          err.status === 403 &&
+          String(err.message || '').includes('chưa được cấp')
+        ) {
           setPendingIdToken(idToken)
           setStep(STEP.CREATE)
           return
