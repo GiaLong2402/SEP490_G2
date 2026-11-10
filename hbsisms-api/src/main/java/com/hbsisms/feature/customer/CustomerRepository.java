@@ -20,6 +20,13 @@ public interface CustomerRepository extends JpaRepository<Customer, Long>, JpaSp
     /** Walk-in customer (created by staff) not yet linked to a portal login. */
     Optional<Customer> findFirstByPhoneAndAccountUserIsNullOrderByIdAsc(String phone);
 
+    /** B2C portal: customer hồ sơ gắn với app_user đang đăng nhập. */
+    Optional<Customer> findByAccountUser_Id(Long accountUserId);
+
+    Optional<Customer> findByCodeIgnoreCase(String code);
+
+    Optional<Customer> findFirstByPhoneOrderByIdAsc(String phone);
+
     Page<Customer> findAll(Specification<Customer> spec, Pageable pageable);
 
     /** Codes matching a generated-prefix pattern (e.g. {@code KH-%} / {@code KH-B%}) for next-code. */

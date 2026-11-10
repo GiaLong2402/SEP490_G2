@@ -39,6 +39,7 @@ Kịch bản mock qua URL: `?mock=shortage | pay-pending | pay-cancelled | pay-f
 
 | Màn cần mở để kiểm | Endpoint |
 |---|---|
+| Tài khoản (form hồ sơ) | § 1a Hồ sơ / đổi SĐT |
 | Tài khoản → Sổ địa chỉ; Thanh toán bước 1 | § 1 Địa chỉ |
 | Đơn & Yêu cầu (tab Đơn hàng) → Chi tiết đơn → Hủy đơn; Biên lai | § 2 Đơn hàng |
 | Đơn & Yêu cầu (tab Yêu cầu) → Chi tiết yêu cầu | § 3 Yêu cầu |
@@ -48,6 +49,19 @@ Kịch bản mock qua URL: `?mock=shortage | pay-pending | pay-cancelled | pay-f
 **Lỗi:** frontend đọc đúng `ErrorResponse` hiện có `{ status, message, errors }` — `message` hiện cho khách, `errors` (field → message) hiện dưới từng ô của form.
 
 ---
+
+## 1a. Hồ sơ — task "Hồ sơ & địa chỉ của tôi" (Duy)
+
+File FE: `src/api/profile.js`. Dùng ở trang Tài khoản.
+
+| Method | URL | Body | Trả về |
+|---|---|---|---|
+| PATCH | `/me/profile` | `{ fullName, email? }` | `CurrentUserResponse` (có `phone`) |
+| POST | `/me/phone` | `{ idToken }` | `CurrentUserResponse` sau khi đổi SĐT |
+
+- Đổi SĐT bắt buộc OTP Firebase/stub (`idToken`); SĐT trùng tài khoản khác → 409.
+- `GET /auth/me` và mọi `CurrentUserResponse` trả thêm field `phone`.
+- Toggle thông báo email trên UI **không** persist (chưa có API).
 
 ## 1. Địa chỉ — task "Hồ sơ & địa chỉ của tôi" (Duy)
 
@@ -185,7 +199,8 @@ File FE: `src/api/payments.js`. Dùng ở màn quét QR (bước 4) và trang k�
 
 | Mục | FE | Backend |
 |---|---|---|
-| Địa chỉ | Xong (mock) | Chưa có `/me/addresses` |
+| Hồ sơ + đổi SĐT | Đã nối | `/me/profile`, `/me/phone` + `phone` trên `/auth/me` |
+| Địa chỉ | Đã nối | `/me/addresses` |
 | Đơn của tôi + hủy | Xong (mock) | Chưa có `/me/orders` (đã có `/orders` cho nhân viên) |
 | Yêu cầu | Xong (mock) | Chưa có `/me/sales-requests` (đã có `/sales-requests` cho nhân viên) |
 | Checkout | Xong (mock) | Chưa có |
