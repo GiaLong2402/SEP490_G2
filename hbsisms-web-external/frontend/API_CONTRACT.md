@@ -82,7 +82,9 @@ File FE: `src/api/addresses.js`, mapper `mappers/address.js`. Dùng ở Sổ đ�
 
 File FE: `src/api/orders.js`, mapper `mappers/order.js`. Dùng ở Đơn & Yêu cầu, Chi tiết đơn, Biên lai.
 
-**Đã nối (#29):** `GET/POST /me/orders`, `GET /me/orders/{code}`, `POST /me/orders/{code}/cancel` (JWT + `MeCustomerResolver`). Enums trên `/me` là **UPPERCASE**. List trả kèm `lines` (+ `imageUrl` nếu có). `canCancel` = `PENDING` và chưa `PAID`. Hủy: giải phóng hold + đánh dấu payment PayOS `PENDING` → `CANCELLED` (stub; Long #33 cancel PayOS thật). Seed: `DH-DEMO-001` / `DH-DEMO-C{id}`.
+**Đã nối (#29 list/detail):** `GET /me/orders`, `GET /me/orders/{code}` (JWT + `MeCustomerResolver`). Enums trên `/me` là **UPPERCASE**. List trả kèm `lines` (+ `imageUrl` nếu có). Seed: `DH-DEMO-001` / `DH-DEMO-C{id}`.
+
+**Đã nối (#30 hủy chưa thanh toán):** `POST /me/orders/{code}/cancel`. `canCancel` = `PENDING` và chưa `PAID`. Hủy → `state=CANCELLED`, `paymentStatus=UNPAID`, giải phóng hold, payment PayOS `PENDING` → `CANCELLED` + clear `checkoutUrl` (stub; Long #33 cancel PayOS thật). Hủy lần 2 / không đủ điều kiện → 409.
 
 | Method | URL | Trả về |
 |---|---|---|
@@ -102,7 +104,7 @@ Trạng thái hiển thị (`constants/orderStatus.js` → `orderUiStatus`):
 | `DELIVERED`, `COMPLETED` | Hoàn thành |
 | `CANCELLED` | Đã hủy |
 
-Hủy đơn: chỉ khi `canCancel` (đơn chờ thanh toán) → giải phóng hàng giữ + hủy link PayOS stub (Long thay thật).
+Hủy đơn (#30): chỉ khi `canCancel` (đơn chờ thanh toán) → giải phóng hàng giữ + hủy link PayOS stub (Long thay thật). UI: `CancelOrderDialog` trên chi tiết đơn và bước QR checkout.
 
 ## 3. Yêu cầu mua vượt tồn — task "Gửi yêu cầu mua vượt tồn" (Duy)
 
@@ -202,7 +204,8 @@ File FE: `src/api/payments.js`. Dùng ở màn quét QR (bước 4) và trang k�
 |---|---|---|
 | Hồ sơ + đổi SĐT | Đã nối | `/me/profile`, `/me/phone` + `phone` trên `/auth/me` |
 | Địa chỉ | Đã nối | `/me/addresses` |
-| Đơn của tôi + hủy | Đã nối | `/me/orders` (+ cancel; staff `/orders`) |
+| Đơn của tôi (#29) | Đã nối | `/me/orders` list + detail |
+| Hủy đơn chưa TT (#30) | Đã nối | `POST /me/orders/{code}/cancel` |
 | Yêu cầu | Đã nối | `/me/sales-requests` (+ staff `/sales-requests`) |
 | Checkout | Đã nối | `POST /checkout` (+ Idempotency-Key, hold FEFO, stub PayOS) |
 | PayOS return / link | Xong (mock) | Chưa có (Long #33); checkout trả stub `checkoutUrl` |

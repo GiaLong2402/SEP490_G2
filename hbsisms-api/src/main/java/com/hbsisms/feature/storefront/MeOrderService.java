@@ -34,7 +34,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Inter 2 #29 — B2C {@code /me/orders} list, detail, cancel awaiting payment. */
+/** Inter 2 #29 list/detail + #30 cancel unpaid — B2C {@code /me/orders}. */
 @Service
 public class MeOrderService {
 
@@ -82,6 +82,7 @@ public class MeOrderService {
         Long actorId = customer.getAccountUser() == null ? null : customer.getAccountUser().getId();
         orderAllocationService.releaseForOrder(order, actorId, "Khách hủy đơn — giải phóng hold");
         order.setState(OrderState.CANCELLED);
+        order.setPaymentStatus(PaymentStatus.UNPAID);
         order.setHoldExpiresAt(null);
         salesOrderRepository.save(order);
 
