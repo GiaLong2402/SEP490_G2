@@ -19,6 +19,9 @@ public interface PaymentRepository
 
     Optional<Payment> findByPayosOrderCode(Long payosOrderCode);
 
+    @EntityGraph(attributePaths = {"order", "customer", "customer.accountUser"})
+    Optional<Payment> findWithOrderCustomerByPayosOrderCode(Long payosOrderCode);
+
     @EntityGraph(attributePaths = {"order", "customer", "receivedBy"})
     Optional<Payment> findWithDetailsById(Long id);
 
