@@ -98,13 +98,21 @@ function ProductDetailContent({ product, related }) {
   const [variantId, setVariantId] = useState(product.defaultVariantId)
   const variant = product.variants.find((v) => v.id === variantId) || getDefaultVariant(product)
 
-  function handleAddToCart(quantity) {
-    addToCart({ product, variant, quantity })
+  async function handleAddToCart(quantity) {
+    try {
+      await addToCart({ product, variant, quantity })
+    } catch {
+      // lỗi hiện qua CartContext / toast sau
+    }
   }
 
-  function handleBuyNow(quantity) {
-    addToCart({ product, variant, quantity })
-    navigate(ROUTES.CART)
+  async function handleBuyNow(quantity) {
+    try {
+      await addToCart({ product, variant, quantity })
+      navigate(ROUTES.CART)
+    } catch {
+      // giữ lại trang detail nếu add thất bại
+    }
   }
 
   return (

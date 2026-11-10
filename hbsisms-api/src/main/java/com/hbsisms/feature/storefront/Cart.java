@@ -45,13 +45,20 @@ public class Cart extends AuditableEntity {
     @OnDelete(action = OnDeleteAction.CASCADE)
     private Customer customer;
 
-    @Column(updatable = false)
-    @Setter(lombok.AccessLevel.NONE)
+    @Column(name = "session_token", updatable = false)
     private UUID sessionToken = UUID.randomUUID();
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private CartStatus status = CartStatus.ACTIVE;
+
+    /** Guest cart keyed by browser session token. */
+    public static Cart forSession(UUID sessionToken) {
+        Cart cart = new Cart();
+        cart.sessionToken = sessionToken != null ? sessionToken : UUID.randomUUID();
+        cart.status = CartStatus.ACTIVE;
+        return cart;
+    }
 
     @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true)
     @Setter(lombok.AccessLevel.NONE)

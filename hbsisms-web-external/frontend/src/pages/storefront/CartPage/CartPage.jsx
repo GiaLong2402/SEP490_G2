@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import PageBanner from '@/components/storefront/PageBanner/PageBanner'
 import {
@@ -33,12 +34,24 @@ function shortProductName(name) {
  *   └──────────────────────────────┴─────────────────┘
  */
 export default function CartPage() {
-  // Lấy dữ liệu + hàm xử lý giỏ hàng từ CartContext (dùng chung toàn app)
-  const { items, totalItems, totalAmount, updateQuantity, removeItem, clearCart } = useCart()
+  const { items, totalItems, totalAmount, loading, error, updateQuantity, removeItem, clearCart } =
+    useCart()
   const navigate = useNavigate()
+  const [busy, setBusy] = useState(false)
 
   function handleCheckout() {
     navigate(ROUTES.CHECKOUT)
+  }
+
+  async function run(action) {
+    setBusy(true)
+    try {
+      await action()
+    } catch {
+      // error đã hiện qua CartContext.error
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -49,8 +62,11 @@ export default function CartPage() {
       />
 
       <div className="container cart-page__body">
+        {error ? <p className="cart-page__error">{error}</p> : null}
+        {loading ? <p className="cart-page__loading">Đang tải giỏ hàng…</p> : null}
+
         {/* ----- Giỏ trống ----- */}
-        {items.length === 0 && (
+        {!loading && items.length === 0 && (
           <div className="cart-empty">
             <p>Giỏ hàng đang trống.</p>
             <Link to={ROUTES.PRODUCTS} className="btn btn--secondary">
@@ -60,7 +76,7 @@ export default function CartPage() {
         )}
 
         {/* ----- Có sản phẩm ----- */}
-        {items.length > 0 && (
+        {!loading && items.length > 0 && (
           <div className="cart-layout">
             {/* ===== TRÁI: bảng sản phẩm ===== */}
             <div>
@@ -99,7 +115,10 @@ export default function CartPage() {
                       {/* Cột 2: đơn giá ("cart-label" chỉ hiện trên mobile) */}
                       <p className="cart-row__unit">
                         <span className="cart-label">Đơn giá</span>
-                        {formatPrice(item.variant.price)}
+                        {formatPrice(item.unitPrice ?? item.variant.price)}
+                        {item.priceBasis ? (
+                          <span className="cart-row__basis"> · {String(item.priceBasis)}</span>
+                        ) : null}
                       </p>
 
                       {/* Cột 3: tăng / giảm số lượng */}
@@ -108,7 +127,8 @@ export default function CartPage() {
                           <button
                             type="button"
                             aria-label="Giảm số lượng"
-                            onClick={() => updateQuantity(item.key, item.quantity - 1)}
+                            disabled={busy}
+                            onClick={() => run(() => updateQuantity(item.key, item.quantity - 1))}
                           >
                             <MinusIcon size={18} />
                           </button>
@@ -116,17 +136,18 @@ export default function CartPage() {
                           <button
                             type="button"
                             aria-label="Tăng số lượng"
-                            onClick={() => updateQuantity(item.key, item.quantity + 1)}
+                            disabled={busy}
+                            onClick={() => run(() => updateQuantity(item.key, item.quantity + 1))}
                           >
                             <PlusIcon size={18} />
                           </button>
                         </div>
                       </div>
 
-                      {/* Cột 4: thành tiền = đơn giá x số lượng */}
+                      {/* Cột 4: thành tiền từ API (PriceResolver) */}
                       <p className="cart-row__total">
                         <span className="cart-label">Thành tiền</span>
-                        {formatPrice(item.variant.price * item.quantity)}
+                        {formatPrice(item.lineTotal ?? item.variant.price * item.quantity)}
                       </p>
 
                       {/* Cột 5: nút xóa */}
@@ -134,7 +155,8 @@ export default function CartPage() {
                         type="button"
                         className="cart-row__remove"
                         aria-label={`Xóa ${item.name}`}
-                        onClick={() => removeItem(item.key)}
+                        disabled={busy}
+                        onClick={() => run(() => removeItem(item.key))}
                       >
                         <TrashIcon size={22} />
                       </button>
@@ -148,7 +170,12 @@ export default function CartPage() {
                     <ArrowLeftIcon size={22} />
                     Tiếp tục mua sắm
                   </Link>
-                  <button type="button" className="cart-clear" onClick={clearCart}>
+                  <button
+                    type="button"
+                    className="cart-clear"
+                    disabled={busy}
+                    onClick={() => run(() => clearCart())}
+                  >
                     <TrashIcon size={18} />
                     Xóa giỏ hàng
                   </button>
@@ -170,7 +197,7 @@ export default function CartPage() {
                       <span> · {item.quantity} khay</span>
                     </p>
                     <span className="cart-summary__item-price">
-                      {formatPrice(item.variant.price * item.quantity)}
+                      {formatPrice(item.lineTotal ?? item.variant.price * item.quantity)}
                     </span>
                   </li>
                 ))}
@@ -197,7 +224,6 @@ export default function CartPage() {
                 Thanh toán
                 <ArrowRightIcon size={22} />
               </button>
-
             </aside>
           </div>
         )}

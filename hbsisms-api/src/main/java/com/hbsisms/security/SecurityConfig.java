@@ -40,6 +40,8 @@ public class SecurityConfig {
                         // Storefront B2C: guest xem danh mục / sản phẩm (POST/PUT vẫn cần quyền).
                         .requestMatchers(HttpMethod.GET, "/categories", "/categories/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/products", "/products/**").permitAll()
+                        // B2C guest cart (session header); does not hold stock.
+                        .requestMatchers("/carts", "/carts/**").permitAll()
                         .requestMatchers("/actuator/health", "/error").permitAll()
                         // Only served when SWAGGER_ENABLED=true (see application.yml).
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
@@ -59,7 +61,7 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(properties.cors().allowedOrigins());
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Cart-Session"));
         config.setMaxAge(3600L);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
