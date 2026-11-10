@@ -70,6 +70,16 @@ app:
   payos:
     # Stub checkoutUrl base until Long wires real PayOS (#33). Appends ?orderCode=
     stub-return-base-url: ${PAYOS_STUB_RETURN_BASE_URL:http://localhost:5173/thanh-toan/ket-qua}
+  payment:
+    payos:
+      # off = no PayOS calls; sandbox | live require Client ID + API Key + Checksum Key
+      mode: ${PAYOS_MODE:off}
+      client-id: ${PAYOS_CLIENT_ID:}
+      api-key: ${PAYOS_API_KEY:}
+      checksum-key: ${PAYOS_CHECKSUM_KEY:}
+      base-url: ${PAYOS_BASE_URL:https://api-merchant.payos.vn}
+      return-url: ${PAYOS_RETURN_URL:http://localhost:5173/thanh-toan/ket-qua}
+      cancel-url: ${PAYOS_CANCEL_URL:http://localhost:5173/thanh-toan/ket-qua}
   inventory:
     expire-job:
       # Daily move of past-HSD available trays → qty_expired (task 38).
