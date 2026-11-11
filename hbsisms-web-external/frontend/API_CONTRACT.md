@@ -197,6 +197,7 @@ File FE: `src/api/payments.js`. Dùng ở màn quét QR (bước 4) và trang k�
 - Đồng hồ đếm ngược dùng `expiresAt` (= `holdExpiresAt`), không cố định 15 phút.
 - **Job hết hạn (#37):** mỗi phút quét đơn quá `holdExpiresAt` → hỏi PayOS; đã `PAID` thì ghi nhận; chưa trả thì hủy link, nhả hold, hủy đơn (`CANCELLED`). Sau job, poll return thường thấy `CANCELLED` (không kẹt `EXPIRED` local). Ops: `POST /sales/hold-expire`.
 - **Webhook muộn (#35):** payment đã `CANCELLED` nhưng PayOS báo đã trả → ghi PAID, mở lại đơn `PENDING`, thử giữ hàng; đủ → event `late_paid_reheld`; thiếu → `rawPayload.needsRefund` + event `needs_refund` (Chủ xử lý #40). Không tự xuất giao.
+- **Ghi nhận hoàn (#40):** nội bộ `POST /payments/refund` — tạo phiếu `direction=refund` (TM/CK), clear `needsRefund`, cập nhật `paymentStatus` đơn (`refunded` khi net=0). Không gọi PayOS refund API; không tự hủy đơn.
 
 ---
 
@@ -214,3 +215,4 @@ File FE: `src/api/payments.js`. Dùng ở màn quét QR (bước 4) và trang k�
 | PayOS webhook (#34+#35) | — | `POST /payments/payos/webhook` (muộn sau hủy: re-hold hoặc `needs_refund`) |
 | PayOS return (#36) | Đã nối | `GET /payments/payos/return?orderCode=` (JWT; PENDING → hỏi lại PayOS) |
 | PayOS hold expire (#37) | — | Job + `POST /sales/hold-expire` (hỏi PayOS → hủy link / hủy đơn) |
+| Ghi nhận hoàn (#40) | Internal PaymentsPage | `POST /payments/refund` (clear `needsRefund`, `paymentStatus`) |

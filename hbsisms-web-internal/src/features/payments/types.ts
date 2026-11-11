@@ -19,4 +19,14 @@ export interface PaymentInput {
   note: string | null;
 }
 
+/** Body of POST /payments/refund (Excel #40). */
+export interface PaymentRefundInput {
+  orderId: ID;
+  sourcePaymentId: ID | null;
+  method: PaymentMethod;
+  amount: number;
+  reference: string | null;
+  note: string | null;
+}
+
 export type { PaymentReconcileFlag, PayTxnStatus };

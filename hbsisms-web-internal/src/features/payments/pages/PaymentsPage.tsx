@@ -1,4 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   payDirectionLabels,
@@ -11,6 +12,7 @@ import {
 } from '@/shared/domain/enums';
 import { dateTime, money } from '@/shared/lib/format';
 import {
+  Button,
   Card,
   Chip,
   DataTable,
@@ -26,7 +28,16 @@ import {
   type Column,
 } from '@/shared/ui';
 import { paymentsApi } from '../api';
+import { RefundFormModal } from '../components/RefundFormModal';
 import type { PaymentListItem } from '../types';
+
+type RefundTarget = {
+  orderId: number;
+  orderCode: string | null;
+  customerName: string | null;
+  maxAmount: number;
+  sourcePaymentId: number | null;
+};
 
 export default function PaymentsPage() {
   const list = useListParams(['method', 'direction', 'status', 'channel', 'reconcileFlag'] as const);
@@ -40,6 +51,8 @@ export default function PaymentsPage() {
     reconcileFlag: list.filters.reconcileFlag,
   };
   const queryClient = useQueryClient();
+  const [refundTarget, setRefundTarget] = useState<RefundTarget | null>(null);
+
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['payments', query],
     queryFn: ({ signal }) => paymentsApi.list(query, signal),
@@ -50,6 +63,29 @@ export default function PaymentsPage() {
     mutationFn: ({ id, flag }: { id: number; flag: PaymentReconcileFlag }) => paymentsApi.markReconcile(id, flag),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['payments'] }),
   });
+
+  const netByOrder = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const p of data?.items ?? []) {
+      if (!p.orderId || p.status !== 'success') continue;
+      const delta = p.direction === 'refund' ? -p.amount : p.amount;
+      map.set(p.orderId, (map.get(p.orderId) ?? 0) + delta);
+    }
+    return map;
+  }, [data?.items]);
+
+  const openRefund = (p: PaymentListItem) => {
+    if (!p.orderId) return;
+    const pageNet = netByOrder.get(p.orderId);
+    const maxAmount = Math.max(0, pageNet ?? (p.direction === 'in' ? p.amount : 0));
+    setRefundTarget({
+      orderId: p.orderId,
+      orderCode: p.orderCode,
+      customerName: p.customerName,
+      maxAmount: maxAmount > 0 ? maxAmount : p.amount,
+      sourcePaymentId: p.direction === 'in' ? p.id : null,
+    });
+  };
 
   const columns: Column<PaymentListItem>[] = [
     { key: 'code', header: 'Mã', cell: (p) => <span className="num">{p.code}</span> },
@@ -113,13 +149,23 @@ export default function PaymentsPage() {
         </div>
       ),
     },
+    {
+      key: 'actions',
+      header: '',
+      cell: (p) =>
+        p.orderId && p.direction === 'in' && p.status === 'success' ? (
+          <Button variant={p.needsRefund ? 'primary' : 'ghost'} onClick={() => openRefund(p)}>
+            Hoàn tiền
+          </Button>
+        ) : null,
+    },
   ];
 
   return (
     <>
       <PageHeader
         title="Thanh toán"
-        subtitle="Lịch sử thu/hoàn; lọc theo đơn, kênh, trạng thái; đánh dấu thiếu / thừa / trùng khi đối soát"
+        subtitle="Lịch sử thu/hoàn; đối soát thiếu/thừa/trùng; ghi nhận hoàn tiền khi cần"
       />
       <Card flush>
         <FilterBar>
@@ -155,6 +201,21 @@ export default function PaymentsPage() {
         />
         {data && <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onChange={list.setPage} />}
       </Card>
+
+      {refundTarget ? (
+        <RefundFormModal
+          open
+          onClose={() => {
+            setRefundTarget(null);
+            queryClient.invalidateQueries({ queryKey: ['payments'] });
+          }}
+          orderId={refundTarget.orderId}
+          orderCode={refundTarget.orderCode}
+          customerName={refundTarget.customerName}
+          maxAmount={refundTarget.maxAmount}
+          sourcePaymentId={refundTarget.sourcePaymentId}
+        />
+      ) : null}
     </>
   );
 }
