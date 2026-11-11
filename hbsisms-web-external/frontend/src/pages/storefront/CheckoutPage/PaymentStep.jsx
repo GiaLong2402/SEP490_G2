@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { QRCodeSVG } from 'qrcode.react'
 import {
   ArrowRightIcon,
   CalendarIcon,
@@ -28,42 +29,24 @@ const POLL_MS = 5000
 
 const secondsUntil = (iso) => (iso ? Math.max(0, Math.round((new Date(iso) - Date.now()) / 1000)) : HOLD_SECONDS)
 
-/**
- * Hình QR GIẢ (không quét được) dựng từ seed.
- * Khi nối PayOS: vẽ chuỗi payment.qrCode bằng thư viện QR (vd. qrcode.react) — xem API_CONTRACT.md.
- */
-function DemoQr({ seed }) {
-  const n = 25
-  let x = [...seed].reduce((s, c) => s * 31 + c.charCodeAt(0), 7) >>> 0
-  const rand = () => {
-    x = (x * 1103515245 + 12345) >>> 0
-    return x / 4294967296
+/** PayOS trả chuỗi VietQR/EMV hoặc URL ảnh QR. */
+function PaymentQr({ value }) {
+  if (!value) {
+    return <p className="pay-qr__missing">Chưa có mã QR — mở trang PayOS bên dưới.</p>
   }
-  const inFinder = (r, c) =>
-    (r < 8 && c < 8) || (r < 8 && c >= n - 8) || (r >= n - 8 && c < 8)
-  const inLogo = (r, c) => r >= 9 && r <= 15 && c >= 9 && c <= 15
-  const cells = []
-  for (let r = 0; r < n; r++) {
-    for (let c = 0; c < n; c++) {
-      if (!inFinder(r, c) && !inLogo(r, c) && rand() > 0.52) cells.push([r, c])
-    }
+  if (/^(https?:|data:image)/i.test(value)) {
+    return <img src={value} alt="Mã QR thanh toán PayOS" className="pay-qr__code pay-qr__code--img" />
   }
-  const finder = (r, c) => (
-    <g key={`f${r}${c}`}>
-      <rect x={c} y={r} width="7" height="7" rx="1.2" fill="currentColor" />
-      <rect x={c + 1} y={r + 1} width="5" height="5" rx="0.8" fill="#fff" />
-      <rect x={c + 2} y={r + 2} width="3" height="3" rx="0.6" fill="currentColor" />
-    </g>
-  )
   return (
-    <svg viewBox={`0 0 ${n} ${n}`} className="pay-qr__code" role="img" aria-label="Mã QR thanh toán">
-      {cells.map(([r, c]) => (
-        <rect key={`${r}-${c}`} x={c} y={r} width="1" height="1" fill="currentColor" />
-      ))}
-      {finder(0, 0)}
-      {finder(0, n - 7)}
-      {finder(n - 7, 0)}
-    </svg>
+    <QRCodeSVG
+      value={value}
+      size={220}
+      level="M"
+      marginSize={1}
+      className="pay-qr__code"
+      role="img"
+      aria-label="Mã QR thanh toán PayOS"
+    />
   )
 }
 
@@ -135,10 +118,7 @@ export default function PaymentStep({ order, payment }) {
           </p>
 
           <div className={`pay-qr ${expired ? 'is-expired' : ''}`}>
-            <DemoQr seed={payment.qrCode || order.code} />
-            <span className="pay-qr__logo" aria-hidden="true">
-              <QrIcon size={22} />
-            </span>
+            <PaymentQr value={payment.qrCode} />
             {expired && <span className="pay-qr__overlay">Mã đã hết hạn</span>}
           </div>
 

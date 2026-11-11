@@ -193,7 +193,7 @@ File FE: `src/api/payments.js`. Dùng ở màn quét QR (bước 4) và trang k�
   Trang này **không tin `status` trên URL** — chỉ đọc `orderCode` rồi gọi API trên; payment còn `PENDING` thì backend hỏi lại PayOS để đối soát.
 - FE hỏi lại: trang kết quả mỗi 2 giây (tối đa 5 lần, sau đó có nút "Kiểm tra lại"); màn quét QR mỗi 5 giây (khách quét bằng app ngân hàng) → khác `PENDING` thì chuyển sang trang kết quả.
 - "Thanh toán lại" (khi `CANCELLED`/`FAILED`, đơn còn giữ hàng) gọi `POST …/link`: link cũ còn hạn → trả link cũ (đúng mô tả task).
-- `qrCode`: FE hiện đang vẽ **QR giả** (`DemoQr` trong `PaymentStep.jsx`). Khi có chuỗi thật cần thêm thư viện vẽ QR (vd. `qrcode.react`) và thay `DemoQr`.
+- `qrCode`: FE vẽ QR thật bằng `qrcode.react` trong `PaymentStep.jsx` (chuỗi VietQR/EMV hoặc URL ảnh từ PayOS).
 - Đồng hồ đếm ngược dùng `expiresAt` (= `holdExpiresAt`), không cố định 15 phút.
 - **Job hết hạn (#37):** mỗi phút quét đơn quá `holdExpiresAt` → hỏi PayOS; đã `PAID` thì ghi nhận; chưa trả thì hủy link, nhả hold, hủy đơn (`CANCELLED`). Sau job, poll return thường thấy `CANCELLED` (không kẹt `EXPIRED` local). Ops: `POST /sales/hold-expire`.
 - **Webhook muộn (#35):** payment đã `CANCELLED` nhưng PayOS báo đã trả → ghi PAID, mở lại đơn `PENDING`, thử giữ hàng; đủ → event `late_paid_reheld`; thiếu → `rawPayload.needsRefund` + event `needs_refund` (Chủ xử lý #40). Không tự xuất giao.
