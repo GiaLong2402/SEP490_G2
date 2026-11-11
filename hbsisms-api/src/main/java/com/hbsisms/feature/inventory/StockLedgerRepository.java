@@ -31,4 +31,13 @@ public interface StockLedgerRepository extends JpaRepository<StockLedger, Long> 
             """)
     List<StockLedger> findByRefTypeAndRefIdWithDetails(
             @Param("refType") String refType, @Param("refId") Long refId);
+
+    /** Chỉ id + associations lazy — dùng tính net HOLD trong cùng tx với đơn (tránh join-fetch xung đột). */
+    @Query("""
+            select e from StockLedger e
+            where e.refType = :refType and e.refId = :refId
+            order by e.id asc
+            """)
+    List<StockLedger> findByRefTypeAndRefIdForAllocation(
+            @Param("refType") String refType, @Param("refId") Long refId);
 }

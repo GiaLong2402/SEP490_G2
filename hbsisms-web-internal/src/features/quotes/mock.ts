@@ -45,7 +45,7 @@ mock('POST', '/quotes', ({ body, userId }) => {
   const now = new Date().toISOString();
   const id = nextId(db.quotes);
   db.quotes.push({ id, code: nextCode('BG', db.quotes), customerId: body.customerId, requestId: body.requestId, status: 'draft', subtotal, total: subtotal, validUntil: body.validUntil, createdBy: userId, approvedBy: null, note: body.note, createdAt: now, updatedAt: now });
-  priced.forEach(({ available: _a, discountPct: _d, ...line }) => db.quoteLines.push({ ...line, id: nextId(db.quoteLines), quoteId: id }));
+  priced.forEach(({ available: _a, shortfall: _s, discountPct: _d, ...line }) => db.quoteLines.push({ ...line, id: nextId(db.quoteLines), quoteId: id }));
   const request = db.requests.find((r) => r.id === body.requestId);
   if (request) request.status = 'quoting';
   audit(userId, 'create', 'quote', id);

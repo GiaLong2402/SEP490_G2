@@ -80,8 +80,17 @@ public class PricingService {
                 .setScale(2, RoundingMode.HALF_UP);
 
         long available = stockRepository.sumAvailableByVariantExcludingExpired(variant.getId(), LocalDate.now());
+        long shortfall = Math.max(0L, (long) qtyKhay - available);
         return new PricedLineResponse(
-                variant.getId(), line.unit(), line.qty(), qtyKhay, unitPrice, basis, lineTotal, available);
+                variant.getId(),
+                line.unit(),
+                line.qty(),
+                qtyKhay,
+                unitPrice,
+                basis,
+                lineTotal,
+                available,
+                shortfall);
     }
 
     static int toQtyKhay(SellUnit unit, int qty, short packPerCase) {

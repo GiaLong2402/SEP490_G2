@@ -4,9 +4,8 @@ import { checkDto } from './checkDto'
 const REQUIRED = ['id', 'code', 'summary', 'status', 'receivedAt']
 
 /**
- * SalesRequestResponse (backend) → yêu cầu dùng trên giao diện.
- * neededDate / requestedQty / availableQty / orderCode: đề xuất bổ sung (xem API_CONTRACT.md),
- * chưa có thì để null.
+ * MeSalesRequestResponse / SalesRequestResponse → yêu cầu trên giao diện.
+ * `/me` trả status UPPERCASE; staff API lowercase — normalize để UI dùng NEW/….
  */
 export function fromSalesRequestDto(dto) {
   checkDto(dto, REQUIRED, 'SalesRequestResponse', '3. Yêu cầu')
@@ -14,7 +13,7 @@ export function fromSalesRequestDto(dto) {
     id: dto.id,
     code: dto.code,
     summary: dto.summary || '',
-    status: dto.status,
+    status: dto.status == null ? dto.status : String(dto.status).toUpperCase(),
     receivedAt: dto.receivedAt || null,
     neededDate: dto.neededDate || null,
     requestedQty: dto.requestedQty ?? null,

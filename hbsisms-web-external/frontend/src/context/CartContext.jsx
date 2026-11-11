@@ -1,77 +1,114 @@
-import { createContext, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { cartApi } from '@/api/cart'
 
 const CartContext = createContext(null)
 
 /**
- * Giỏ hàng đơn giản (lưu trong memory).
- * Mỗi dòng: { key, productId, name, image, variant, quantity }
+ * Giỏ B2C gắn API /carts/current (X-Cart-Session). Giá từ PriceResolver phía server.
  */
 export function CartProvider({ children }) {
   const [items, setItems] = useState([])
+  const [totalItems, setTotalItems] = useState(0)
+  const [totalAmount, setTotalAmount] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  function addToCart({ product, variant, quantity = 1 }) {
-    const key = `${product.id}__${variant.id}`
+  const applyCart = useCallback((cart) => {
+    setItems(cart.items || [])
+    setTotalItems(cart.totalItems || 0)
+    setTotalAmount(cart.totalAmount || 0)
+  }, [])
 
-    setItems((prev) => {
-      const existing = prev.find((item) => item.key === key)
-      if (existing) {
-        return prev.map((item) =>
-          item.key === key
-            ? { ...item, quantity: item.quantity + quantity }
-            : item,
-        )
-      }
-
-      return [
-        ...prev,
-        {
-          key,
-          productId: product.id,
-          slug: product.slug,
-          name: product.name,
-          image: product.primaryImageUrl,
-          variant,
-          quantity,
-        },
-      ]
-    })
-  }
-
-  function updateQuantity(key, quantity) {
-    if (quantity < 1) {
-      removeItem(key)
-      return
+  const refreshCart = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const cart = await cartApi.get()
+      applyCart(cart)
+    } catch (err) {
+      setError(err?.message || 'Không tải được giỏ hàng')
+      setItems([])
+      setTotalItems(0)
+      setTotalAmount(0)
+    } finally {
+      setLoading(false)
     }
-    setItems((prev) =>
-      prev.map((item) => (item.key === key ? { ...item, quantity } : item)),
-    )
+  }, [applyCart])
+
+  useEffect(() => {
+    refreshCart()
+  }, [refreshCart])
+
+  async function addToCart({ product, variant, quantity = 1 }) {
+    const variantId = variant?.id
+    if (!variantId) throw new Error('Thiếu quy cách sản phẩm')
+    setError('')
+    try {
+      const cart = await cartApi.addItem(variantId, quantity)
+      applyCart(cart)
+      return cart
+    } catch (err) {
+      setError(err?.message || 'Không thêm được vào giỏ')
+      throw err
+    }
   }
 
-  function removeItem(key) {
-    setItems((prev) => prev.filter((item) => item.key !== key))
+  async function updateQuantity(key, quantity) {
+    const item = items.find((row) => row.key === key)
+    if (!item) return
+    setError('')
+    try {
+      if (quantity < 1) {
+        const cart = await cartApi.removeItem(item.itemId)
+        applyCart(cart)
+        return
+      }
+      const cart = await cartApi.updateQty(item.itemId, quantity)
+      applyCart(cart)
+    } catch (err) {
+      setError(err?.message || 'Không cập nhật được số lượng')
+      throw err
+    }
   }
 
-  function clearCart() {
-    setItems([])
+  async function removeItem(key) {
+    const item = items.find((row) => row.key === key)
+    if (!item) return
+    setError('')
+    try {
+      const cart = await cartApi.removeItem(item.itemId)
+      applyCart(cart)
+    } catch (err) {
+      setError(err?.message || 'Không xóa được dòng giỏ')
+      throw err
+    }
   }
 
-  const totalItems = items.reduce((sum, item) => sum + item.quantity, 0)
-  const totalAmount = items.reduce(
-    (sum, item) => sum + item.variant.price * item.quantity,
-    0,
-  )
+  async function clearCart() {
+    setError('')
+    try {
+      const cart = await cartApi.clear()
+      applyCart(cart)
+    } catch (err) {
+      setError(err?.message || 'Không xóa được giỏ hàng')
+      throw err
+    }
+  }
 
   const value = useMemo(
     () => ({
       items,
       totalItems,
       totalAmount,
+      loading,
+      error,
+      refreshCart,
       addToCart,
       updateQuantity,
       removeItem,
       clearCart,
     }),
-    [items, totalItems, totalAmount],
+    [items, totalItems, totalAmount, loading, error, refreshCart],
   )
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>

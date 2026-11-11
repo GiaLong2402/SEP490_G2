@@ -39,6 +39,7 @@ Kịch bản mock qua URL: `?mock=shortage | pay-pending | pay-cancelled | pay-f
 
 | Màn cần mở để kiểm | Endpoint |
 |---|---|
+| Tài khoản (form hồ sơ) | § 1a Hồ sơ / đổi SĐT |
 | Tài khoản → Sổ địa chỉ; Thanh toán bước 1 | § 1 Địa chỉ |
 | Đơn & Yêu cầu (tab Đơn hàng) → Chi tiết đơn → Hủy đơn; Biên lai | § 2 Đơn hàng |
 | Đơn & Yêu cầu (tab Yêu cầu) → Chi tiết yêu cầu | § 3 Yêu cầu |
@@ -48,6 +49,19 @@ Kịch bản mock qua URL: `?mock=shortage | pay-pending | pay-cancelled | pay-f
 **Lỗi:** frontend đọc đúng `ErrorResponse` hiện có `{ status, message, errors }` — `message` hiện cho khách, `errors` (field → message) hiện dưới từng ô của form.
 
 ---
+
+## 1a. Hồ sơ — task "Hồ sơ & địa chỉ của tôi" (Duy)
+
+File FE: `src/api/profile.js`. Dùng ở trang Tài khoản.
+
+| Method | URL | Body | Trả về |
+|---|---|---|---|
+| PATCH | `/me/profile` | `{ fullName, email? }` | `CurrentUserResponse` (có `phone`) |
+| POST | `/me/phone` | `{ idToken }` | `CurrentUserResponse` sau khi đổi SĐT |
+
+- Đổi SĐT bắt buộc OTP Firebase/stub (`idToken`); SĐT trùng tài khoản khác → 409.
+- `GET /auth/me` và mọi `CurrentUserResponse` trả thêm field `phone`.
+- Toggle thông báo email trên UI **không** persist (chưa có API).
 
 ## 1. Địa chỉ — task "Hồ sơ & địa chỉ của tôi" (Duy)
 
@@ -68,17 +82,17 @@ File FE: `src/api/addresses.js`, mapper `mappers/address.js`. Dùng ở Sổ đ�
 
 File FE: `src/api/orders.js`, mapper `mappers/order.js`. Dùng ở Đơn & Yêu cầu, Chi tiết đơn, Biên lai.
 
+**Đã nối (#29 list/detail):** `GET /me/orders`, `GET /me/orders/{code}` (JWT + `MeCustomerResolver`). Enums trên `/me` là **UPPERCASE**. List trả kèm `lines` (+ `imageUrl` nếu có). Seed: `DH-DEMO-001` / `DH-DEMO-C{id}`.
+
+**Đã nối (#30 hủy chưa thanh toán):** `POST /me/orders/{code}/cancel`. `canCancel` = `PENDING` và chưa `PAID`. Hủy → `state=CANCELLED`, `paymentStatus=UNPAID`, giải phóng hold, gọi hủy link PayOS (#38) rồi payment `PENDING` → `CANCELLED` + clear `checkoutUrl`. Hủy lần 2 / không đủ điều kiện → 409.
+
 | Method | URL | Trả về |
 |---|---|---|
-| GET | `/me/orders?page=1&pageSize=100` | `PageResponse<…>` — mỗi item như `OrderDetailResponse` (cần `lines` để vẽ thẻ đơn) |
-| GET | `/me/orders/{code}` | `OrderDetailResponse` (theo **mã đơn**, không theo id) |
-| POST | `/me/orders/{code}/cancel` | `OrderDetailResponse` sau khi hủy; không hủy được → 409 |
+| GET | `/me/orders?page=1&pageSize=100` | `PageResponse<MeOrderDetailResponse>` (có `lines`) |
+| GET | `/me/orders/{code}` | `MeOrderDetailResponse` (theo **mã đơn**, không theo id) |
+| POST | `/me/orders/{code}/cancel` | `MeOrderDetailResponse` sau khi hủy; không hủy được → 409 |
 
-Field FE đang đọc (đã có trong `OrderDetailResponse`): `id, code, state, paymentStatus, fulfillmentMethod, subtotal, discountTotal, shippingFee, total, paidAmount, placedAt, holdExpiresAt, note, canCancel, customer{name,phone}, address (AddressResponse), deliveries[0]{scheduledDate,timeWindow}, payments[]{method,direction,status,paidAt,checkoutUrl,payosOrderCode}, events[]{id,eventType,description,createdAt}`.
-
-**Đề xuất bổ sung cho phía khách:**
-- `lines[].imageUrl` — ảnh sản phẩm (OrderLineViewResponse chưa có). Thiếu thì FE dùng ảnh mặc định.
-- List `/me/orders` trả kèm `lines` (OrderListItemResponse hiện không có dòng hàng).
+Field FE đọc: `id, code, state, paymentStatus, fulfillmentMethod, subtotal, discountTotal, shippingFee, total, paidAmount, placedAt, holdExpiresAt, note, canCancel, customer{name,phone}, address, deliveries[0]{scheduledDate,timeWindow}, payments[]{method,direction,status,paidAt,checkoutUrl,payosOrderCode}, events[]{id,eventType,description,createdAt}, lines[]{productName,qtyKhay,unitPrice,lineTotal,imageUrl?}`.
 
 Trạng thái hiển thị (`constants/orderStatus.js` → `orderUiStatus`):
 
@@ -90,17 +104,19 @@ Trạng thái hiển thị (`constants/orderStatus.js` → `orderUiStatus`):
 | `DELIVERED`, `COMPLETED` | Hoàn thành |
 | `CANCELLED` | Đã hủy |
 
-Hủy đơn: chỉ khi `canCancel` (đơn chờ thanh toán) → giải phóng hàng giữ + hủy link PayOS (task Long).
+Hủy đơn (#30+#38): chỉ khi `canCancel` (đơn chờ thanh toán) → giải phóng hàng giữ + hủy link PayOS thật. UI: `CancelOrderDialog` trên chi tiết đơn và bước QR checkout.
 
 ## 3. Yêu cầu mua vượt tồn — task "Gửi yêu cầu mua vượt tồn" (Duy)
 
 File FE: `src/api/salesRequests.js`, mapper `mappers/salesRequest.js`. Dùng ở tab Yêu cầu, Chi tiết yêu cầu, hộp thoại thiếu hàng.
 
+**Đã nối:** `GET/POST /me/sales-requests`, `GET /me/sales-requests/{code}` (JWT + `MeCustomerResolver`). Status trên `/me` là **UPPERCASE** (`NEW`…); staff `/sales-requests` vẫn lowercase. `items` trong body bị bỏ qua (chỉ lưu summary + qty tổng). Seed demo: `YCM-DEMO-001` cho KH-001.
+
 | Method | URL | Body / Trả về |
 |---|---|---|
-| GET | `/me/sales-requests?page=1&pageSize=100` | `PageResponse<SalesRequestResponse>` |
-| GET | `/me/sales-requests/{code}` | `SalesRequestResponse` |
-| POST | `/me/sales-requests` | body dưới → `SalesRequestResponse` (status `NEW`) |
+| GET | `/me/sales-requests?page=1&pageSize=100` | `PageResponse<MeSalesRequestResponse>` |
+| GET | `/me/sales-requests/{code}` | `MeSalesRequestResponse` |
+| POST | `/me/sales-requests` | body dưới → `MeSalesRequestResponse` (status `NEW`) |
 
 ```json
 {
@@ -113,16 +129,17 @@ File FE: `src/api/salesRequests.js`, mapper `mappers/salesRequest.js`. Dùng ở
 }
 ```
 
-- `SalesRequestInputRequest` hiện chỉ có `summary` + `channel` → **đề xuất thêm** `neededDate, requestedQty, availableQty` (task ghi "lưu SL cần, SL đang có, phần thiếu, ngày cần"). `items` để dành, chưa lưu cũng được.
-- Đề xuất `SalesRequestResponse` trả thêm `neededDate, requestedQty, availableQty` và `orderCode` (khi `ORDERED`, để nút "Xem đơn & thanh toán"). Thiếu thì FE ẩn phần đó.
-- FE đang hiển thị: `code, summary, status, receivedAt, feasible, fulfillableQty, shortageQty, expectedDate, rejectReason, note`.
+- Body lưu: `summary`, `neededDate`, `requestedQty`, `availableQty` (channel portal cố định `WEB`). `items` chưa persist.
+- Response: `code, summary, status, receivedAt, neededDate, requestedQty, availableQty, feasible, fulfillableQty, shortageQty, expectedDate, rejectReason, note, orderCode` (`orderCode` khi Sales chốt `ORDERED`).
 - Nhãn: `NEW` Đang xem xét · `QUOTING` Đang báo giá · `ORDERED` Đã chốt · `REJECTED` Không đáp ứng được · `CLOSED` Đã đóng.
 
 ## 4. Checkout — task "Checkout" (Duy)
 
 File FE: `src/api/checkout.js`. Dùng ở bước "Đặt hàng & thanh toán".
 
-`POST /checkout` — header **`Idempotency-Key: <uuid>`** (FE tạo 1 key cho 1 lần đặt; bấm lại cùng key → trả lại đơn cũ, không tạo đơn mới).
+`POST /checkout` — header **`Idempotency-Key: <uuid>`** (FE tạo 1 key cho 1 lần đặt; bấm lại cùng key → trả lại đơn cũ, không tạo đơn mới). FE cũng gửi **`X-Cart-Session`** để backend xóa giỏ server sau khi tạo đơn.
+
+**Đã nối (#27):** backend tạo `ONLINE_B2C` `PENDING` + `WAITING`, hold FEFO 15 phút, snapshot giá. `checkoutUrl` / `qrCode` hiện là **stub** (trỏ trang kết quả FE) — Long thay bằng PayOS thật (#33).
 
 ```json
 {
@@ -160,7 +177,7 @@ FE gửi kèm `unitPrice, productName, packLabel, imageUrl` trong `lines` chỉ 
   "shortages": [{ "variantId": 12, "requestedQty": 3, "availableQty": 1 }] }
 ```
 
-Đơn tạo xong FE làm trống giỏ (giỏ hiện chỉ ở trình duyệt, `context/CartContext.jsx`).
+Đơn tạo xong: backend xóa giỏ theo `X-Cart-Session`; FE cũng `clearCart()` trên client.
 
 ## 5. PayOS — task "Trạng thái khi khách quay về" + tạo lại link (Long)
 
@@ -178,6 +195,8 @@ File FE: `src/api/payments.js`. Dùng ở màn quét QR (bước 4) và trang k�
 - "Thanh toán lại" (khi `CANCELLED`/`FAILED`, đơn còn giữ hàng) gọi `POST …/link`: link cũ còn hạn → trả link cũ (đúng mô tả task).
 - `qrCode`: FE hiện đang vẽ **QR giả** (`DemoQr` trong `PaymentStep.jsx`). Khi có chuỗi thật cần thêm thư viện vẽ QR (vd. `qrcode.react`) và thay `DemoQr`.
 - Đồng hồ đếm ngược dùng `expiresAt` (= `holdExpiresAt`), không cố định 15 phút.
+- **Job hết hạn (#37):** mỗi phút quét đơn quá `holdExpiresAt` → hỏi PayOS; đã `PAID` thì ghi nhận; chưa trả thì hủy link, nhả hold, hủy đơn (`CANCELLED`). Sau job, poll return thường thấy `CANCELLED` (không kẹt `EXPIRED` local). Ops: `POST /sales/hold-expire`.
+- **Webhook muộn (#35):** payment đã `CANCELLED` nhưng PayOS báo đã trả → ghi PAID, mở lại đơn `PENDING`, thử giữ hàng; đủ → event `late_paid_reheld`; thiếu → `rawPayload.needsRefund` + event `needs_refund` (Chủ xử lý #40). Không tự xuất giao.
 
 ---
 
@@ -185,8 +204,13 @@ File FE: `src/api/payments.js`. Dùng ở màn quét QR (bước 4) và trang k�
 
 | Mục | FE | Backend |
 |---|---|---|
-| Địa chỉ | Xong (mock) | Chưa có `/me/addresses` |
-| Đơn của tôi + hủy | Xong (mock) | Chưa có `/me/orders` (đã có `/orders` cho nhân viên) |
-| Yêu cầu | Xong (mock) | Chưa có `/me/sales-requests` (đã có `/sales-requests` cho nhân viên) |
-| Checkout | Xong (mock) | Chưa có |
-| PayOS return / link | Xong (mock) | Chưa có |
+| Hồ sơ + đổi SĐT | Đã nối | `/me/profile`, `/me/phone` + `phone` trên `/auth/me` |
+| Địa chỉ | Đã nối | `/me/addresses` |
+| Đơn của tôi (#29) | Đã nối | `/me/orders` list + detail |
+| Hủy đơn chưa TT (#30+#38) | Đã nối | `POST /me/orders/{code}/cancel` (+ hủy link PayOS) |
+| Yêu cầu | Đã nối | `/me/sales-requests` (+ staff `/sales-requests`) |
+| Checkout | Đã nối | `POST /checkout` (+ Idempotency-Key, hold FEFO, stub PayOS) |
+| PayOS create link (#33) | Đã nối | `POST /checkout` + `POST /payments/payos/{orderCode}/link` |
+| PayOS webhook (#34+#35) | — | `POST /payments/payos/webhook` (muộn sau hủy: re-hold hoặc `needs_refund`) |
+| PayOS return (#36) | Đã nối | `GET /payments/payos/return?orderCode=` (JWT; PENDING → hỏi lại PayOS) |
+| PayOS hold expire (#37) | — | Job + `POST /sales/hold-expire` (hỏi PayOS → hủy link / hủy đơn) |

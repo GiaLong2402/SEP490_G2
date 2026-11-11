@@ -10,8 +10,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Address APIs for a customer (task 19). Delivery radius matches FE mock default
- * {@code delivery_radius_km = 8} until AppConfig is available.
+ * Address APIs for a customer (staff {@code /customers/{id}/addresses} and B2C {@code /me/addresses}).
+ * Delivery radius matches FE mock default {@code delivery_radius_km = 8} until AppConfig is available.
  */
 @Service
 @Transactional(readOnly = true)
@@ -19,6 +19,9 @@ public class CustomerAddressService {
 
     /** Same default as FE mock {@code configInt('delivery_radius_km', 8)}. */
     static final BigDecimal DELIVERY_RADIUS_KM = BigDecimal.valueOf(8);
+
+    static final String CANNOT_DELETE_DEFAULT =
+            "Không xóa được địa chỉ mặc định. Hãy chọn địa chỉ mặc định khác trước.";
 
     private final CustomerRepository customerRepository;
     private final CustomerAddressRepository addressRepository;
@@ -39,12 +42,14 @@ public class CustomerAddressService {
     @Transactional
     public AddressResponse create(Long customerId, AddressRequest request) {
         Customer customer = requireCustomer(customerId);
-        if (Boolean.TRUE.equals(request.isDefault())) {
+        boolean first = addressRepository.countByCustomerId(customerId) == 0;
+        boolean makeDefault = first || Boolean.TRUE.equals(request.isDefault());
+        if (makeDefault) {
             addressRepository.clearDefaultForCustomer(customerId);
         }
         CustomerAddress address = new CustomerAddress();
         address.setCustomer(customer);
-        apply(address, request);
+        apply(address, request, makeDefault);
         return AddressResponse.from(addressRepository.save(address));
     }
 
@@ -52,10 +57,13 @@ public class CustomerAddressService {
     public AddressResponse update(Long customerId, Long addressId, AddressRequest request) {
         requireCustomer(customerId);
         CustomerAddress address = requireAddress(customerId, addressId);
-        if (Boolean.TRUE.equals(request.isDefault()) && !address.isDefaultAddress()) {
+        boolean makeDefault = Boolean.TRUE.equals(request.isDefault());
+        if (makeDefault && !address.isDefaultAddress()) {
             addressRepository.clearDefaultForCustomer(customerId);
         }
-        apply(address, request);
+        // Cannot unset default via isDefault=false alone — keep current default until another is chosen.
+        boolean defaultFlag = makeDefault || address.isDefaultAddress();
+        apply(address, request, defaultFlag);
         return AddressResponse.from(addressRepository.save(address));
     }
 
@@ -63,10 +71,14 @@ public class CustomerAddressService {
     public void delete(Long customerId, Long addressId) {
         requireCustomer(customerId);
         CustomerAddress address = requireAddress(customerId, addressId);
+        long total = addressRepository.countByCustomerId(customerId);
+        if (address.isDefaultAddress() && total > 1) {
+            throw ApiException.conflict(CANNOT_DELETE_DEFAULT);
+        }
         addressRepository.delete(address);
     }
 
-    private void apply(CustomerAddress address, AddressRequest request) {
+    private void apply(CustomerAddress address, AddressRequest request, boolean defaultAddress) {
         address.setKind(request.kind() == null ? AddressKind.SHIPPING : request.kind());
         address.setRecipientName(Strings.trimToNull(request.recipientName()));
         address.setPhone(Strings.trimToNull(request.phone()));
@@ -79,7 +91,7 @@ public class CustomerAddressService {
         address.setLongitude(null);
         address.setDistanceKm(request.distanceKm());
         address.setInDeliveryRadius(isInDeliveryRadius(request.distanceKm()));
-        address.setDefaultAddress(Boolean.TRUE.equals(request.isDefault()));
+        address.setDefaultAddress(defaultAddress);
     }
 
     static boolean isInDeliveryRadius(BigDecimal distanceKm) {

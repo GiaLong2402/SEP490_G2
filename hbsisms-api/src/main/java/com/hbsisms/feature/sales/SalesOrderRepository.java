@@ -21,6 +21,12 @@ public interface SalesOrderRepository
     Optional<SalesOrder> findFirstBySourceQuote_Id(Long quoteId);
 
     @EntityGraph(attributePaths = {"customer", "shipAddress", "placedBy", "approvedBy", "sourceQuote"})
+    Optional<SalesOrder> findByCodeAndCustomer_Id(String code, Long customerId);
+
+    @EntityGraph(attributePaths = {"customer", "shipAddress"})
+    Page<SalesOrder> findByCustomer_IdOrderByPlacedAtDescIdDesc(Long customerId, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"customer", "shipAddress", "placedBy", "approvedBy", "sourceQuote"})
     Optional<SalesOrder> findWithHeaderById(Long id);
 
     @Query("""
