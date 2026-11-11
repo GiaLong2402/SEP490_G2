@@ -15,7 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Handles PayOS payment webhooks (Excel #34). */
+/** Handles PayOS payment webhooks (Excel #34 normal + #35 late after cancel). */
 @Service
 public class PayosWebhookService {
 
@@ -24,14 +24,17 @@ public class PayosWebhookService {
     private final PayosProperties properties;
     private final PaymentRepository paymentRepository;
     private final PayosPaymentCompleter paymentCompleter;
+    private final PayosLatePaymentHandler latePaymentHandler;
 
     public PayosWebhookService(
             PayosProperties properties,
             PaymentRepository paymentRepository,
-            PayosPaymentCompleter paymentCompleter) {
+            PayosPaymentCompleter paymentCompleter,
+            PayosLatePaymentHandler latePaymentHandler) {
         this.properties = properties;
         this.paymentRepository = paymentRepository;
         this.paymentCompleter = paymentCompleter;
+        this.latePaymentHandler = latePaymentHandler;
     }
 
     /**
@@ -64,11 +67,6 @@ public class PayosWebhookService {
             return PayosWebhookAck.ok();
         }
 
-        if (payment.getStatus() == PayTxnStatus.CANCELLED) {
-            log.info("PayOS webhook for CANCELLED payment orderCode={} — skip PAID (#35 later)", orderCode);
-            return PayosWebhookAck.ok();
-        }
-
         if (!isPaymentSuccess(envelope)) {
             log.info("PayOS webhook non-success code for orderCode={} — skip PAID", orderCode);
             return PayosWebhookAck.ok();
@@ -84,9 +82,16 @@ public class PayosWebhookService {
             return PayosWebhookAck.ok();
         }
 
+        Map<String, Object> paidRaw = mergeRawPayload(payment.getRawPayload(), envelope);
+
+        if (payment.getStatus() == PayTxnStatus.CANCELLED) {
+            latePaymentHandler.handleLatePaid(payment, envelope, paidRaw);
+            return PayosWebhookAck.ok();
+        }
+
         Object ref = envelope.data().get("reference");
         String reference = ref == null ? null : String.valueOf(ref);
-        paymentCompleter.markPaid(payment, reference, mergeRawPayload(payment.getRawPayload(), envelope));
+        paymentCompleter.markPaid(payment, reference, paidRaw);
         return PayosWebhookAck.ok();
     }
 

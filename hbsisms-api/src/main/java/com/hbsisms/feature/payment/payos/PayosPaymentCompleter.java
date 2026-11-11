@@ -14,7 +14,7 @@ import java.util.Map;
 import org.springframework.stereotype.Service;
 
 /**
- * Marks a PayOS payment and its order as paid (webhook #34, return #36, hold-expire #37).
+ * Marks a PayOS payment and its order as paid (webhook #34/#35, return #36, hold-expire #37).
  */
 @Service
 public class PayosPaymentCompleter {

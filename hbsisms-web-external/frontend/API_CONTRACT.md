@@ -196,6 +196,7 @@ File FE: `src/api/payments.js`. Dùng ở màn quét QR (bước 4) và trang k�
 - `qrCode`: FE hiện đang vẽ **QR giả** (`DemoQr` trong `PaymentStep.jsx`). Khi có chuỗi thật cần thêm thư viện vẽ QR (vd. `qrcode.react`) và thay `DemoQr`.
 - Đồng hồ đếm ngược dùng `expiresAt` (= `holdExpiresAt`), không cố định 15 phút.
 - **Job hết hạn (#37):** mỗi phút quét đơn quá `holdExpiresAt` → hỏi PayOS; đã `PAID` thì ghi nhận; chưa trả thì hủy link, nhả hold, hủy đơn (`CANCELLED`). Sau job, poll return thường thấy `CANCELLED` (không kẹt `EXPIRED` local). Ops: `POST /sales/hold-expire`.
+- **Webhook muộn (#35):** payment đã `CANCELLED` nhưng PayOS báo đã trả → ghi PAID, mở lại đơn `PENDING`, thử giữ hàng; đủ → event `late_paid_reheld`; thiếu → `rawPayload.needsRefund` + event `needs_refund` (Chủ xử lý #40). Không tự xuất giao.
 
 ---
 
@@ -210,6 +211,6 @@ File FE: `src/api/payments.js`. Dùng ở màn quét QR (bước 4) và trang k�
 | Yêu cầu | Đã nối | `/me/sales-requests` (+ staff `/sales-requests`) |
 | Checkout | Đã nối | `POST /checkout` (+ Idempotency-Key, hold FEFO, stub PayOS) |
 | PayOS create link (#33) | Đã nối | `POST /checkout` + `POST /payments/payos/{orderCode}/link` |
-| PayOS webhook (#34) | — | `POST /payments/payos/webhook` |
+| PayOS webhook (#34+#35) | — | `POST /payments/payos/webhook` (muộn sau hủy: re-hold hoặc `needs_refund`) |
 | PayOS return (#36) | Đã nối | `GET /payments/payos/return?orderCode=` (JWT; PENDING → hỏi lại PayOS) |
 | PayOS hold expire (#37) | — | Job + `POST /sales/hold-expire` (hỏi PayOS → hủy link / hủy đơn) |

@@ -3,6 +3,7 @@ package com.hbsisms.feature.payment.payos;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -47,6 +48,8 @@ class PayosWebhookServiceTest {
     private SalesOrderRepository salesOrderRepository;
     @Mock
     private OrderEventRepository orderEventRepository;
+    @Mock
+    private PayosLatePaymentHandler latePaymentHandler;
 
     private PayosWebhookService service;
 
@@ -59,7 +62,7 @@ class PayosWebhookServiceTest {
                 salesOrderRepository,
                 orderEventRepository,
                 Clock.fixed(NOW, ZoneOffset.UTC));
-        service = new PayosWebhookService(props, paymentRepository, completer);
+        service = new PayosWebhookService(props, paymentRepository, completer, latePaymentHandler);
     }
 
     @Test
@@ -93,6 +96,7 @@ class PayosWebhookServiceTest {
         ArgumentCaptor<OrderEvent> eventCap = ArgumentCaptor.forClass(OrderEvent.class);
         verify(orderEventRepository).save(eventCap.capture());
         assertThat(eventCap.getValue().getEventType()).isEqualTo("paid");
+        verify(latePaymentHandler, never()).handleLatePaid(any(), any(), any());
     }
 
     @Test
@@ -107,6 +111,7 @@ class PayosWebhookServiceTest {
 
         verify(paymentRepository, never()).save(any());
         verify(orderEventRepository, never()).save(any());
+        verify(latePaymentHandler, never()).handleLatePaid(any(), any(), any());
     }
 
     @Test
@@ -120,22 +125,22 @@ class PayosWebhookServiceTest {
 
         assertThat(payment.getStatus()).isEqualTo(PayTxnStatus.PENDING);
         verify(paymentRepository, never()).save(any());
-        verify(orderEventRepository, never()).save(any());
+        verify(latePaymentHandler, never()).handleLatePaid(any(), any(), any());
     }
 
     @Test
-    void handle_cancelledPayment_skipsPaid() {
+    void handle_cancelledPayment_delegatesToLateHandler() {
         Map<String, Object> data = sampleData(130001L, 10000);
         String sig = PayosSignature.signDataObject(data, CHECKSUM);
         Payment payment = pendingPayment(130001L, new BigDecimal("10000"));
         payment.setStatus(PayTxnStatus.CANCELLED);
         when(paymentRepository.findWithOrderCustomerByPayosOrderCode(130001L)).thenReturn(Optional.of(payment));
 
-        service.handle(new PayosWebhookEnvelope("00", "success", true, data, sig));
+        PayosWebhookEnvelope envelope = new PayosWebhookEnvelope("00", "success", true, data, sig);
+        service.handle(envelope);
 
+        verify(latePaymentHandler).handleLatePaid(eq(payment), eq(envelope), any());
         verify(paymentRepository, never()).save(any());
-        verify(orderEventRepository, never()).save(any());
-        verify(salesOrderRepository, never()).save(any());
     }
 
     @Test
