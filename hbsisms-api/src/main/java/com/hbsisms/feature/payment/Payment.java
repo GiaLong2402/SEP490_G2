@@ -69,6 +69,11 @@ public class Payment {
     @Column(nullable = false, length = 20)
     private PayTxnStatus status = PayTxnStatus.SUCCESS;
 
+    /** Manual owner mark: thiếu / thừa / trùng (Excel #39). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reconcile_flag", nullable = false, length = 20)
+    private PaymentReconcileFlag reconcileFlag = PaymentReconcileFlag.NONE;
+
     @Column(length = 120)
     private String reference;
 

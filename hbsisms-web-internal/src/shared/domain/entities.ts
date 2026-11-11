@@ -142,6 +142,9 @@ export interface Payment {
   id: ID; code: string | null; orderId: ID | null; customerId: ID | null; method: E.PaymentMethod; direction: E.PayDirection; amount: number;
   status: E.PayTxnStatus; reference: string | null; gateway: string | null; payosOrderCode: number | null; checkoutUrl: string | null;
   paidAt: ISODateTime; receivedBy: ID | null; note: string | null;
+  channel?: E.SaleChannel | null;
+  reconcileFlag?: E.PaymentReconcileFlag;
+  needsRefund?: boolean;
 }
 
 export interface CustomerDebtLedger {

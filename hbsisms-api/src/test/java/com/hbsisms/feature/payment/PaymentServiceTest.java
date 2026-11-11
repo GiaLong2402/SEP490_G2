@@ -12,6 +12,7 @@ import com.hbsisms.feature.customer.Customer;
 import com.hbsisms.feature.customer.CustomerRepository;
 import com.hbsisms.feature.customer.CustomerType;
 import com.hbsisms.feature.payment.dto.PaymentInputRequest;
+import com.hbsisms.feature.payment.dto.PaymentListItemResponse;
 import com.hbsisms.feature.sales.FulfillmentMethod;
 import com.hbsisms.feature.sales.OrderEventRepository;
 import com.hbsisms.feature.sales.OrderState;
@@ -26,13 +27,19 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 
 @ExtendWith(MockitoExtension.class)
@@ -157,6 +164,119 @@ class PaymentServiceTest {
                 .isInstanceOf(ApiException.class)
                 .extracting(ex -> ((ApiException) ex).getStatus())
                 .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void markReconcile_setsShortFlag_andAudits() {
+        SalesOrder order = order(8L, OrderState.CONFIRMED, PaymentStatus.PAID, "100000.00");
+        order.setChannel(SaleChannel.WEB);
+        Payment payment = paymentRow(21L, order, PaymentReconcileFlag.NONE);
+        payment.setRawPayload(Map.of("needsRefund", true));
+
+        when(paymentRepository.findWithDetailsById(21L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(payment)).thenReturn(payment);
+
+        PaymentListItemResponse response = service.markReconcile(21L, "short", 9L);
+
+        assertThat(payment.getReconcileFlag()).isEqualTo(PaymentReconcileFlag.SHORT);
+        assertThat(response.reconcileFlag()).isEqualTo(PaymentReconcileFlag.SHORT);
+        assertThat(response.channel()).isEqualTo(SaleChannel.WEB);
+        assertThat(response.needsRefund()).isTrue();
+        verify(auditLogService)
+                .record(eq(9L), eq("reconcile"), eq("payment"), eq(21L), eq(Map.of("reconcileFlag", "short")));
+    }
+
+    @Test
+    void markReconcile_clearWithNone_isIdempotent() {
+        SalesOrder order = order(9L, OrderState.CONFIRMED, PaymentStatus.PAID, "50000.00");
+        Payment payment = paymentRow(22L, order, PaymentReconcileFlag.DUPLICATE);
+
+        when(paymentRepository.findWithDetailsById(22L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(payment)).thenReturn(payment);
+
+        PaymentListItemResponse first = service.markReconcile(22L, "none", 9L);
+        PaymentListItemResponse second = service.markReconcile(22L, "none", 9L);
+
+        assertThat(payment.getReconcileFlag()).isEqualTo(PaymentReconcileFlag.NONE);
+        assertThat(first.reconcileFlag()).isEqualTo(PaymentReconcileFlag.NONE);
+        assertThat(second.reconcileFlag()).isEqualTo(PaymentReconcileFlag.NONE);
+    }
+
+    @Test
+    void markReconcile_missingPayment_returns404() {
+        when(paymentRepository.findWithDetailsById(404L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.markReconcile(404L, "over", 9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void markReconcile_rejectsInvalidFlag() {
+        SalesOrder order = order(10L, OrderState.CONFIRMED, PaymentStatus.PAID, "10000.00");
+        Payment payment = paymentRow(23L, order, PaymentReconcileFlag.NONE);
+        when(paymentRepository.findWithDetailsById(23L)).thenReturn(Optional.of(payment));
+
+        assertThatThrownBy(() -> service.markReconcile(23L, "weird", 9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(api.getMessage()).contains("Cờ đối soát");
+                });
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void search_passesStatusChannelOrderIdAndReconcileFlagToSpec() {
+        SalesOrder order = order(11L, OrderState.CONFIRMED, PaymentStatus.PAID, "200000.00");
+        order.setChannel(SaleChannel.WEB);
+        Payment payment = paymentRow(24L, order, PaymentReconcileFlag.OVER);
+        when(paymentRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(payment)));
+
+        var page = service.search(null, null, null, "success", "web", 11L, "over", 1, 20);
+
+        assertThat(page.items()).hasSize(1);
+        PaymentListItemResponse item = page.items().get(0);
+        assertThat(item.channel()).isEqualTo(SaleChannel.WEB);
+        assertThat(item.status()).isEqualTo(PayTxnStatus.SUCCESS);
+        assertThat(item.reconcileFlag()).isEqualTo(PaymentReconcileFlag.OVER);
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(paymentRepository).findAll(any(Specification.class), pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getPageNumber()).isZero();
+    }
+
+    @Test
+    void search_rejectsInvalidStatus() {
+        assertThatThrownBy(() -> service.search(null, null, null, "nope", null, null, null, 1, 20))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void search_rejectsInvalidChannel() {
+        assertThatThrownBy(() -> service.search(null, null, null, null, "telegram", null, null, 1, 20))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    private Payment paymentRow(long id, SalesOrder order, PaymentReconcileFlag flag) {
+        Payment payment = new Payment();
+        setId(payment, id);
+        payment.setCode("TT-" + id);
+        payment.setOrder(order);
+        payment.setCustomer(customer);
+        payment.setMethod(PaymentMethod.PAYOS);
+        payment.setDirection(PayDirection.IN);
+        payment.setAmount(order.getTotal());
+        payment.setStatus(PayTxnStatus.SUCCESS);
+        payment.setReconcileFlag(flag);
+        payment.setGateway("payos");
+        payment.setPaidAt(Instant.now(clock));
+        payment.setReceivedBy(actor);
+        return payment;
     }
 
     private SalesOrder order(long id, OrderState state, PaymentStatus pay, String total) {

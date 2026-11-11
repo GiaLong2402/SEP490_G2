@@ -1,6 +1,7 @@
 package com.hbsisms.feature.payment;
 
 import com.hbsisms.common.text.Strings;
+import com.hbsisms.feature.sales.SaleChannel;
 import jakarta.persistence.criteria.JoinType;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,10 +12,16 @@ final class PaymentSpecifications {
 
     private static final char LIKE_ESCAPE = '\\';
 
-    private PaymentSpecifications() {
-    }
+    private PaymentSpecifications() {}
 
-    static Specification<Payment> search(String keyword, PaymentMethod method, PayDirection direction) {
+    static Specification<Payment> search(
+            String keyword,
+            PaymentMethod method,
+            PayDirection direction,
+            PayTxnStatus status,
+            SaleChannel channel,
+            Long orderId,
+            PaymentReconcileFlag reconcileFlag) {
         List<Specification<Payment>> specs = new ArrayList<>();
         String q = Strings.trimToNull(keyword);
         if (q != null) {
@@ -25,6 +32,21 @@ final class PaymentSpecifications {
         }
         if (direction != null) {
             specs.add((root, query, cb) -> cb.equal(root.get("direction"), direction));
+        }
+        if (status != null) {
+            specs.add((root, query, cb) -> cb.equal(root.get("status"), status));
+        }
+        if (channel != null) {
+            specs.add((root, query, cb) -> {
+                var order = root.join("order", JoinType.INNER);
+                return cb.equal(order.get("channel"), channel);
+            });
+        }
+        if (orderId != null) {
+            specs.add((root, query, cb) -> cb.equal(root.get("order").get("id"), orderId));
+        }
+        if (reconcileFlag != null) {
+            specs.add((root, query, cb) -> cb.equal(root.get("reconcileFlag"), reconcileFlag));
         }
         return specs.isEmpty() ? (root, query, cb) -> cb.conjunction() : Specification.allOf(specs);
     }

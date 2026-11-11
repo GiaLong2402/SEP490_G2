@@ -6,6 +6,7 @@ import com.hbsisms.feature.payment.PayDirection;
 import com.hbsisms.feature.payment.PayTxnStatus;
 import com.hbsisms.feature.payment.Payment;
 import com.hbsisms.feature.payment.PaymentMethod;
+import com.hbsisms.feature.payment.PaymentReconcileFlag;
 import com.hbsisms.feature.payment.PaymentRepository;
 import com.hbsisms.feature.payment.payos.dto.PayosLinkResponse;
 import com.hbsisms.feature.sales.SalesOrder;
@@ -71,6 +72,7 @@ public class PayosLinkService {
         payment.setDirection(PayDirection.IN);
         payment.setAmount(order.getTotal());
         payment.setStatus(PayTxnStatus.PENDING);
+        payment.setReconcileFlag(PaymentReconcileFlag.NONE);
         payment.setGateway("payos");
         payment.setPayosOrderCode(link.orderCode() == 0 ? orderCode : link.orderCode());
         payment.setCheckoutUrl(link.checkoutUrl());
