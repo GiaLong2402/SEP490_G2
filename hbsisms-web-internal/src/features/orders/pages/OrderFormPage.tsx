@@ -100,15 +100,11 @@ export default function OrderFormPage() {
 
   const submit = () => {
     setTouched(true);
-<<<<<<< HEAD
     if (shortage) return;
-    if (customerId && linesValid && (!needsAddress || addressId)) create.mutate();
-=======
     if (customerId && linesValid && (!needsAddress || addressId)) {
       if (isEdit) update.mutate();
       else create.mutate();
     }
->>>>>>> origin/main
   };
 
   const saving = create.isPending || update.isPending;
@@ -181,27 +177,14 @@ export default function OrderFormPage() {
                 <div className="flex justify-between text-h2"><dt>Tổng cộng</dt><dd className="tabular-nums">{money(pricing.data?.total ?? 0)}</dd></div>
               </dl>
               {pricing.data?.isOverLimit && <Alert tone="danger" title={`Vượt hạn mức ${money(pricing.data.overLimitAmount)}`}>Đơn sẽ chuyển Chủ cửa hàng duyệt, chưa giữ hàng cho đến khi được duyệt.</Alert>}
-<<<<<<< HEAD
               {shortage && (
                 <Alert tone="danger" title="Không đủ hàng khả dụng">
-                  Không thể tạo đơn khi số lượng vượt tồn. Giảm SL hoặc nhập thêm hàng trước.
+                  Không thể lưu đơn khi số lượng vượt tồn. Giảm SL hoặc nhập thêm hàng trước.
                 </Alert>
               )}
               {pricing.error && <Alert tone="danger">{pricing.error.message}</Alert>}
-              <Button
-                variant="primary"
-                className="w-full"
-                loading={create.isPending}
-                disabled={!!shortage}
-                onClick={submit}
-              >
-                {pricing.data?.isOverLimit ? 'Tạo đơn và gửi duyệt' : 'Tạo đơn'}
-=======
-              {shortage && <Alert tone="warning" title="Không đủ hàng khả dụng">Đơn vẫn lưu được; phần thiếu ở trạng thái chờ hàng về.</Alert>}
-              {pricing.error && <Alert tone="danger">{pricing.error.message}</Alert>}
-              <Button variant="primary" className="w-full" loading={saving} onClick={submit}>
+              <Button variant="primary" className="w-full" loading={saving} disabled={!!shortage} onClick={submit}>
                 {isEdit ? 'Lưu thay đổi' : pricing.data?.isOverLimit ? 'Tạo đơn và gửi duyệt' : 'Tạo đơn'}
->>>>>>> origin/main
               </Button>
             </div>
           </Card>

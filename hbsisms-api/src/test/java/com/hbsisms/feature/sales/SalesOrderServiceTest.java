@@ -69,6 +69,8 @@ class SalesOrderServiceTest {
     @Mock
     private CustomerDebtLedgerRepository customerDebtLedgerRepository;
     @Mock
+    private QuoteRepository quoteRepository;
+    @Mock
     private PricingService pricingService;
     @Mock
     private AuditLogService auditLogService;
@@ -96,6 +98,7 @@ class SalesOrderServiceTest {
                 userRepository,
                 approvalTaskRepository,
                 customerDebtLedgerRepository,
+                quoteRepository,
                 pricingService,
                 auditLogService,
                 orderAllocationService,
@@ -139,7 +142,7 @@ class SalesOrderServiceTest {
             }
             return o;
         });
-        when(orderAllocationService.holdForOrder(any(), eq(9L))).thenAnswer(inv -> {
+        when(orderAllocationService.holdForOrder(any(), eq(9L), eq(false))).thenAnswer(inv -> {
             SalesOrder o = inv.getArgument(0);
             o.setAllocationStatus(AllocationStatus.FULL);
             return 1;
@@ -173,7 +176,7 @@ class SalesOrderServiceTest {
         var detail = service.create(input(1L, PaymentMethod.CASH), 9L);
 
         assertThat(detail.state()).isEqualTo(OrderState.CONFIRMED);
-        verify(orderAllocationService).holdForOrder(any(SalesOrder.class), eq(9L));
+        verify(orderAllocationService).holdForOrder(any(SalesOrder.class), eq(9L), eq(false));
         verify(auditLogService).record(eq(9L), eq("create"), eq("sales_order"), anyLong(), any());
         verify(approvalTaskRepository, never()).save(any());
     }
@@ -193,50 +196,86 @@ class SalesOrderServiceTest {
     }
 
     @Test
-    void create_overLimit_staysPendingWithoutHold() {
-        when(customerRepository.findById(1L)).thenReturn(Optional.of(retailCustomer));
+    void create_rejectsCreditNet() {
+        assertThatThrownBy(() -> service.create(input(1L, PaymentMethod.CREDIT_NET), 9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(api.getMessage()).contains("Không bán nợ");
+                });
+        verify(customerRepository, never()).findById(any());
+    }
+
+    @Test
+    void create_walkIn_withoutCustomerId() {
         when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
-        when(pricingService.resolve(any(PricingRequest.class))).thenReturn(priced(true));
+        when(pricingService.resolve(any(PricingRequest.class))).thenReturn(priced(false));
         when(productVariantRepository.findById(10L)).thenReturn(Optional.of(variant));
         when(salesOrderRepository.findCodesByPrefix("SO-2026-")).thenReturn(List.of());
         when(salesOrderRepository.save(any(SalesOrder.class))).thenAnswer(inv -> {
             SalesOrder o = inv.getArgument(0);
             if (o.getId() == null) {
-                setId(o, 55L);
+                setId(o, ids.incrementAndGet());
             }
             return o;
         });
-        when(salesOrderRepository.findWithDetailsById(55L)).thenAnswer(inv -> {
-            SalesOrder o = new SalesOrder();
-            setId(o, 55L);
-            o.setCode("SO-2026-0001");
-            o.setCustomer(retailCustomer);
-            o.setOrderType(OrderType.RETAIL);
-            o.setChannel(SaleChannel.PHONE);
-            o.setPaymentMethod(PaymentMethod.CASH);
-            o.setPaymentStatus(PaymentStatus.UNPAID);
-            o.setAllocationStatus(AllocationStatus.NONE);
-            o.setFulfillmentMethod(FulfillmentMethod.PICKUP);
-            o.setState(OrderState.PENDING);
-            o.setSubtotal(new BigDecimal("100000.00"));
-            o.setDiscountTotal(BigDecimal.ZERO.setScale(2));
-            o.setShippingFee(BigDecimal.ZERO.setScale(2));
-            o.setTotal(new BigDecimal("100000.00"));
-            o.setOverLimit(true);
-            o.setOverLimitAmount(new BigDecimal("50000.00"));
-            o.setPlacedAt(Instant.now(clock));
+        when(orderAllocationService.holdForOrder(any(), eq(9L), eq(false))).thenAnswer(inv -> {
+            SalesOrder o = inv.getArgument(0);
+            o.setAllocationStatus(AllocationStatus.FULL);
+            assertThat(o.getCustomer()).isNull();
+            assertThat(o.getCustomerName()).isEqualTo("Anh Minh");
+            return 1;
+        });
+        when(salesOrderRepository.findWithDetailsById(anyLong())).thenAnswer(inv -> {
+            SalesOrder o = baseOrder(inv.getArgument(0), OrderState.CONFIRMED, PaymentStatus.UNPAID, AllocationStatus.FULL);
+            o.setCustomer(null);
+            o.setCustomerName("Anh Minh");
+            o.setPlacedBy(actor);
             return Optional.of(o);
         });
-        when(deliveryRepository.findByOrder_IdOrderByIdAsc(55L)).thenReturn(List.of());
-        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(55L)).thenReturn(List.of());
-        when(orderEventRepository.findByOrder_IdOrderByCreatedAtAscIdAsc(55L)).thenReturn(List.of());
+        when(deliveryRepository.findByOrder_IdOrderByIdAsc(anyLong())).thenReturn(List.of());
+        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(anyLong())).thenReturn(List.of());
+        when(orderEventRepository.findByOrder_IdOrderByCreatedAtAscIdAsc(anyLong())).thenReturn(List.of());
 
-        var detail = service.create(input(1L, PaymentMethod.CASH), 9L);
+        var detail = service.create(walkInInput("Anh Minh"), 9L);
 
-        assertThat(detail.state()).isEqualTo(OrderState.PENDING);
-        assertThat(detail.isOverLimit()).isTrue();
-        verify(orderAllocationService, never()).holdForOrder(any(), any());
-        verify(approvalTaskRepository).save(any());
+        assertThat(detail.state()).isEqualTo(OrderState.CONFIRMED);
+        assertThat(detail.customerName()).isEqualTo("Anh Minh");
+        verify(customerRepository, never()).findById(any());
+    }
+
+    @Test
+    void createFromRequest_allowsOutstandingHold() {
+        when(customerRepository.findById(1L)).thenReturn(Optional.of(retailCustomer));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(pricingService.resolve(any(PricingRequest.class))).thenReturn(priced(false));
+        when(productVariantRepository.findById(10L)).thenReturn(Optional.of(variant));
+        when(salesOrderRepository.findCodesByPrefix("SO-2026-")).thenReturn(List.of());
+        when(salesOrderRepository.save(any(SalesOrder.class))).thenAnswer(inv -> {
+            SalesOrder o = inv.getArgument(0);
+            if (o.getId() == null) {
+                setId(o, ids.incrementAndGet());
+            }
+            return o;
+        });
+        when(orderAllocationService.holdForOrder(any(), eq(9L), eq(true))).thenAnswer(inv -> {
+            SalesOrder o = inv.getArgument(0);
+            o.setAllocationStatus(AllocationStatus.HELD);
+            return 1;
+        });
+        when(salesOrderRepository.findWithDetailsById(anyLong())).thenAnswer(inv -> {
+            SalesOrder o = baseOrder(inv.getArgument(0), OrderState.CONFIRMED, PaymentStatus.UNPAID, AllocationStatus.HELD);
+            o.setPlacedBy(actor);
+            return Optional.of(o);
+        });
+        when(deliveryRepository.findByOrder_IdOrderByIdAsc(anyLong())).thenReturn(List.of());
+        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(anyLong())).thenReturn(List.of());
+        when(orderEventRepository.findByOrder_IdOrderByCreatedAtAscIdAsc(anyLong())).thenReturn(List.of());
+
+        service.createFromRequest(input(1L, PaymentMethod.CASH), 9L);
+
+        verify(orderAllocationService).holdForOrder(any(SalesOrder.class), eq(9L), eq(true));
     }
 
     @Test
@@ -263,6 +302,21 @@ class SalesOrderServiceTest {
                     ApiException api = (ApiException) ex;
                     assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
                     assertThat(api.getMessage()).contains("thanh toán");
+                });
+    }
+
+    @Test
+    void transition_preparingWhenDebt_returns409() {
+        SalesOrder order = baseOrder(12L, OrderState.CONFIRMED, PaymentStatus.DEBT, AllocationStatus.FULL);
+        when(salesOrderRepository.findWithDetailsById(12L)).thenReturn(Optional.of(order));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        assertThatThrownBy(() -> service.transition(12L, OrderState.PREPARING, 9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(api.getMessage()).contains("thanh toán đủ");
                 });
     }
 
@@ -325,9 +379,26 @@ class SalesOrderServiceTest {
     private OrderInputRequest input(long customerId, PaymentMethod method) {
         return new OrderInputRequest(
                 customerId,
+                null,
                 OrderType.RETAIL,
                 SaleChannel.PHONE,
                 method,
+                FulfillmentMethod.PICKUP,
+                null,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                null,
+                null,
+                List.of(new PricingLineInput(10L, SellUnit.PACK, 1, null)));
+    }
+
+    private OrderInputRequest walkInInput(String customerName) {
+        return new OrderInputRequest(
+                null,
+                customerName,
+                OrderType.RETAIL,
+                SaleChannel.COUNTER,
+                PaymentMethod.CASH,
                 FulfillmentMethod.PICKUP,
                 null,
                 BigDecimal.ZERO,

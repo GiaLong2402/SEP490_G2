@@ -110,7 +110,8 @@ class SalesOrderStockGuardTest {
                                 new BigDecimal("100000.00"),
                                 PriceBasis.LIST,
                                 new BigDecimal("800000.00"),
-                                5L)),
+                                5L,
+                                3L)),
                         new BigDecimal("800000.00"),
                         new BigDecimal("800000.00"),
                         false,
@@ -125,6 +126,7 @@ class SalesOrderStockGuardTest {
 
         OrderInputRequest request = new OrderInputRequest(
                 1L,
+                null,
                 OrderType.RETAIL,
                 SaleChannel.PHONE,
                 PaymentMethod.CASH,

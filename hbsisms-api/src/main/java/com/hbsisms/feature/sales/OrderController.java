@@ -46,9 +46,25 @@ public class OrderController {
             @RequestParam(required = false) String state,
             @RequestParam(required = false) String orderType,
             @RequestParam(required = false) String paymentStatus,
+            @RequestParam(required = false) String channel,
+            @RequestParam(required = false) String allocationStatus,
+            @RequestParam(required = false) Long customerId,
+            @RequestParam(required = false) String placedFrom,
+            @RequestParam(required = false) String placedTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "" + PageRequests.DEFAULT_PAGE_SIZE) int pageSize) {
-        return salesOrderService.search(q, state, orderType, paymentStatus, page, pageSize);
+        return salesOrderService.search(
+                q,
+                state,
+                orderType,
+                paymentStatus,
+                channel,
+                allocationStatus,
+                customerId,
+                placedFrom,
+                placedTo,
+                page,
+                pageSize);
     }
 
     @GetMapping("/{id}")

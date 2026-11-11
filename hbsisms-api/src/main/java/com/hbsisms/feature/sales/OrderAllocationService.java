@@ -54,11 +54,22 @@ public class OrderAllocationService {
     }
 
     /**
-     * Giữ hàng FEFO theo từng dòng đơn. Phần thiếu ghi {@code outstandingQty}.
-     * Trả về tổng khay đã giữ.
+     * Giữ hàng FEFO theo từng dòng đơn. Mặc định không cho thiếu
+     * ({@code allowOutstanding=false}).
      */
     @Transactional
     public int holdForOrder(SalesOrder order, Long actorId) {
+        return holdForOrder(order, actorId, false);
+    }
+
+    /**
+     * Giữ hàng FEFO theo từng dòng đơn.
+     *
+     * @param allowOutstanding {@code true} chỉ khi tạo từ yêu cầu đã khả thi — ghi
+     *     {@code outstandingQty} cho phần thiếu; {@code false} thì thiếu hàng → nhả hold + 409
+     */
+    @Transactional
+    public int holdForOrder(SalesOrder order, Long actorId, boolean allowOutstanding) {
         Objects.requireNonNull(order.getId(), "order id");
         // Idempotent: đã có HOLD ròng thì không giữ thêm lần nữa.
         Map<HoldKey, Integer> existing = netHeldByLot(order.getId());
@@ -108,10 +119,20 @@ public class OrderAllocationService {
                 remaining -= take;
                 totalHeld += take;
             }
-            line.setOutstandingQty(remaining);
+            line.setOutstandingQty(allowOutstanding ? remaining : 0);
         }
 
         applyAllocationStatus(order, totalHeld, totalNeeded);
+
+        if (!allowOutstanding && totalHeld < totalNeeded) {
+            releaseForOrder(order, actorId, "Không đủ hàng — hủy hold");
+            for (SalesOrderLine line : order.getLines()) {
+                line.setOutstandingQty(0);
+            }
+            throw ApiException.conflict(
+                    "Không đủ hàng khả dụng để giữ đủ số lượng — không thể xác nhận đơn");
+        }
+
         applyHoldExpiry(order);
         // clearAutomatically trên StockRepository.adjust* làm detach order/lines — bắt buộc save.
         salesOrderRepository.save(order);

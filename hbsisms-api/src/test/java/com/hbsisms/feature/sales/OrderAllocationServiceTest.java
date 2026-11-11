@@ -1,6 +1,7 @@
 package com.hbsisms.feature.sales;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -105,7 +106,7 @@ class OrderAllocationServiceTest {
         when(appConfigService.paymentHoldMinutes()).thenReturn(15);
 
         SalesOrder order = order(7L, SaleChannel.WEB, PaymentStatus.UNPAID, 8);
-        int held = service.holdForOrder(order, 1L);
+        int held = service.holdForOrder(order, 1L, true);
 
         assertThat(held).isEqualTo(5);
         assertThat(order.getLines().get(0).getOutstandingQty()).isEqualTo(3);
@@ -119,6 +120,28 @@ class OrderAllocationServiceTest {
     }
 
     @Test
+    void holdForOrder_disallowOutstanding_whenShort_throws409() {
+        when(stockLedgerRepository.findByRefTypeAndRefIdWithDetails("sales_order", 7L))
+                .thenReturn(List.of())
+                .thenReturn(List.of(ledger(LedgerEntryType.HOLD, -5)));
+        when(stockRepository.findFefoCandidates(eq(1L), any(LocalDate.class)))
+                .thenReturn(List.of(stockRow));
+        when(stockRepository.findById(50L)).thenReturn(Optional.of(stockRow));
+
+        SalesOrder order = order(7L, SaleChannel.COUNTER, PaymentStatus.UNPAID, 8);
+
+        assertThatThrownBy(() -> service.holdForOrder(order, 1L, false))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus().value()).isEqualTo(409);
+                    assertThat(api.getMessage()).contains("Không đủ hàng");
+                });
+        verify(stockService).release(any());
+        assertThat(order.getLines().get(0).getOutstandingQty()).isZero();
+    }
+
+    @Test
     void holdForOrder_contentionSkipsConflictedLot() {
         when(stockLedgerRepository.findByRefTypeAndRefIdWithDetails("sales_order", 7L))
                 .thenReturn(List.of());
@@ -128,7 +151,7 @@ class OrderAllocationServiceTest {
         when(stockService.hold(any())).thenThrow(ApiException.conflict("Không đủ tồn kho"));
 
         SalesOrder order = order(7L, SaleChannel.COUNTER, PaymentStatus.UNPAID, 3);
-        int held = service.holdForOrder(order, 1L);
+        int held = service.holdForOrder(order, 1L, true);
 
         assertThat(held).isZero();
         assertThat(order.getLines().get(0).getOutstandingQty()).isEqualTo(3);
@@ -160,8 +183,8 @@ class OrderAllocationServiceTest {
         SalesOrder first = order(1L, SaleChannel.COUNTER, PaymentStatus.PAID, 1);
         SalesOrder second = order(2L, SaleChannel.COUNTER, PaymentStatus.PAID, 1);
 
-        assertThat(service.holdForOrder(first, 1L)).isEqualTo(1);
-        assertThat(service.holdForOrder(second, 1L)).isZero();
+        assertThat(service.holdForOrder(first, 1L, true)).isEqualTo(1);
+        assertThat(service.holdForOrder(second, 1L, true)).isZero();
         assertThat(first.getAllocationStatus()).isEqualTo(AllocationStatus.FULL);
         assertThat(second.getAllocationStatus()).isEqualTo(AllocationStatus.INCOMING);
         // Lô còn 0 sau đơn 1 → đơn 2 không gọi hold (không over-hold).

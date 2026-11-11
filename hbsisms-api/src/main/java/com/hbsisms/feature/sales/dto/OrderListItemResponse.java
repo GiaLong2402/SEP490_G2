@@ -1,5 +1,6 @@
 package com.hbsisms.feature.sales.dto;
 
+import com.hbsisms.common.text.Strings;
 import com.hbsisms.feature.customer.CustomerType;
 import com.hbsisms.feature.payment.PaymentMethod;
 import com.hbsisms.feature.payment.PaymentStatus;
@@ -74,7 +75,14 @@ public record OrderListItemResponse(
                 order.getNote(),
                 order.getCreatedAt(),
                 order.getUpdatedAt(),
-                customer == null ? "Khách lẻ" : customer.getName(),
+                customerNameOf(order),
                 customer == null ? null : customer.getCustomerType());
+    }
+
+    private static String customerNameOf(SalesOrder order) {
+        if (Strings.trimToNull(order.getCustomerName()) != null) {
+            return order.getCustomerName().trim();
+        }
+        return order.getCustomer() == null ? "Khách vãng lai" : order.getCustomer().getName();
     }
 }

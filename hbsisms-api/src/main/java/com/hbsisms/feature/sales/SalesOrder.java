@@ -58,6 +58,10 @@ public class SalesOrder extends AuditableEntity {
     @JoinColumn(name = "customer_id")
     private Customer customer;
 
+    /** Tên hiển thị khi khách vãng lai (customer null) hoặc snapshot tên lúc tạo. */
+    @Column(name = "customer_name", length = 200)
+    private String customerName;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private OrderType orderType;
