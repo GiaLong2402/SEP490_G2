@@ -3,7 +3,7 @@ import { CheckCircle2, FileText, Plus, XCircle } from 'lucide-react';
 import { useCustomerOptions } from '@/features/customers';
 import { useAction } from '@/shared/api/useAction';
 import type { ID } from '@/shared/domain/entities';
-import { requestStatusMeta, saleChannelLabels, type SaleChannel } from '@/shared/domain/enums';
+import { requestStatusMeta, saleChannelLabels, staffSaleChannelLabels, type SaleChannel } from '@/shared/domain/enums';
 import { dateTime } from '@/shared/lib/format';
 import { Button, Card, ConfirmDialog, DataTable, Field, FilterBar, FilterSelect, Input, LinkButton, Modal, PageHeader, Pagination, SearchBox, Select, StatusChip, Textarea, enumOptions, useListParams, type Column } from '@/shared/ui';
 import { requestsApi } from '../api';
@@ -113,7 +113,7 @@ export default function RequestsPage() {
             </Select>
           </Field>
           {!form.customerId && <Field label="Tên khách vãng lai"><Input value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} /></Field>}
-          <Field label="Kênh" required><Select value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value as SaleChannel })}>{enumOptions(saleChannelLabels)}</Select></Field>
+          <Field label="Kênh" required><Select value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value as SaleChannel })}>{enumOptions(staffSaleChannelLabels)}</Select></Field>
           <Field label="Nội dung yêu cầu" required error={touched && !form.summary.trim() ? 'Vui lòng nhập nội dung' : undefined}><Textarea value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} /></Field>
         </div>
       </Modal>

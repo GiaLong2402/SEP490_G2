@@ -220,6 +220,7 @@ function seed(): MockDb {
     [null, 'web', 'Khách lẻ hỏi giao hàng về Cẩm Phả', 'new', 0], [5, 'zalo', 'Bổ sung chả tôm cho quầy đông lạnh', 'ordered', -3],
     [4, 'phone', 'Báo giá chả tôm khay 0,5kg', 'closed', -9], [1, 'counter', 'Hỏi trước quà Tết cho công ty', 'new', -1],
     [3, 'phone', 'Xin 500 khay mực giao gấp trong ngày — Sales từ chối', 'rejected', -2],
+    [2, 'facebook', 'Inbox fanpage hỏi giá chả mực 50 khay', 'new', -1],
   ] as const).map(([customerId, channel, summary, status, day], i) => ({
     id: i + 1, code: `YC-${pad(i + 1, 4)}`, customerId, customerName: customerId ? customers[customerId - 1].name : 'Khách vãng lai', channel, summary, status, receivedAt: isoTime(day, 9 + i), handledBy: status === 'new' ? null : 3, note: null,
     feasible: status === 'rejected' ? false : null,
@@ -334,7 +335,7 @@ function seed(): MockDb {
       const isB2b = rnd() < 0.45;
       const customerId = pick(isB2b ? b2bIds : b2cIds);
       const state: OrderState = day > -3 ? pick(flowStates) : rnd() < 0.08 ? 'cancelled' : day > -6 ? 'delivered' : 'completed';
-      const channel: SaleChannel = isB2b ? pick(['phone', 'zalo'] as const) : pick(['web', 'web', 'counter', 'phone'] as const);
+      const channel: SaleChannel = isB2b ? pick(['phone', 'zalo', 'facebook'] as const) : pick(['web', 'web', 'counter', 'phone', 'facebook'] as const);
       const lineCount = isB2b ? int(1, 3) : int(1, 2);
       const spec = [...variants].sort(() => rnd() - 0.5).slice(0, lineCount).map((v): [number, number] => [v.id, isB2b ? int(6, 28) * 2 : int(1, 6)]);
       makeOrder(orderId, customerId, state, day, channel, spec);

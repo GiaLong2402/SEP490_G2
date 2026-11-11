@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { customersApi, useCustomer, useCustomerOptions } from '@/features/customers';
+import { CustomerSearchField, customersApi, useCustomer } from '@/features/customers';
 import { LineItemsEditor, isCompleteLine, newLine, toPricingLines, type EditableLine, usePricing } from '@/features/pricing';
 import { useVariantOptions } from '@/features/products';
 import { useAction } from '@/shared/api/useAction';
-import { fulfillmentLabels, paymentMethodLabels, saleChannelLabels, type FulfillmentMethod, type PaymentMethod, type SaleChannel } from '@/shared/domain/enums';
+import { fulfillmentLabels, paymentMethodLabels, saleChannelLabels, staffSaleChannelLabels, staffSaleChannels, type FulfillmentMethod, type PaymentMethod, type SaleChannel } from '@/shared/domain/enums';
 import { money } from '@/shared/lib/format';
 import { Alert, Button, Card, Chip, Field, Input, PageHeader, Select, Textarea, enumOptions } from '@/shared/ui';
 import { ordersApi } from '../api';
@@ -20,7 +20,6 @@ export default function OrderFormPage() {
   const editId = params.id ? Number(params.id) : null;
   const isEdit = editId != null && Number.isFinite(editId);
   const existing = useOrder(editId ?? 0, isEdit);
-  const customers = useCustomerOptions();
   const variants = useVariantOptions();
   const [walkIn, setWalkIn] = useState(false);
   const [customerId, setCustomerId] = useState<number | null>(null);
@@ -40,6 +39,9 @@ export default function OrderFormPage() {
   const [hydrated, setHydrated] = useState(!isEdit);
 
   const isB2b = !walkIn && customer?.customerType === 'b2b';
+  const channelLabels = staffSaleChannels.includes(channel)
+    ? staffSaleChannelLabels
+    : { ...staffSaleChannelLabels, [channel]: saleChannelLabels[channel] };
 
   useEffect(() => {
     if (!isEdit || !existing.data || hydrated) return;
@@ -156,13 +158,10 @@ export default function OrderFormPage() {
                 </Field>
               ) : (
                 <Field label="Khách hàng" required error={touched && !customerId ? 'Vui lòng chọn khách' : undefined} className="md:col-span-2 xl:col-span-1">
-                  <Select value={customerId ?? ''} onChange={(e) => setCustomerId(e.target.value ? Number(e.target.value) : null)}>
-                    <option value="">Chọn khách hàng...</option>
-                    {customers.data?.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
-                  </Select>
+                  <CustomerSearchField value={customerId} onChange={setCustomerId} />
                 </Field>
               )}
-              <Field label="Kênh bán" required><Select value={channel} onChange={(e) => setChannel(e.target.value as SaleChannel)}>{enumOptions(saleChannelLabels)}</Select></Field>
+              <Field label="Kênh bán" required><Select value={channel} onChange={(e) => setChannel(e.target.value as SaleChannel)}>{enumOptions(channelLabels)}</Select></Field>
               <Field label="Hình thức giao" required><Select value={fulfillment} onChange={(e) => setFulfillment(e.target.value as FulfillmentMethod)}>{enumOptions(fulfillmentLabels)}</Select></Field>
               {needsAddress && (
                 <Field label="Địa chỉ giao" required className="md:col-span-2 xl:col-span-3" error={touched && !addressOk ? (walkIn ? 'Khách vãng lai chỉ hỗ trợ nhận tại quầy hoặc bỏ địa chỉ hồ sơ' : 'Khách chưa có địa chỉ, hãy thêm ở hồ sơ khách hoặc chọn "Khách đến lấy"') : undefined}>

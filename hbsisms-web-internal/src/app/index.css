@@ -72,7 +72,7 @@
   }
 }
 
-/* In hóa đơn POS: chỉ giữ lại phần hóa đơn. */
+/* In biên lai bán hàng: chỉ giữ lại khối .print-receipt (không phải HĐĐT). */
 @media print {
   body * { visibility: hidden; }
   .print-receipt, .print-receipt * { visibility: visible; }

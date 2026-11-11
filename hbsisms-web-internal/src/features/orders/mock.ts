@@ -28,6 +28,11 @@ function toDetail(id: number) {
   const payments = db.payments.filter((p) => p.orderId === id && p.status === 'success');
   const hasDelivered = deliveries.some((d) => d.state === 'delivered');
   const blockedByLimit = order.isOverLimit && !order.approvedBy;
+  const rawNext = blockedByLimit ? [] : (MANUAL_NEXT[order.state] ?? []);
+  const nextStates = rawNext.filter((state) => {
+    if (state !== 'preparing') return true;
+    return order.paymentStatus === 'paid' && order.allocationStatus === 'full';
+  });
   return {
     ...toItem(order),
     customer: db.customers.find((c) => c.id === order.customerId) ?? null,
@@ -40,7 +45,7 @@ function toDetail(id: number) {
     sourceQuoteCode: db.quotes.find((q) => q.id === order.sourceQuoteId)?.code ?? null,
     placedByName: userName(order.placedBy),
     approvedByName: userName(order.approvedBy),
-    nextStates: blockedByLimit ? [] : (MANUAL_NEXT[order.state] ?? []),
+    nextStates,
     canCancel: !hasDelivered && !['delivered', 'completed', 'cancelled', 'partial'].includes(order.state),
   };
 }
@@ -223,14 +228,21 @@ mock('POST', '/orders/:id/cancel', ({ params, body, userId }) => {
   const order = db.orders.find((o) => o.id === Number(params.id));
   if (!order) fail(404, 'Không tìm thấy đơn hàng');
   if (['delivered', 'completed', 'cancelled', 'partial'].includes(order.state)) fail(409, 'Đơn đã giao hoặc đã hủy, không thể hủy');
+  if (!String(body.reason ?? '').trim()) fail(400, 'Vui lòng nhập lý do hủy');
   const wasCharged = order.paymentStatus === 'debt';
+  const hadPaid = order.paymentStatus === 'paid' || order.paymentStatus === 'partial';
   releaseOrder(order, userId);
   if (wasCharged && order.customerId) postDebtEntry(order.customerId, { orderId: order.id, entryType: 'adjust', amount: -order.total, note: `Hủy đơn ${order.code}` });
   order.state = 'cancelled';
-  order.paymentStatus = 'unpaid';
+  order.paymentStatus = hadPaid ? 'refund_pending' : 'unpaid';
   order.updatedAt = new Date().toISOString();
   db.deliveries.filter((d) => d.orderId === order.id && d.state !== 'delivered').forEach((d) => (d.state = 'failed'));
   db.approvals.filter((a) => a.refType === 'sales_order' && a.refId === order.id && a.status === 'pending').forEach((a) => { a.status = 'rejected'; a.note = 'Đơn đã hủy'; a.decidedAt = new Date().toISOString(); });
-  addOrderEvent(order.id, 'cancelled', `Hủy đơn: ${body.reason}`, userId);
-  audit(userId, 'cancel', 'sales_order', order.id, { reason: body.reason });
+  addOrderEvent(
+    order.id,
+    'cancelled',
+    hadPaid ? `Hủy đơn (đã thu tiền — chờ hoàn tiền): ${body.reason}` : `Hủy đơn: ${body.reason}`,
+    userId,
+  );
+  audit(userId, 'cancel', 'sales_order', order.id, { reason: body.reason, paymentStatus: order.paymentStatus });
 });

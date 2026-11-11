@@ -47,9 +47,16 @@ export default function OrderDetailPage() {
     && order.state !== 'completed'
     && order.state !== 'cancelled'
     && order.state !== 'pending'
-    && (order.paymentStatus === 'paid' || order.paymentStatus === 'debt');
+    && order.paymentStatus === 'paid';
   const canEdit = ['pending', 'confirmed'].includes(order.state) && !['paid', 'partial'].includes(order.paymentStatus);
-  const canPrintReceipt = order.paymentStatus === 'paid' || order.paymentStatus === 'debt';
+  const canPrintReceipt = order.paymentStatus === 'paid';
+  const waitingForPrepare = order.state === 'confirmed' && !order.nextStates.includes('preparing');
+  const prepareBlockReason =
+    order.paymentStatus !== 'paid'
+      ? 'Cần thanh toán đủ trước khi chuẩn bị hàng.'
+      : order.allocationStatus !== 'full'
+        ? 'Chưa phân bổ đủ hàng — không thể chuẩn bị.'
+        : null;
 
   const lineColumns: Column<OrderLineView>[] = [
     { key: 'product', header: 'Sản phẩm', cell: (l) => <div><div className="font-medium">{l.productName}</div><div className="num text-ink-faint">{l.sku} · {l.packLabel}</div></div> },
@@ -107,7 +114,14 @@ export default function OrderDetailPage() {
       {order.isOverLimit && !order.approvedBy && order.state !== 'cancelled' && (
         <div className="mb-4">
           <Alert tone="danger" title={`Vượt hạn mức ${money(order.overLimitAmount)}, đơn đang chờ duyệt`}>
-            Chưa giữ hàng và chưa ghi nợ cho đến khi được duyệt. {can('approve') && <Link to="/approvals" className="font-semibold underline">Đi tới Phê duyệt</Link>}
+            Chưa giữ hàng cho đến khi được duyệt. {can('approve') && <Link to="/approvals" className="font-semibold underline">Đi tới Phê duyệt</Link>}
+          </Alert>
+        </div>
+      )}
+      {waitingForPrepare && prepareBlockReason && (
+        <div className="mb-4">
+          <Alert tone="warning" title="Chưa thể chuyển sang Chuẩn bị">
+            {prepareBlockReason} {order.paymentStatus !== 'paid' && canPay && 'Hãy ghi nhận thanh toán đủ trước.'}
           </Alert>
         </div>
       )}
@@ -182,7 +196,7 @@ export default function OrderDetailPage() {
         </aside>
       </div>
 
-      <ConfirmDialog open={cancelling} danger title={`Hủy đơn ${order.code}?`} message="Hàng đang giữ sẽ được nhả và khoản công nợ của đơn sẽ được hoàn lại." withNote noteRequired noteLabel="Lý do hủy" confirmLabel="Hủy đơn" loading={cancel.isPending} onConfirm={(reason) => cancel.mutate(reason)} onClose={() => setCancelling(false)} />
+      <ConfirmDialog open={cancelling} danger title={`Hủy đơn ${order.code}?`} message={order.paymentStatus === 'paid' || order.paymentStatus === 'partial' ? 'Hàng đang giữ sẽ được nhả. Đơn đã thu tiền sẽ chuyển sang Chờ hoàn tiền.' : 'Hàng đang giữ sẽ được nhả. Lý do hủy là bắt buộc.'} withNote noteRequired noteLabel="Lý do hủy" confirmLabel="Hủy đơn" loading={cancel.isPending} onConfirm={(reason) => cancel.mutate(reason)} onClose={() => setCancelling(false)} />
       <DeliveryFormModal open={deliveryOpen} onClose={() => setDeliveryOpen(false)} order={{ id: order.id, code: order.code, fulfillmentMethod: order.fulfillmentMethod, shipAddressId: order.shipAddressId, inRadius: order.address?.inDeliveryRadius ?? false, distanceKm: order.address?.distanceKm ?? null, legCount: order.deliveries.filter((d) => d.state !== 'failed').length, lines: order.lines.map((l) => ({ id: l.id, label: `${l.productName} · ${l.packLabel}`, qtyKhay: l.qtyKhay })), deliveries: order.deliveries }} />
       <PaymentFormModal open={paymentOpen} onClose={() => setPaymentOpen(false)} customerId={order.customerId} customerName={order.customerName} order={{ id: order.id, code: order.code, outstanding }} defaultMethod={order.paymentMethod === 'cash' || order.paymentMethod === 'bank_transfer' ? order.paymentMethod : 'bank_transfer'} />
       <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} />
