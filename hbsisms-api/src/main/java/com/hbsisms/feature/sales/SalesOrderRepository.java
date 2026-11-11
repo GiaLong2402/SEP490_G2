@@ -3,9 +3,6 @@ package com.hbsisms.feature.sales;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -35,9 +32,12 @@ public interface SalesOrderRepository
             """)
     Optional<SalesOrder> findWithDetailsById(@Param("id") Long id);
 
-    @Override
-    @EntityGraph(attributePaths = {"customer", "placedBy"})
-    Page<SalesOrder> findAll(Specification<SalesOrder> spec, Pageable pageable);
+    /**
+     * List + filter qua {@link JpaSpecificationExecutor#findAll}.
+     * Không gắn {@code @EntityGraph} ở đây — trên một số bản Spring Data, EntityGraph trên
+     * {@code findAll(Specification, Pageable)} làm Specification không được áp (lọc bị bỏ).
+     * Fetch customer/placedBy nằm trong {@link OrderSpecifications}.
+     */
 
     @Query("select o.code from SalesOrder o where o.code like concat(:prefix, '%')")
     List<String> findCodesByPrefix(@Param("prefix") String prefix);
