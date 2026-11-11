@@ -3,6 +3,9 @@ package com.hbsisms.feature.sales;
 import com.hbsisms.common.text.Strings;
 import com.hbsisms.feature.payment.PaymentStatus;
 import jakarta.persistence.criteria.JoinType;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -16,7 +19,15 @@ final class OrderSpecifications {
     }
 
     static Specification<SalesOrder> search(
-            String keyword, OrderState state, OrderType orderType, PaymentStatus paymentStatus) {
+            String keyword,
+            OrderState state,
+            OrderType orderType,
+            PaymentStatus paymentStatus,
+            SaleChannel channel,
+            AllocationStatus allocationStatus,
+            Long customerId,
+            LocalDate placedFrom,
+            LocalDate placedTo) {
         List<Specification<SalesOrder>> specs = new ArrayList<>();
         String q = Strings.trimToNull(keyword);
         if (q != null) {
@@ -31,6 +42,23 @@ final class OrderSpecifications {
         if (paymentStatus != null) {
             specs.add((root, query, cb) -> cb.equal(root.get("paymentStatus"), paymentStatus));
         }
+        if (channel != null) {
+            specs.add((root, query, cb) -> cb.equal(root.get("channel"), channel));
+        }
+        if (allocationStatus != null) {
+            specs.add((root, query, cb) -> cb.equal(root.get("allocationStatus"), allocationStatus));
+        }
+        if (customerId != null) {
+            specs.add((root, query, cb) -> cb.equal(root.get("customer").get("id"), customerId));
+        }
+        if (placedFrom != null) {
+            Instant from = placedFrom.atStartOfDay().toInstant(ZoneOffset.UTC);
+            specs.add((root, query, cb) -> cb.greaterThanOrEqualTo(root.get("placedAt"), from));
+        }
+        if (placedTo != null) {
+            Instant to = placedTo.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC);
+            specs.add((root, query, cb) -> cb.lessThan(root.get("placedAt"), to));
+        }
         return specs.isEmpty() ? (root, query, cb) -> cb.conjunction() : Specification.allOf(specs);
     }
 
@@ -43,6 +71,7 @@ final class OrderSpecifications {
             var customer = root.join("customer", JoinType.LEFT);
             return cb.or(
                     cb.like(cb.lower(root.get("code")), pattern, LIKE_ESCAPE),
+                    cb.like(cb.lower(root.get("customerName")), pattern, LIKE_ESCAPE),
                     cb.like(cb.lower(customer.get("name")), pattern, LIKE_ESCAPE));
         };
     }

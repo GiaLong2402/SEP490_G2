@@ -127,14 +127,29 @@ public class SalesOrderService {
 
     @Transactional(readOnly = true)
     public PageResponse<OrderListItemResponse> search(
-            String q, String state, String orderType, String paymentStatus, int page, int pageSize) {
+            String q,
+            String state,
+            String orderType,
+            String paymentStatus,
+            String channel,
+            String allocationStatus,
+            Long customerId,
+            String placedFrom,
+            String placedTo,
+            int page,
+            int pageSize) {
         return PageResponse.from(salesOrderRepository
                 .findAll(
                         OrderSpecifications.search(
                                 q,
                                 parseState(state),
                                 parseOrderType(orderType),
-                                parsePaymentStatus(paymentStatus)),
+                                parsePaymentStatus(paymentStatus),
+                                parseChannel(channel),
+                                parseAllocationStatus(allocationStatus),
+                                customerId,
+                                parseDate(placedFrom),
+                                parseDate(placedTo)),
                         PageRequests.of(page, pageSize, LIST_SORT))
                 .map(OrderListItemResponse::from));
     }
@@ -841,6 +856,42 @@ public class SalesOrderService {
             return PaymentStatus.fromCode(Strings.trimToNull(raw));
         } catch (IllegalArgumentException ex) {
             throw ApiException.badRequest(ex.getMessage());
+        }
+    }
+
+    private static SaleChannel parseChannel(String raw) {
+        String value = Strings.trimToNull(raw);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return SaleChannel.fromCode(value);
+        } catch (IllegalArgumentException ex) {
+            throw ApiException.badRequest(ex.getMessage());
+        }
+    }
+
+    private static AllocationStatus parseAllocationStatus(String raw) {
+        String value = Strings.trimToNull(raw);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return AllocationStatus.valueOf(value.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw ApiException.badRequest("Trạng thái phân bổ không hợp lệ: " + raw);
+        }
+    }
+
+    private static LocalDate parseDate(String raw) {
+        String value = Strings.trimToNull(raw);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(value);
+        } catch (Exception ex) {
+            throw ApiException.badRequest("Ngày không hợp lệ: " + raw);
         }
     }
 
