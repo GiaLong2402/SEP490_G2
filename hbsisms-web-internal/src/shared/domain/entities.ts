@@ -108,7 +108,7 @@ export interface QuoteLine {
 }
 
 export interface SalesOrder {
-  id: ID; code: string; customerId: ID | null; orderType: E.OrderType; channel: E.SaleChannel | null; sourceQuoteId: ID | null;
+  id: ID; code: string; customerId: ID | null; customerName?: string | null; orderType: E.OrderType; channel: E.SaleChannel | null; sourceQuoteId: ID | null;
   paymentMethod: E.PaymentMethod; paymentTermDays: number; paymentStatus: E.PaymentStatus; allocationStatus: E.AllocationStatus;
   fulfillmentMethod: E.FulfillmentMethod; shipAddressId: ID | null; state: E.OrderState; subtotal: number; discountTotal: number;
   shippingFee: number; total: number; voucherCode: string | null; isOverLimit: boolean; overLimitAmount: number; approvedBy: ID | null;

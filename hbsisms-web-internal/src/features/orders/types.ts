@@ -39,7 +39,10 @@ export interface OrderDetail extends OrderListItem {
 }
 
 export interface OrderInput {
-  customerId: ID;
+  /** Null = khách vãng lai. */
+  customerId: ID | null;
+  /** Tên khi khách vãng lai. */
+  customerName?: string | null;
   orderType: OrderType;
   channel: SaleChannel;
   paymentMethod: PaymentMethod;

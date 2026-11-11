@@ -1,7 +1,7 @@
 import { fail, matches, mock, paginate } from '@/shared/api/mockServer';
 import type { OrderState } from '@/shared/domain/enums';
 import { db, nextCode, nextId } from '@/shared/mock/db';
-import { addOrderEvent, allocateOrder, audit, confirmOrder, creditCheck, createApproval, postDebtEntry, priceLines, releaseOrder, userName, variantLabel } from '@/shared/mock/services';
+import { addOrderEvent, allocateOrder, audit, confirmOrder, postDebtEntry, priceLines, releaseOrder, userName, variantLabel } from '@/shared/mock/services';
 
 const MANUAL_NEXT: Partial<Record<OrderState, OrderState[]>> = {
   pending: ['confirmed'],
@@ -12,7 +12,11 @@ const MANUAL_NEXT: Partial<Record<OrderState, OrderState[]>> = {
 
 const toItem = (order: (typeof db.orders)[number]) => {
   const customer = db.customers.find((c) => c.id === order.customerId);
-  return { ...order, customerName: customer?.name ?? 'Khách lẻ', customerType: customer?.customerType ?? null };
+  return {
+    ...order,
+    customerName: order.customerName ?? customer?.name ?? 'Khách vãng lai',
+    customerType: customer?.customerType ?? null,
+  };
 };
 
 function toDetail(id: number) {
@@ -58,28 +62,44 @@ mock('PUT', '/orders/:id', ({ params, body, userId }) => {
   if (!order) fail(404, 'Không tìm thấy đơn hàng');
   if (!['pending', 'confirmed'].includes(order.state)) fail(409, 'Chỉ sửa được đơn ở trạng thái Chờ xử lý hoặc Đã xác nhận');
   if (['paid', 'partial'].includes(order.paymentStatus)) fail(409, 'Đơn đã thu tiền, không thể sửa');
-  const customer = db.customers.find((c) => c.id === body.customerId);
-  if (!customer) fail(400, 'Vui lòng chọn khách hàng');
-  if (!customer.isActive) fail(409, 'Khách hàng đã bị khóa, không thể sửa đơn');
-  if (body.paymentMethod === 'credit_net' && customer.customerType !== 'b2b') fail(400, 'Chỉ khách B2B được mua công nợ');
+  if (body.paymentMethod === 'credit_net') fail(409, 'Không bán nợ — mọi đơn phải thanh toán đủ trước khi chuẩn bị');
   if (!body.lines?.length) fail(400, 'Đơn phải có ít nhất một dòng hàng');
+
+  const customer = body.customerId == null ? null : db.customers.find((c) => c.id === body.customerId);
+  if (body.customerId != null && !customer) fail(400, 'Vui lòng chọn khách hàng');
+  if (customer && !customer.isActive) fail(409, 'Khách hàng đã bị khóa, không thể sửa đơn');
+  if (body.shipAddressId != null && !customer) fail(400, 'Khách vãng lai không gắn địa chỉ hồ sơ — chọn giao nhận phù hợp');
+  const customerName = customer?.name ?? (String(body.customerName ?? '').trim() || 'Khách vãng lai');
 
   const wasConfirmed = order.state === 'confirmed';
   const wasDebt = order.paymentStatus === 'debt';
   if (wasConfirmed) releaseOrder(order, userId);
   if (wasDebt && order.customerId) postDebtEntry(order.customerId, { orderId: order.id, entryType: 'adjust', amount: -order.total, note: `Sửa đơn ${order.code} — đảo nợ cũ` });
 
-  const priced = priceLines(customer.id, body.lines);
+  const priced = priceLines(customer?.id ?? null, body.lines);
   const subtotal = priced.reduce((sum, l) => sum + l.lineTotal, 0);
   const total = Math.max(0, subtotal - Number(body.discountTotal ?? 0) + Number(body.shippingFee ?? 0));
   const now = new Date().toISOString();
   Object.assign(order, {
-    customerId: customer.id, orderType: body.orderType, channel: body.channel, paymentMethod: body.paymentMethod,
-    paymentTermDays: body.paymentMethod === 'credit_net' ? customer.netDays : 0,
-    fulfillmentMethod: body.fulfillmentMethod, shipAddressId: body.shipAddressId,
-    subtotal, discountTotal: Number(body.discountTotal ?? 0), shippingFee: Number(body.shippingFee ?? 0), total,
-    voucherCode: body.voucherCode, note: body.note, holdExpiresAt: null, allocationStatus: 'none' as const,
-    ...creditCheck(customer.id, body.paymentMethod, total), updatedAt: now,
+    customerId: customer?.id ?? null,
+    customerName,
+    orderType: body.orderType,
+    channel: body.channel,
+    paymentMethod: body.paymentMethod,
+    paymentTermDays: 0,
+    fulfillmentMethod: body.fulfillmentMethod,
+    shipAddressId: body.shipAddressId,
+    subtotal,
+    discountTotal: Number(body.discountTotal ?? 0),
+    shippingFee: Number(body.shippingFee ?? 0),
+    total,
+    voucherCode: body.voucherCode,
+    note: body.note,
+    holdExpiresAt: null,
+    allocationStatus: 'none' as const,
+    isOverLimit: false,
+    overLimitAmount: 0,
+    updatedAt: now,
   });
   if (wasDebt) order.paymentStatus = 'unpaid';
 
@@ -87,24 +107,13 @@ mock('PUT', '/orders/:id', ({ params, body, userId }) => {
   priced.forEach(({ available: _available, shortfall: _shortfall, ...line }) => db.orderLines.push({ ...line, id: nextId(db.orderLines), orderId: order.id, outstandingQty: 0, note: null }));
 
   if (wasConfirmed) {
-    if (order.paymentMethod === 'credit_net') {
-      postDebtEntry(customer.id, { orderId: order.id, entryType: 'charge', amount: order.total, dueDate: new Date(Date.now() + order.paymentTermDays * 86400000).toISOString().slice(0, 10), note: `Đơn ${order.code}` });
-      order.paymentStatus = 'debt';
-    }
     allocateOrder(order, userId);
     addOrderEvent(order.id, 'updated', `Sửa đơn — giữ lại hàng (${order.allocationStatus})`, userId);
-  } else if (order.isOverLimit && !order.approvedBy) {
+  } else {
     const pending = db.approvals.find((a) => a.refType === 'sales_order' && a.refId === order.id && a.status === 'pending');
-    if (pending) pending.title = `Đơn ${order.code} của ${customer.name} vượt hạn mức ${order.overLimitAmount.toLocaleString('vi-VN')} ₫`;
-    else createApproval('over_limit_order', 'sales_order', order.id, `Đơn ${order.code} của ${customer.name} vượt hạn mức ${order.overLimitAmount.toLocaleString('vi-VN')} ₫`, userId);
-    addOrderEvent(order.id, 'updated', 'Sửa đơn (vẫn chờ duyệt vượt hạn mức)', userId);
-  } else if (!order.isOverLimit) {
-    const pending = db.approvals.find((a) => a.refType === 'sales_order' && a.refId === order.id && a.status === 'pending');
-    if (pending) { pending.status = 'approved'; pending.note = 'Đơn sau khi sửa không còn vượt hạn mức'; pending.decidedAt = now; }
+    if (pending) { pending.status = 'approved'; pending.note = 'Đơn sau khi sửa — không còn đường bán nợ'; pending.decidedAt = now; }
     addOrderEvent(order.id, 'updated', 'Sửa đơn', userId);
     confirmOrder(order, userId);
-  } else {
-    addOrderEvent(order.id, 'updated', 'Sửa đơn', userId);
   }
   audit(userId, 'update', 'sales_order', order.id, { total });
   return toDetail(order.id);
@@ -113,7 +122,7 @@ mock('PUT', '/orders/:id', ({ params, body, userId }) => {
 mock('GET', '/orders/:id/receipt', ({ params, userId }) => {
   const order = db.orders.find((o) => o.id === Number(params.id));
   if (!order) fail(404, 'Không tìm thấy đơn hàng');
-  if (!['paid', 'debt'].includes(order.paymentStatus)) fail(409, 'Chỉ in biên lai khi đã thanh toán đủ hoặc đã ghi công nợ');
+  if (order.paymentStatus !== 'paid') fail(409, 'Chỉ in biên lai khi đã thanh toán đủ');
   const customer = db.customers.find((c) => c.id === order.customerId);
   const paymentMethod = order.paymentMethod === 'cash' || order.paymentMethod === 'credit_net' ? order.paymentMethod : 'bank_transfer';
   audit(userId, 'print_receipt', 'sales_order', order.id, { code: order.code });
@@ -121,7 +130,7 @@ mock('GET', '/orders/:id/receipt', ({ params, userId }) => {
     orderId: order.id,
     code: order.code,
     placedAt: order.placedAt,
-    customerName: customer?.name ?? 'Khách lẻ',
+    customerName: order.customerName ?? customer?.name ?? 'Khách vãng lai',
     cashierName: userName(order.placedBy) ?? '—',
     paymentMethod,
     lines: db.orderLines.filter((l) => l.orderId === order.id).map((l) => {
@@ -133,36 +142,36 @@ mock('GET', '/orders/:id/receipt', ({ params, userId }) => {
     total: order.total,
     tendered: null,
     change: null,
-    debtAfter: order.paymentMethod === 'credit_net' ? (customer?.currentDebt ?? null) : null,
+    debtAfter: null,
   };
 });
 
 mock('POST', '/orders', ({ body, userId }) => {
-  const customer = db.customers.find((c) => c.id === body.customerId);
-  if (!customer) fail(400, 'Vui lòng chọn khách hàng');
-  if (body.paymentMethod === 'credit_net' && customer.customerType !== 'b2b') fail(400, 'Chỉ khách B2B được mua công nợ');
+  if (body.paymentMethod === 'credit_net') fail(409, 'Không bán nợ — mọi đơn phải thanh toán đủ trước khi chuẩn bị');
   if (!body.lines?.length) fail(400, 'Đơn phải có ít nhất một dòng hàng');
-  const priced = priceLines(customer.id, body.lines);
+  const customer = body.customerId == null ? null : db.customers.find((c) => c.id === body.customerId);
+  if (body.customerId != null && !customer) fail(400, 'Vui lòng chọn khách hàng');
+  if (customer && !customer.isActive) fail(409, 'Khách hàng đã bị khóa, không thể tạo đơn');
+  if (body.shipAddressId != null && !customer) fail(400, 'Khách vãng lai không gắn địa chỉ hồ sơ — chọn giao nhận phù hợp');
+  const customerName = customer?.name ?? (String(body.customerName ?? '').trim() || 'Khách vãng lai');
+  const priced = priceLines(customer?.id ?? null, body.lines);
+  const short = priced.some((l) => l.shortfall > 0);
+  if (short) fail(409, 'Không đủ hàng khả dụng để giữ đủ số lượng — không thể xác nhận đơn');
   const subtotal = priced.reduce((sum, l) => sum + l.lineTotal, 0);
   const total = Math.max(0, subtotal - Number(body.discountTotal ?? 0) + Number(body.shippingFee ?? 0));
   const now = new Date().toISOString();
   const id = nextId(db.orders);
   const order = {
-    id, code: nextCode('SO-2026', db.orders), customerId: customer.id, orderType: body.orderType, channel: body.channel, sourceQuoteId: body.sourceQuoteId ?? null, paymentMethod: body.paymentMethod,
-    paymentTermDays: body.paymentMethod === 'credit_net' ? customer.netDays : 0, paymentStatus: 'unpaid' as const, allocationStatus: 'none' as const, fulfillmentMethod: body.fulfillmentMethod,
+    id, code: nextCode('SO-2026', db.orders), customerId: customer?.id ?? null, customerName, orderType: body.orderType, channel: body.channel, sourceQuoteId: body.sourceQuoteId ?? null, paymentMethod: body.paymentMethod,
+    paymentTermDays: 0, paymentStatus: 'unpaid' as const, allocationStatus: 'none' as const, fulfillmentMethod: body.fulfillmentMethod,
     shipAddressId: body.shipAddressId, state: 'pending' as const, subtotal, discountTotal: Number(body.discountTotal ?? 0), shippingFee: Number(body.shippingFee ?? 0), total, voucherCode: body.voucherCode,
-    ...creditCheck(customer.id, body.paymentMethod, total), approvedBy: null, placedBy: userId, placedAt: now, holdExpiresAt: null, note: body.note, createdAt: now, updatedAt: now,
+    isOverLimit: false, overLimitAmount: 0, approvedBy: null, placedBy: userId, placedAt: now, holdExpiresAt: null, note: body.note, createdAt: now, updatedAt: now,
   };
   db.orders.push(order);
   priced.forEach(({ available: _available, shortfall: _shortfall, ...line }) => db.orderLines.push({ ...line, id: nextId(db.orderLines), orderId: id, outstandingQty: 0, note: null }));
   addOrderEvent(id, 'created', 'Tạo đơn', userId);
   audit(userId, 'create', 'sales_order', id, { total });
-  if (order.isOverLimit) {
-    createApproval('over_limit_order', 'sales_order', id, `Đơn ${order.code} của ${customer.name} vượt hạn mức ${order.overLimitAmount.toLocaleString('vi-VN')} ₫`, userId);
-    addOrderEvent(id, 'approval', 'Đơn vượt hạn mức, chờ Chủ cửa hàng duyệt', userId);
-  } else {
-    confirmOrder(db.orders[db.orders.length - 1], userId);
-  }
+  confirmOrder(db.orders[db.orders.length - 1], userId);
   return toDetail(id);
 });
 
@@ -176,6 +185,10 @@ mock('POST', '/orders/:id/transition', ({ params, body, userId }) => {
   if (body.state === 'confirmed') {
     confirmOrder(order, userId);
   } else {
+    if (body.state === 'preparing') {
+      if (order.paymentStatus !== 'paid') fail(409, 'Chỉ chuẩn bị khi đã thanh toán đủ');
+      if (order.allocationStatus !== 'full') fail(409, 'Chưa phân bổ đủ hàng — không thể chuẩn bị');
+    }
     order.state = body.state;
     addOrderEvent(order.id, body.state, stateLabels[body.state as OrderState] ?? body.state, userId);
   }
@@ -187,7 +200,7 @@ mock('POST', '/orders/:id/complete-at-counter', ({ params, userId }) => {
   if (!order) fail(404, 'Không tìm thấy đơn hàng');
   if (order.state === 'cancelled') fail(409, 'Đơn đã hủy');
   if (order.state === 'completed') return toDetail(order.id);
-  if (!['paid', 'debt'].includes(order.paymentStatus)) fail(409, 'Đơn chưa thu đủ — không thể hoàn tất tại quầy');
+  if (order.paymentStatus !== 'paid') fail(409, 'Đơn chưa thu đủ — không thể hoàn tất tại quầy');
   if (order.state === 'pending') fail(409, 'Đơn chưa xác nhận');
   order.state = 'completed';
   order.allocationStatus = 'full';
