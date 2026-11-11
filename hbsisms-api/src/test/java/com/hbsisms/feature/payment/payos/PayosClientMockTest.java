@@ -62,6 +62,45 @@ class PayosClientMockTest {
         server.verify();
     }
 
+    @Test
+    void getPaymentRequest_parsesPaidStatus() {
+        server.expect(requestTo("https://api-merchant.payos.vn/v2/payment-requests/130001"))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(PayosConfig.HEADER_CLIENT_ID, "client-id"))
+                .andExpect(header(PayosConfig.HEADER_API_KEY, "api-key"))
+                .andRespond(withSuccess(
+                        """
+                        {"code":"00","desc":"success","data":{
+                          "orderCode":130001,
+                          "amount":2000,
+                          "status":"PAID",
+                          "paymentLinkId":"plid"
+                        }}
+                        """,
+                        MediaType.APPLICATION_JSON));
+
+        var result = client.getPaymentRequest(130001L);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().status()).isEqualTo("PAID");
+        assertThat(result.get().amount()).isEqualTo(2000);
+        server.verify();
+    }
+
+    @Test
+    void getPaymentRequest_non00_returnsEmpty() {
+        server.expect(requestTo("https://api-merchant.payos.vn/v2/payment-requests/130001"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(
+                        """
+                        {"code":"01","desc":"fail","data":null}
+                        """,
+                        MediaType.APPLICATION_JSON));
+
+        assertThat(client.getPaymentRequest(130001L)).isEmpty();
+        server.verify();
+    }
+
     /** Avoid Instant import noise in expect — epoch only. */
     private static final class InstantEpoch {
         static long nowPlus15() {

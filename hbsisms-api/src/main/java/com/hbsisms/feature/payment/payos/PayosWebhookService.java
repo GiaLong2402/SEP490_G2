@@ -4,16 +4,9 @@ import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.feature.payment.PayTxnStatus;
 import com.hbsisms.feature.payment.Payment;
 import com.hbsisms.feature.payment.PaymentRepository;
-import com.hbsisms.feature.payment.PaymentStatus;
 import com.hbsisms.feature.payment.payos.dto.PayosWebhookAck;
 import com.hbsisms.feature.payment.payos.dto.PayosWebhookEnvelope;
-import com.hbsisms.feature.sales.OrderEvent;
-import com.hbsisms.feature.sales.OrderEventRepository;
-import com.hbsisms.feature.sales.SalesOrder;
-import com.hbsisms.feature.sales.SalesOrderRepository;
 import java.math.BigDecimal;
-import java.time.Clock;
-import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -30,21 +23,15 @@ public class PayosWebhookService {
 
     private final PayosProperties properties;
     private final PaymentRepository paymentRepository;
-    private final SalesOrderRepository salesOrderRepository;
-    private final OrderEventRepository orderEventRepository;
-    private final Clock clock;
+    private final PayosPaymentCompleter paymentCompleter;
 
     public PayosWebhookService(
             PayosProperties properties,
             PaymentRepository paymentRepository,
-            SalesOrderRepository salesOrderRepository,
-            OrderEventRepository orderEventRepository,
-            Clock clock) {
+            PayosPaymentCompleter paymentCompleter) {
         this.properties = properties;
         this.paymentRepository = paymentRepository;
-        this.salesOrderRepository = salesOrderRepository;
-        this.orderEventRepository = orderEventRepository;
-        this.clock = clock;
+        this.paymentCompleter = paymentCompleter;
     }
 
     /**
@@ -97,33 +84,10 @@ public class PayosWebhookService {
             return PayosWebhookAck.ok();
         }
 
-        markPaid(payment, envelope);
-        return PayosWebhookAck.ok();
-    }
-
-    private void markPaid(Payment payment, PayosWebhookEnvelope envelope) {
-        Instant now = Instant.now(clock);
-        payment.setStatus(PayTxnStatus.SUCCESS);
-        payment.setPaidAt(now);
         Object ref = envelope.data().get("reference");
-        if (ref != null && !String.valueOf(ref).isBlank()) {
-            payment.setReference(String.valueOf(ref));
-        }
-        payment.setRawPayload(mergeRawPayload(payment.getRawPayload(), envelope));
-        paymentRepository.save(payment);
-
-        SalesOrder order = payment.getOrder();
-        if (order != null) {
-            order.setPaymentStatus(PaymentStatus.PAID);
-            order.setHoldExpiresAt(null);
-            salesOrderRepository.save(order);
-
-            OrderEvent event = new OrderEvent();
-            event.setOrder(order);
-            event.setEventType("paid");
-            event.setDescription("Thanh toán thành công qua PayOS");
-            orderEventRepository.save(event);
-        }
+        String reference = ref == null ? null : String.valueOf(ref);
+        paymentCompleter.markPaid(payment, reference, mergeRawPayload(payment.getRawPayload(), envelope));
+        return PayosWebhookAck.ok();
     }
 
     private static boolean isPaymentSuccess(PayosWebhookEnvelope envelope) {
