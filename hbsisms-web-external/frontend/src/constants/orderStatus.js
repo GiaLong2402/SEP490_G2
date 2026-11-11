@@ -3,7 +3,7 @@ import { CheckIcon, ClipboardIcon, ClockIcon, CloseIcon, PackageIcon, TruckIcon 
 /**
  * Trạng thái hiển thị cho khách — gộp từ enum backend:
  *   OrderState: PENDING CONFIRMED PREPARING TO_SHIP PARTIAL DELIVERED COMPLETED CANCELLED
- *   PaymentStatus: UNPAID WAITING PAID PARTIAL DEBT DIFF REFUNDED
+ *   PaymentStatus: UNPAID WAITING PAID PARTIAL DEBT DIFF REFUND_PENDING REFUNDED
  * tone khớp class .order-status--<tone> (styles/shared/order.css).
  */
 export const ORDER_STATUS = {
