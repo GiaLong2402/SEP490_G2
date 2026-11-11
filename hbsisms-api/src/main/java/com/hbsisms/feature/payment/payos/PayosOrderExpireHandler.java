@@ -111,7 +111,7 @@ public class PayosOrderExpireHandler {
                 return true;
             }
             String reason = "Hết hạn thanh toán (" + appConfigService.paymentHoldMinutes() + " phút)";
-            payosClient.cancelPaymentRequest(cancelId(primary, info), reason);
+            payosClient.cancelPaymentRequest(PayosCancelIds.from(primary, info), reason);
         }
 
         String note = "Hết hạn thanh toán (" + appConfigService.paymentHoldMinutes() + " phút)";
@@ -141,19 +141,6 @@ public class PayosOrderExpireHandler {
         event.setDescription(note + " — hủy đơn và giải phóng hold");
         orderEventRepository.save(event);
         return true;
-    }
-
-    private static String cancelId(Payment payment, PayosPaymentInfoResult info) {
-        if (info != null && info.paymentLinkId() != null && !info.paymentLinkId().isBlank()) {
-            return info.paymentLinkId();
-        }
-        if (payment.getRawPayload() != null && payment.getRawPayload().get("paymentLinkId") != null) {
-            String linkId = String.valueOf(payment.getRawPayload().get("paymentLinkId")).trim();
-            if (!linkId.isBlank() && !"null".equalsIgnoreCase(linkId)) {
-                return linkId;
-            }
-        }
-        return String.valueOf(payment.getPayosOrderCode());
     }
 
     private static boolean amountMatches(BigDecimal paymentAmount, int remoteAmount) {
