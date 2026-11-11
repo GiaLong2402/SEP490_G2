@@ -5,6 +5,7 @@ import com.hbsisms.common.web.PageResponse;
 import com.hbsisms.feature.payment.dto.PaymentInputRequest;
 import com.hbsisms.feature.payment.dto.PaymentListItemResponse;
 import com.hbsisms.feature.payment.dto.PaymentReconcileRequest;
+import com.hbsisms.feature.payment.dto.PaymentRefundRequest;
 import com.hbsisms.security.AuthUser;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -21,7 +22,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Payments API: list + thu tiền (Doanh) + đối soát thiếu/thừa/trùng (Long Excel #39).
+ * Payments API: list + thu + đối soát (#39) + ghi nhận hoàn (#40).
  */
 @RestController
 @RequestMapping("/payments")
@@ -54,6 +55,13 @@ public class PaymentController {
     public PaymentListItemResponse create(
             @Valid @RequestBody PaymentInputRequest request, @AuthenticationPrincipal AuthUser actor) {
         return paymentService.create(request, actor == null ? null : actor.id());
+    }
+
+    @PostMapping("/refund")
+    @ResponseStatus(HttpStatus.CREATED)
+    public PaymentListItemResponse refund(
+            @Valid @RequestBody PaymentRefundRequest request, @AuthenticationPrincipal AuthUser actor) {
+        return paymentService.recordRefund(request, actor == null ? null : actor.id());
     }
 
     @PatchMapping("/{id}/reconcile")

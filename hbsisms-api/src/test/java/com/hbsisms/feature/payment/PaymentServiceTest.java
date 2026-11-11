@@ -13,6 +13,7 @@ import com.hbsisms.feature.customer.CustomerRepository;
 import com.hbsisms.feature.customer.CustomerType;
 import com.hbsisms.feature.payment.dto.PaymentInputRequest;
 import com.hbsisms.feature.payment.dto.PaymentListItemResponse;
+import com.hbsisms.feature.payment.dto.PaymentRefundRequest;
 import com.hbsisms.feature.sales.FulfillmentMethod;
 import com.hbsisms.feature.sales.OrderEventRepository;
 import com.hbsisms.feature.sales.OrderState;
@@ -261,6 +262,130 @@ class PaymentServiceTest {
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
+
+    @Test
+    void recordRefund_fullAmount_setsRefundedAndClearsNeedsRefund() {
+        SalesOrder order = order(30L, OrderState.PENDING, PaymentStatus.PAID, "100000.00");
+        order.setChannel(SaleChannel.WEB);
+        Payment source = paymentRow(31L, order, PaymentReconcileFlag.NONE);
+        source.setRawPayload(Map.of("needsRefund", true));
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(salesOrderRepository.findWithDetailsById(30L)).thenReturn(Optional.of(order));
+        when(paymentRepository.sumSuccessfulInByOrderId(30L)).thenReturn(new BigDecimal("100000.00"));
+        when(paymentRepository.sumSuccessfulRefundByOrderId(30L))
+                .thenReturn(ZERO)
+                .thenReturn(new BigDecimal("100000.00"));
+        when(paymentRepository.findCodesByPrefix("TT-")).thenReturn(List.of());
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
+            Payment p = inv.getArgument(0);
+            if (p.getId() == null) {
+                setId(p, ids.incrementAndGet());
+            }
+            return p;
+        });
+        when(paymentRepository.findWithDetailsById(any())).thenAnswer(inv -> {
+            Long id = inv.getArgument(0);
+            if (id.equals(31L)) {
+                return Optional.of(source);
+            }
+            Payment refund = new Payment();
+            setId(refund, id);
+            refund.setCode("TT-" + id);
+            refund.setOrder(order);
+            refund.setCustomer(customer);
+            refund.setMethod(PaymentMethod.BANK_TRANSFER);
+            refund.setDirection(PayDirection.REFUND);
+            refund.setAmount(new BigDecimal("100000.00"));
+            refund.setStatus(PayTxnStatus.SUCCESS);
+            refund.setReconcileFlag(PaymentReconcileFlag.NONE);
+            refund.setPaidAt(Instant.now(clock));
+            refund.setReceivedBy(actor);
+            return Optional.of(refund);
+        });
+
+        PaymentListItemResponse response = service.recordRefund(
+                new PaymentRefundRequest(
+                        30L, 31L, PaymentMethod.BANK_TRANSFER, new BigDecimal("100000.00"), "CK-HOAN", null),
+                9L);
+
+        assertThat(response.direction()).isEqualTo(PayDirection.REFUND);
+        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.REFUNDED);
+        assertThat(source.getRawPayload()).containsEntry("needsRefund", false);
+        verify(orderEventRepository).save(any());
+        verify(auditLogService).record(eq(9L), eq("refund"), eq("payment"), any(), any());
+    }
+
+    @Test
+    void recordRefund_amountAboveNet_returns409() {
+        SalesOrder order = order(32L, OrderState.CONFIRMED, PaymentStatus.PAID, "100000.00");
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(salesOrderRepository.findWithDetailsById(32L)).thenReturn(Optional.of(order));
+        when(paymentRepository.sumSuccessfulInByOrderId(32L)).thenReturn(new BigDecimal("100000.00"));
+        when(paymentRepository.sumSuccessfulRefundByOrderId(32L)).thenReturn(new BigDecimal("40000.00"));
+
+        assertThatThrownBy(() -> service.recordRefund(
+                        new PaymentRefundRequest(
+                                32L, null, PaymentMethod.CASH, new BigDecimal("70000.00"), null, null),
+                        9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(api.getMessage()).contains("vượt quá");
+                });
+    }
+
+    @Test
+    void recordRefund_cancelledOrder_stillAllowed() {
+        SalesOrder order = order(33L, OrderState.CANCELLED, PaymentStatus.PAID, "50000.00");
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(salesOrderRepository.findWithDetailsById(33L)).thenReturn(Optional.of(order));
+        when(paymentRepository.sumSuccessfulInByOrderId(33L)).thenReturn(new BigDecimal("50000.00"));
+        when(paymentRepository.sumSuccessfulRefundByOrderId(33L))
+                .thenReturn(ZERO)
+                .thenReturn(new BigDecimal("50000.00"));
+        when(paymentRepository.findCodesByPrefix("TT-")).thenReturn(List.of());
+        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(33L)).thenReturn(List.of());
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
+            Payment p = inv.getArgument(0);
+            setId(p, ids.incrementAndGet());
+            return p;
+        });
+        when(paymentRepository.findWithDetailsById(any())).thenAnswer(inv -> {
+            Payment refund = new Payment();
+            setId(refund, inv.getArgument(0));
+            refund.setCode("TT-R");
+            refund.setOrder(order);
+            refund.setCustomer(customer);
+            refund.setMethod(PaymentMethod.CASH);
+            refund.setDirection(PayDirection.REFUND);
+            refund.setAmount(new BigDecimal("50000.00"));
+            refund.setStatus(PayTxnStatus.SUCCESS);
+            refund.setPaidAt(Instant.now(clock));
+            return Optional.of(refund);
+        });
+
+        PaymentListItemResponse response = service.recordRefund(
+                new PaymentRefundRequest(33L, null, PaymentMethod.CASH, new BigDecimal("50000.00"), null, "hoàn sau hủy"),
+                9L);
+
+        assertThat(response.direction()).isEqualTo(PayDirection.REFUND);
+        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.REFUNDED);
+        assertThat(order.getState()).isEqualTo(OrderState.CANCELLED);
+    }
+
+    @Test
+    void recordRefund_rejectsPayosMethod() {
+        assertThatThrownBy(() -> service.recordRefund(
+                        new PaymentRefundRequest(
+                                34L, null, PaymentMethod.PAYOS, new BigDecimal("10000.00"), null, null),
+                        9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
 
     private Payment paymentRow(long id, SalesOrder order, PaymentReconcileFlag flag) {
         Payment payment = new Payment();

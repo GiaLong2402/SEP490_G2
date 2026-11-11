@@ -87,3 +87,66 @@ mock('PATCH', '/payments/:id/reconcile', ({ params, body, userId }) => {
   audit(userId, 'reconcile', 'payment', id, { reconcileFlag: flag });
   return toItem(row);
 });
+
+const netPaidForOrder = (orderId: number) =>
+  db.payments
+    .filter((p) => p.orderId === orderId && p.status === 'success')
+    .reduce((s, p) => s + (p.direction === 'in' ? p.amount : -p.amount), 0);
+
+mock('POST', '/payments/refund', ({ body, userId }) => {
+  const amount = Number(body.amount);
+  if (!(amount > 0)) fail(400, 'Số tiền phải lớn hơn 0');
+  if (!['cash', 'bank_transfer'].includes(body.method)) {
+    fail(400, 'Phương thức hoàn chỉ hỗ trợ tiền mặt hoặc chuyển khoản');
+  }
+  const order = db.orders.find((o) => o.id === body.orderId);
+  if (!order) fail(404, 'Không tìm thấy đơn hàng');
+
+  let source = body.sourcePaymentId != null ? db.payments.find((p) => p.id === body.sourcePaymentId) : undefined;
+  if (body.sourcePaymentId != null && !source) fail(404, 'Không tìm thấy giao dịch nguồn');
+  if (source && source.orderId !== order.id) fail(400, 'Giao dịch nguồn không thuộc đơn hàng');
+  if (source && source.direction !== 'in') fail(400, 'Giao dịch nguồn phải là phiếu thu');
+
+  const net = netPaidForOrder(order.id);
+  if (!(net > 0)) fail(409, 'Đơn không còn số tiền đã thu để hoàn');
+  if (amount > net) fail(409, 'Số tiền hoàn vượt quá phần đã thu còn lại');
+
+  const id = nextId(db.payments);
+  const row = {
+    id,
+    code: nextCode('TT', db.payments),
+    orderId: order.id,
+    customerId: order.customerId ?? source?.customerId ?? null,
+    method: body.method,
+    direction: 'refund' as const,
+    amount,
+    status: 'success' as const,
+    reference: body.reference,
+    gateway: body.method === 'cash' ? 'cash' : 'bank',
+    payosOrderCode: null,
+    checkoutUrl: null,
+    paidAt: new Date().toISOString(),
+    receivedBy: userId,
+    note: body.note,
+    reconcileFlag: 'none' as const,
+    needsRefund: false,
+  };
+  db.payments.push(row);
+
+  const clearFlag = (p: (typeof db.payments)[number]) => {
+    if (p.needsRefund) p.needsRefund = false;
+  };
+  if (source) clearFlag(source);
+  else {
+    db.payments
+      .filter((p) => p.orderId === order.id && p.direction === 'in' && p.status === 'success' && p.needsRefund)
+      .forEach(clearFlag);
+  }
+
+  const remaining = netPaidForOrder(order.id);
+  order.paymentStatus = remaining <= 0 ? 'refunded' : remaining >= order.total ? 'paid' : 'partial';
+  order.updatedAt = row.paidAt;
+  addOrderEvent(order.id, 'refund', `Hoàn ${amount.toLocaleString('vi-VN')} ₫ (${row.code})`, userId);
+  audit(userId, 'refund', 'payment', id, { amount, direction: 'refund', sourcePaymentId: source?.id ?? null });
+  return toItem(row);
+});
