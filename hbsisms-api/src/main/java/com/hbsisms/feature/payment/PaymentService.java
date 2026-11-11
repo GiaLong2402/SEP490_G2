@@ -11,6 +11,7 @@ import com.hbsisms.feature.payment.dto.PaymentListItemResponse;
 import com.hbsisms.feature.sales.OrderEvent;
 import com.hbsisms.feature.sales.OrderEventRepository;
 import com.hbsisms.feature.sales.OrderState;
+import com.hbsisms.feature.sales.SaleChannel;
 import com.hbsisms.feature.sales.SalesOrder;
 import com.hbsisms.feature.sales.SalesOrderRepository;
 import com.hbsisms.feature.system.AuditLogService;
@@ -64,12 +65,44 @@ public class PaymentService {
 
     @Transactional(readOnly = true)
     public PageResponse<PaymentListItemResponse> search(
-            String q, String method, String direction, int page, int pageSize) {
+            String q,
+            String method,
+            String direction,
+            String status,
+            String channel,
+            Long orderId,
+            String reconcileFlag,
+            int page,
+            int pageSize) {
         return PageResponse.from(paymentRepository
                 .findAll(
-                        PaymentSpecifications.search(q, parseMethod(method), parseDirection(direction)),
+                        PaymentSpecifications.search(
+                                q,
+                                parseMethod(method),
+                                parseDirection(direction),
+                                parseStatus(status),
+                                parseChannel(channel),
+                                orderId,
+                                parseReconcileFlagOptional(reconcileFlag)),
                         PageRequests.of(page, pageSize, LIST_SORT))
                 .map(PaymentListItemResponse::from));
+    }
+
+    @Transactional
+    public PaymentListItemResponse markReconcile(Long paymentId, String flagRaw, Long actorId) {
+        Payment payment = paymentRepository
+                .findWithDetailsById(paymentId)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy giao dịch"));
+        PaymentReconcileFlag flag = parseReconcileFlagRequired(flagRaw);
+        payment.setReconcileFlag(flag);
+        paymentRepository.save(payment);
+
+        Map<String, Object> audit = new HashMap<>();
+        audit.put("reconcileFlag", flag.code());
+        auditLogService.record(actorId, "reconcile", "payment", payment.getId(), audit);
+
+        return PaymentListItemResponse.from(
+                paymentRepository.findWithDetailsById(payment.getId()).orElse(payment));
     }
 
     @Transactional
@@ -122,6 +155,7 @@ public class PaymentService {
         payment.setDirection(PayDirection.IN);
         payment.setAmount(amount);
         payment.setStatus(PayTxnStatus.SUCCESS);
+        payment.setReconcileFlag(PaymentReconcileFlag.NONE);
         payment.setReference(Strings.trimToNull(request.reference()));
         payment.setGateway(gatewayOf(request.method()));
         payment.setPaidAt(now);
@@ -235,6 +269,46 @@ public class PaymentService {
             case "refund" -> PayDirection.REFUND;
             default -> throw ApiException.badRequest("Hướng giao dịch không hợp lệ: " + raw);
         };
+    }
+
+    private static PayTxnStatus parseStatus(String raw) {
+        String value = Strings.trimToNull(raw);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return PayTxnStatus.valueOf(value.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw ApiException.badRequest("Trạng thái giao dịch không hợp lệ: " + raw);
+        }
+    }
+
+    private static SaleChannel parseChannel(String raw) {
+        String value = Strings.trimToNull(raw);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return SaleChannel.fromCode(value);
+        } catch (IllegalArgumentException ex) {
+            throw ApiException.badRequest(ex.getMessage());
+        }
+    }
+
+    private static PaymentReconcileFlag parseReconcileFlagOptional(String raw) {
+        String value = Strings.trimToNull(raw);
+        if (value == null) {
+            return null;
+        }
+        return parseReconcileFlagRequired(value);
+    }
+
+    private static PaymentReconcileFlag parseReconcileFlagRequired(String raw) {
+        try {
+            return PaymentReconcileFlag.fromCode(raw);
+        } catch (IllegalArgumentException ex) {
+            throw ApiException.badRequest(ex.getMessage());
+        }
     }
 
     private static BigDecimal money(BigDecimal value) {

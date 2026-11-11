@@ -259,6 +259,7 @@ function seed(): MockDb {
     payments.push({
       id, code: `TT-${pad(id, 4)}`, orderId, customerId, method, direction: 'in', amount, status: 'success', reference: method === 'bank_transfer' ? `CK${100000 + id}` : null,
       gateway: method === 'payos' ? 'payos' : method === 'cash' ? 'cash' : 'bank', payosOrderCode: method === 'payos' ? 900000 + id : null, checkoutUrl: null, paidAt: at, receivedBy: 3, note: null,
+      reconcileFlag: 'none', needsRefund: false,
     });
     return id;
   };
