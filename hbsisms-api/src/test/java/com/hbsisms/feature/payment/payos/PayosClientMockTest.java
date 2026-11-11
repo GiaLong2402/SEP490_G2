@@ -101,6 +101,36 @@ class PayosClientMockTest {
         server.verify();
     }
 
+    @Test
+    void cancelPaymentRequest_returnsTrueOnCode00() {
+        server.expect(requestTo("https://api-merchant.payos.vn/v2/payment-requests/plink/cancel"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header(PayosConfig.HEADER_CLIENT_ID, "client-id"))
+                .andExpect(header(PayosConfig.HEADER_API_KEY, "api-key"))
+                .andRespond(withSuccess(
+                        """
+                        {"code":"00","desc":"success","data":{"status":"CANCELLED"}}
+                        """,
+                        MediaType.APPLICATION_JSON));
+
+        assertThat(client.cancelPaymentRequest("plink", "Hết hạn thanh toán")).isTrue();
+        server.verify();
+    }
+
+    @Test
+    void cancelPaymentRequest_non00_returnsFalse() {
+        server.expect(requestTo("https://api-merchant.payos.vn/v2/payment-requests/42/cancel"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess(
+                        """
+                        {"code":"231","desc":"already cancelled","data":null}
+                        """,
+                        MediaType.APPLICATION_JSON));
+
+        assertThat(client.cancelPaymentRequest("42", "reason")).isFalse();
+        server.verify();
+    }
+
     /** Avoid Instant import noise in expect — epoch only. */
     private static final class InstantEpoch {
         static long nowPlus15() {
