@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { CheckCircle2, CreditCard, RotateCcw, Truck, XCircle } from 'lucide-react';
+import { CheckCircle2, CreditCard, Pencil, Printer, RotateCcw, Truck, XCircle } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/features/auth';
 import { DeliveryFormModal, DeliveryStateActions } from '@/features/deliveries';
 import { PaymentFormModal } from '@/features/payments';
+import { ReceiptDialog } from '@/features/pos/components/ReceiptDialog';
+import type { Receipt } from '@/features/pos/types';
 import { useAction } from '@/shared/api/useAction';
 import { allocationStatusMeta, deliveryStateMeta, fulfillmentLabels, orderStateMeta, payDirectionLabels, paymentMethodLabels, paymentStatusMeta, priceBasisMeta, saleChannelLabels, sellUnitLabels, type OrderState } from '@/shared/domain/enums';
 import { date, dateTime, money, num } from '@/shared/lib/format';
@@ -23,10 +25,12 @@ export default function OrderDetailPage() {
   const [cancelling, setCancelling] = useState(false);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [receipt, setReceipt] = useState<Receipt | null>(null);
 
   const transition = useAction((state: OrderState) => ordersApi.transition(id, state), { success: 'Đã cập nhật trạng thái đơn' });
   const cancel = useAction((reason: string) => ordersApi.cancel(id, reason), { success: 'Đã hủy đơn, hàng giữ đã được nhả', onDone: () => setCancelling(false) });
   const completeCounter = useAction(() => ordersApi.completeAtCounter(id), { success: 'Đã hoàn tất bàn giao tại quầy' });
+  const printReceipt = useAction(() => ordersApi.receipt(id), { success: 'Đã tải biên lai', onDone: (r) => setReceipt(r) });
 
   if (isLoading) return <PageLoading />;
   if (error || !order) return <ErrorState error={error} onRetry={refetch} />;
@@ -44,6 +48,8 @@ export default function OrderDetailPage() {
     && order.state !== 'cancelled'
     && order.state !== 'pending'
     && (order.paymentStatus === 'paid' || order.paymentStatus === 'debt');
+  const canEdit = ['pending', 'confirmed'].includes(order.state) && !['paid', 'partial'].includes(order.paymentStatus);
+  const canPrintReceipt = order.paymentStatus === 'paid' || order.paymentStatus === 'debt';
 
   const lineColumns: Column<OrderLineView>[] = [
     { key: 'product', header: 'Sản phẩm', cell: (l) => <div><div className="font-medium">{l.productName}</div><div className="num text-ink-faint">{l.sku} · {l.packLabel}</div></div> },
@@ -77,6 +83,12 @@ export default function OrderDetailPage() {
         }
         actions={
           <>
+            {canEdit && <LinkButton to={`/orders/${order.id}/edit`} icon={<Pencil size={14} />}>Sửa</LinkButton>}
+            {canPrintReceipt && (
+              <Button icon={<Printer size={14} />} loading={printReceipt.isPending} onClick={() => printReceipt.mutate()}>
+                In biên lai
+              </Button>
+            )}
             {order.canCancel && <Button variant="danger" icon={<XCircle size={14} />} onClick={() => setCancelling(true)}>Hủy đơn</Button>}
             {canReturn && <LinkButton to={`/returns?orderId=${order.id}`} icon={<RotateCcw size={14} />}>Trả hàng</LinkButton>}
             {canPay && <Button icon={<CreditCard size={14} />} onClick={() => setPaymentOpen(true)}>Ghi nhận thanh toán</Button>}
@@ -172,7 +184,8 @@ export default function OrderDetailPage() {
 
       <ConfirmDialog open={cancelling} danger title={`Hủy đơn ${order.code}?`} message="Hàng đang giữ sẽ được nhả và khoản công nợ của đơn sẽ được hoàn lại." withNote noteRequired noteLabel="Lý do hủy" confirmLabel="Hủy đơn" loading={cancel.isPending} onConfirm={(reason) => cancel.mutate(reason)} onClose={() => setCancelling(false)} />
       <DeliveryFormModal open={deliveryOpen} onClose={() => setDeliveryOpen(false)} order={{ id: order.id, code: order.code, fulfillmentMethod: order.fulfillmentMethod, shipAddressId: order.shipAddressId, inRadius: order.address?.inDeliveryRadius ?? false, distanceKm: order.address?.distanceKm ?? null, legCount: order.deliveries.filter((d) => d.state !== 'failed').length, lines: order.lines.map((l) => ({ id: l.id, label: `${l.productName} · ${l.packLabel}`, qtyKhay: l.qtyKhay })), deliveries: order.deliveries }} />
-      <PaymentFormModal open={paymentOpen} onClose={() => setPaymentOpen(false)} customerId={order.customerId} customerName={order.customerName} order={{ id: order.id, code: order.code, outstanding }} defaultMethod={order.paymentMethod === 'credit_net' ? 'bank_transfer' : order.paymentMethod} />
+      <PaymentFormModal open={paymentOpen} onClose={() => setPaymentOpen(false)} customerId={order.customerId} customerName={order.customerName} order={{ id: order.id, code: order.code, outstanding }} defaultMethod={order.paymentMethod === 'cash' || order.paymentMethod === 'bank_transfer' ? order.paymentMethod : 'bank_transfer'} />
+      <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} />
     </>
   );
 }

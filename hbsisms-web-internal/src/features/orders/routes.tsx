@@ -8,5 +8,6 @@ const OrderDetailPage = lazy(() => import('./pages/OrderDetailPage'));
 export const orderRoutes: FeatureRoute[] = [
   { path: 'orders', element: <OrdersPage />, permission: 'orders' },
   { path: 'orders/new', element: <OrderFormPage />, permission: 'orders' },
+  { path: 'orders/:id/edit', element: <OrderFormPage />, permission: 'orders' },
   { path: 'orders/:id', element: <OrderDetailPage />, permission: 'orders' },
 ];

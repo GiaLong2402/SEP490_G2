@@ -2,9 +2,12 @@ package com.hbsisms.feature.sales;
 
 import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
+import com.hbsisms.feature.sales.dto.OrderCancelRequest;
 import com.hbsisms.feature.sales.dto.OrderDetailResponse;
 import com.hbsisms.feature.sales.dto.OrderInputRequest;
 import com.hbsisms.feature.sales.dto.OrderListItemResponse;
+import com.hbsisms.feature.sales.dto.OrderReceiptResponse;
+import com.hbsisms.feature.sales.dto.OrderTransitionRequest;
 import com.hbsisms.security.AuthUser;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -13,6 +16,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -20,8 +24,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Orders API (Doanh Inter 2 Phase 2): list / detail / create.
- * Transition + cancel → Phase 3.
+ * Orders API (Doanh Inter 2): list / detail / create / update / transition / cancel / receipt.
  */
 @RestController
 @RequestMapping("/orders")
@@ -58,6 +61,38 @@ public class OrderController {
     public OrderDetailResponse create(
             @Valid @RequestBody OrderInputRequest request, @AuthenticationPrincipal AuthUser actor) {
         return salesOrderService.create(request, actor == null ? null : actor.id());
+    }
+
+    @PutMapping("/{id}")
+    public OrderDetailResponse update(
+            @PathVariable Long id,
+            @Valid @RequestBody OrderInputRequest request,
+            @AuthenticationPrincipal AuthUser actor) {
+        return salesOrderService.update(id, request, actor == null ? null : actor.id());
+    }
+
+    @GetMapping("/{id}/receipt")
+    public OrderReceiptResponse receipt(
+            @PathVariable Long id, @AuthenticationPrincipal AuthUser actor) {
+        return salesOrderService.receipt(id, actor == null ? null : actor.id());
+    }
+
+    @PostMapping("/{id}/transition")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void transition(
+            @PathVariable Long id,
+            @Valid @RequestBody OrderTransitionRequest request,
+            @AuthenticationPrincipal AuthUser actor) {
+        salesOrderService.transition(id, request.state(), actor == null ? null : actor.id());
+    }
+
+    @PostMapping("/{id}/cancel")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void cancel(
+            @PathVariable Long id,
+            @Valid @RequestBody OrderCancelRequest request,
+            @AuthenticationPrincipal AuthUser actor) {
+        salesOrderService.cancel(id, request.reason(), actor == null ? null : actor.id());
     }
 
     /** Hoàn tất bàn giao tại quầy — OUT đúng lô HOLD, idempotent. */

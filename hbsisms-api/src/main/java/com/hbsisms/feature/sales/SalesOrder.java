@@ -158,6 +158,12 @@ public class SalesOrder extends AuditableEntity {
         line.setOrder(null);
     }
 
+    public void clearLines() {
+        for (SalesOrderLine line : new ArrayList<>(lines)) {
+            removeLine(line);
+        }
+    }
+
     @PrePersist
     void defaultPlacedAt() {
         if (placedAt == null) {
