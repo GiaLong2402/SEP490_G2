@@ -42,6 +42,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/products", "/products/**").permitAll()
                         // B2C guest cart (session header); does not hold stock.
                         .requestMatchers("/carts", "/carts/**").permitAll()
+                        // PayOS payment webhook (Excel #34) — verified by HMAC, not JWT.
+                        .requestMatchers(HttpMethod.POST, "/payments/payos/webhook").permitAll()
                         .requestMatchers("/actuator/health", "/error").permitAll()
                         // Only served when SWAGGER_ENABLED=true (see application.yml).
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
