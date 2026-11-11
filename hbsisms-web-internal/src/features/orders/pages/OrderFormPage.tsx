@@ -73,7 +73,7 @@ export default function OrderFormPage() {
   const pricing = usePricing({ customerId, paymentMethod, shippingFee: Number(shippingFee) || 0, discountTotal: Number(discount) || 0, lines: toPricingLines(lines.filter(isCompleteLine)) });
   const linesValid = lines.every(isCompleteLine);
   const needsAddress = fulfillment !== 'pickup';
-  const shortage = pricing.data?.lines.some((l) => l.qtyKhay > l.available);
+  const shortage = pricing.data?.lines.some((l) => l.shortfall > 0);
 
   const body = () => ({
     customerId: customerId!,

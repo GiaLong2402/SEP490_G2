@@ -37,7 +37,7 @@ export function LineItemsEditor({ lines, onChange, variants, priced, showStock =
   return (
     <div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[920px] text-small">
+        <table className="w-full min-w-[980px] text-small">
           <thead>
             <tr className="bg-thead text-left text-micro font-semibold uppercase tracking-wide text-ink-muted">
               <th className="h-[34px] min-w-[240px] px-3">Sản phẩm · quy cách</th>
@@ -45,6 +45,7 @@ export function LineItemsEditor({ lines, onChange, variants, priced, showStock =
               <th className="w-[76px] px-2">Số lượng</th>
               <th className="w-[56px] px-2 text-right">Khay</th>
               {showStock && <th className="w-[72px] px-2 text-right">Khả dụng</th>}
+              {showStock && <th className="w-[64px] px-2 text-right">Thiếu</th>}
               <th className="w-[112px] px-2 text-right">Đơn giá</th>
               <th className="w-[104px] px-2">Nguồn giá</th>
               <th className="w-[112px] px-2 text-right">Thành tiền</th>
@@ -56,7 +57,7 @@ export function LineItemsEditor({ lines, onChange, variants, priced, showStock =
               // Bỏ qua kết quả cũ còn giữ lại trong lúc chờ máy chủ tính giá mới.
               const candidate = priced?.[complete.indexOf(line)];
               const row = candidate && candidate.variantId === line.variantId && candidate.unit === line.unit && candidate.qty === Number(line.qty) ? candidate : undefined;
-              const short = showStock && row && row.qtyKhay > row.available;
+              const short = showStock && row && row.shortfall > 0;
               const qtyInvalid = line.qty !== '' && (!Number.isInteger(Number(line.qty)) || Number(line.qty) <= 0);
               return (
                 <tr key={line.key} className="border-t border-line align-middle">
@@ -80,6 +81,7 @@ export function LineItemsEditor({ lines, onChange, variants, priced, showStock =
                   </td>
                   <td className="num px-2 text-right">{row ? num(row.qtyKhay) : '—'}</td>
                   {showStock && <td className={`num px-2 text-right ${short ? 'font-semibold text-red-fg' : ''}`}>{row ? num(row.available) : '—'}</td>}
+                  {showStock && <td className={`num px-2 text-right ${short ? 'font-semibold text-red-fg' : ''}`}>{row ? num(row.shortfall) : '—'}</td>}
                   <td className="px-2">
                     <Input
                       aria-label={`Đơn giá dòng ${index + 1}, để trống để dùng giá hệ thống`}
