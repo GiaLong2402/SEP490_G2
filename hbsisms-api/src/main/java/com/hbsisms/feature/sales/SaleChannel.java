@@ -10,6 +10,7 @@ public enum SaleChannel {
     WEB,
     PHONE,
     ZALO,
+    FACEBOOK,
     COUNTER,
     APP;
 
@@ -24,9 +25,8 @@ public enum SaleChannel {
             throw new IllegalArgumentException("Kênh bán không hợp lệ");
         }
         String normalized = code.trim().toLowerCase(Locale.ROOT);
-        // Tracking Inter 2 có FB — map về Zalo nếu FE/BE chưa có enum riêng.
-        if ("fb".equals(normalized) || "facebook".equals(normalized)) {
-            return ZALO;
+        if ("fb".equals(normalized)) {
+            return FACEBOOK;
         }
         return Arrays.stream(values())
                 .filter(channel -> channel.code().equals(normalized))

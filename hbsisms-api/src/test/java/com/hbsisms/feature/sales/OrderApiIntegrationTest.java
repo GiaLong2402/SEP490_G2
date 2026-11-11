@@ -55,6 +55,8 @@ class OrderApiIntegrationTest {
     private CustomerRepository customerRepository;
     @Autowired
     private ProductVariantRepository productVariantRepository;
+    @Autowired
+    private SalesOrderRepository salesOrderRepository;
 
     @Value("${app.seed.admin-password}")
     private String adminPassword;
@@ -200,6 +202,56 @@ class OrderApiIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, bearer(salesToken))
                         .content(objectMapper.writeValueAsString(orderBody(1))))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void list_filtersByAllocationStatus_fullExcludesIncoming() throws Exception {
+        MvcResult fullCreated = mockMvc.perform(post("/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(salesToken))
+                        .content(objectMapper.writeValueAsString(orderBody(1))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        MvcResult incomingCreated = mockMvc.perform(post("/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(salesToken))
+                        .content(objectMapper.writeValueAsString(orderBody(1))))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        JsonNode fullNode = objectMapper.readTree(fullCreated.getResponse().getContentAsString());
+        JsonNode incomingNode = objectMapper.readTree(incomingCreated.getResponse().getContentAsString());
+        long fullId = fullNode.get("id").asLong();
+        long incomingId = incomingNode.get("id").asLong();
+        String fullCode = fullNode.get("code").asText();
+        String incomingCode = incomingNode.get("code").asText();
+
+        SalesOrder fullOrder = salesOrderRepository.findById(fullId).orElseThrow();
+        fullOrder.setAllocationStatus(AllocationStatus.FULL);
+        salesOrderRepository.save(fullOrder);
+
+        SalesOrder incomingOrder = salesOrderRepository.findById(incomingId).orElseThrow();
+        incomingOrder.setAllocationStatus(AllocationStatus.INCOMING);
+        salesOrderRepository.save(incomingOrder);
+
+        MvcResult listed = mockMvc.perform(get("/orders")
+                        .param("allocationStatus", "full")
+                        .param("pageSize", "100")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(salesToken)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode items = objectMapper.readTree(listed.getResponse().getContentAsString()).get("items");
+        assertThat(items.isArray()).isTrue();
+        boolean sawFull = false;
+        for (JsonNode item : items) {
+            assertThat(item.get("allocationStatus").asText()).isEqualTo("full");
+            assertThat(item.get("code").asText()).isNotEqualTo(incomingCode);
+            if (fullCode.equals(item.get("code").asText())) {
+                sawFull = true;
+            }
+        }
+        assertThat(sawFull).isTrue();
     }
 
     private Map<String, Object> orderBody(int qty) {

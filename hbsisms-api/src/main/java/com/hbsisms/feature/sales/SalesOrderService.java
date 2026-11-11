@@ -429,8 +429,8 @@ public class SalesOrderService {
     }
 
     /**
-     * Snapshot biên lai — chỉ khi đã thu đủ hoặc công nợ đã ghi ({@code paid}/{@code debt}).
-     * Mỗi lần gọi ghi audit {@code print_receipt}.
+     * Snapshot biên lai bán hàng (không phải hóa đơn điện tử).
+     * Chỉ khi đã thanh toán đủ ({@code paid}). Mỗi lần gọi ghi audit {@code print_receipt}.
      */
     @Transactional
     public OrderReceiptResponse receipt(Long orderId, Long actorId) {
@@ -539,6 +539,7 @@ public class SalesOrderService {
         cancelOrderInternal(order, why, actor, true);
         Map<String, Object> detail = new HashMap<>();
         detail.put("reason", why);
+        detail.put("paymentStatus", order.getPaymentStatus().code());
         auditLogService.record(actorId, "cancel", REF_TYPE, order.getId(), detail);
     }
 
@@ -581,7 +582,9 @@ public class SalesOrderService {
         }
 
         order.setState(OrderState.CANCELLED);
-        if (!hadPaid) {
+        if (hadPaid) {
+            order.setPaymentStatus(PaymentStatus.REFUND_PENDING);
+        } else {
             order.setPaymentStatus(PaymentStatus.UNPAID);
         }
         order.setHoldExpiresAt(null);
@@ -618,6 +621,32 @@ public class SalesOrderService {
         if (order.getAllocationStatus() != AllocationStatus.FULL) {
             throw ApiException.conflict("Chưa phân bổ đủ hàng — không thể chuẩn bị");
         }
+    }
+
+    /**
+     * State machine bước kế tiếp cho FE. {@link OrderState#PREPARING} chỉ hiện khi
+     * đã {@code PAID} và phân bổ {@code FULL} — khớp AC vòng đời.
+     */
+    private static List<OrderState> allowedNextStates(SalesOrder order) {
+        if (order.isOverLimit() && order.getApprovedBy() == null) {
+            return List.of();
+        }
+        List<OrderState> raw = MANUAL_NEXT.getOrDefault(order.getState(), List.of());
+        if (raw.isEmpty()) {
+            return List.of();
+        }
+        List<OrderState> next = new ArrayList<>(raw.size());
+        for (OrderState state : raw) {
+            if (state == OrderState.PREPARING) {
+                if (order.getPaymentStatus() == PaymentStatus.PAID
+                        && order.getAllocationStatus() == AllocationStatus.FULL) {
+                    next.add(state);
+                }
+            } else {
+                next.add(state);
+            }
+        }
+        return List.copyOf(next);
     }
 
     private void rejectCreditNet(PaymentMethod method) {
@@ -887,10 +916,7 @@ public class SalesOrderService {
                 .map(OrderEventViewResponse::from)
                 .toList();
 
-        boolean blockedByLimit = order.isOverLimit() && order.getApprovedBy() == null;
-        List<OrderState> nextStates = blockedByLimit
-                ? List.of()
-                : MANUAL_NEXT.getOrDefault(order.getState(), List.of());
+        List<OrderState> nextStates = allowedNextStates(order);
 
         boolean canCancel = !hasDelivered
                 && order.getState() != OrderState.DELIVERED

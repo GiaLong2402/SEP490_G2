@@ -5,7 +5,8 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Snapshot biên lai bán hàng. Matches FE {@code Receipt} (POS).
+ * Snapshot biên lai bán hàng (trang in) — không phải hóa đơn điện tử.
+ * Matches FE {@code Receipt}.
  */
 public record OrderReceiptResponse(
         Long orderId,

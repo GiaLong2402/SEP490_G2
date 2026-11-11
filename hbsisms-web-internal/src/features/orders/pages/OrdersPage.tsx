@@ -3,12 +3,12 @@ import { Link } from 'react-router-dom';
 import { useCustomerOptions } from '@/features/customers';
 import { allocationStatusMeta, orderStateMeta, orderTypeLabels, paymentStatusMeta, saleChannelLabels } from '@/shared/domain/enums';
 import { dateTime, money } from '@/shared/lib/format';
-import { Card, Chip, DataTable, FilterBar, FilterSelect, Input, LinkButton, PageHeader, Pagination, SearchBox, StatusChip, enumOptions, useListParams, type Column } from '@/shared/ui';
+import { Button, Card, DataTable, FilterBar, FilterSelect, Input, LinkButton, PageHeader, Pagination, SearchBox, StatusChip, enumOptions, useListParams, type Column } from '@/shared/ui';
 import { useOrders } from '../hooks';
 import type { OrderListItem } from '../types';
 
 export default function OrdersPage() {
-  const list = useListParams([
+  const filterKeys = [
     'state',
     'orderType',
     'paymentStatus',
@@ -17,20 +17,25 @@ export default function OrdersPage() {
     'customerId',
     'placedFrom',
     'placedTo',
-  ] as const);
+  ] as const;
+  const list = useListParams(filterKeys);
   const customers = useCustomerOptions();
-  const { data, isLoading, error, refetch } = useOrders({
+  const { data, isLoading, isFetching, error, refetch } = useOrders({
     q: list.q,
     page: list.page,
-    state: list.filters.state,
-    orderType: list.filters.orderType,
-    paymentStatus: list.filters.paymentStatus,
-    channel: list.filters.channel,
-    allocationStatus: list.filters.allocationStatus,
+    state: list.filters.state || undefined,
+    orderType: list.filters.orderType || undefined,
+    paymentStatus: list.filters.paymentStatus || undefined,
+    channel: list.filters.channel || undefined,
+    allocationStatus: list.filters.allocationStatus || undefined,
     customerId: list.filters.customerId || undefined,
     placedFrom: list.filters.placedFrom || undefined,
     placedTo: list.filters.placedTo || undefined,
   });
+
+  const hasFilters =
+    !!list.q
+    || filterKeys.some((key) => !!list.filters[key]);
 
   const columns: Column<OrderListItem>[] = [
     { key: 'code', header: 'Mã đơn', cell: (o) => <Link to={`/orders/${o.id}`} className="num whitespace-nowrap text-primary hover:underline">{o.code}</Link> },
@@ -48,7 +53,7 @@ export default function OrdersPage() {
     { key: 'placed', header: 'Ngày đặt', hideOnMobile: true, cell: (o) => <span className="whitespace-nowrap">{dateTime(o.placedAt)}</span> },
     { key: 'total', header: 'Tổng tiền', align: 'right', cell: (o) => <span className="num whitespace-nowrap">{money(o.total)}</span> },
     { key: 'payment', header: 'Thanh toán', cell: (o) => <StatusChip meta={paymentStatusMeta} value={o.paymentStatus} /> },
-    { key: 'alloc', header: 'Giữ hàng', hideOnMobile: true, cell: (o) => (o.state === 'cancelled' ? <Chip>—</Chip> : <StatusChip meta={allocationStatusMeta} value={o.allocationStatus} />) },
+    { key: 'alloc', header: 'Giữ hàng', hideOnMobile: true, cell: (o) => <StatusChip meta={allocationStatusMeta} value={o.allocationStatus} /> },
     { key: 'state', header: 'Trạng thái', cell: (o) => <StatusChip meta={orderStateMeta} value={o.state} /> },
   ];
 
@@ -56,34 +61,60 @@ export default function OrdersPage() {
     <>
       <PageHeader title="Đơn hàng" subtitle="Đơn bán lẻ, B2B và online" actions={<LinkButton to="/orders/new" variant="primary" icon={<Plus size={15} />}>Tạo đơn</LinkButton>} />
       <Card flush>
-        <FilterBar>
+        <FilterBar
+          actions={
+            hasFilters ? (
+              <Button type="button" variant="ghost" onClick={list.clearFilters}>
+                Xóa bộ lọc
+              </Button>
+            ) : undefined
+          }
+        >
           <SearchBox value={list.q} onChange={list.setQ} placeholder="Tìm mã đơn, tên khách..." />
           <FilterSelect label="Trạng thái" value={list.filters.state} onChange={(v) => list.setFilter('state', v)}>{enumOptions(orderStateMeta)}</FilterSelect>
           <FilterSelect label="Loại đơn" value={list.filters.orderType} onChange={(v) => list.setFilter('orderType', v)}>{enumOptions(orderTypeLabels)}</FilterSelect>
           <FilterSelect label="Thanh toán" value={list.filters.paymentStatus} onChange={(v) => list.setFilter('paymentStatus', v)}>{enumOptions(paymentStatusMeta)}</FilterSelect>
           <FilterSelect label="Kênh" value={list.filters.channel} onChange={(v) => list.setFilter('channel', v)}>{enumOptions(saleChannelLabels)}</FilterSelect>
-          <FilterSelect label="Phân bổ" value={list.filters.allocationStatus} onChange={(v) => list.setFilter('allocationStatus', v)}>{enumOptions(allocationStatusMeta)}</FilterSelect>
+          <FilterSelect label="Giữ hàng" value={list.filters.allocationStatus} onChange={(v) => list.setFilter('allocationStatus', v)}>{enumOptions(allocationStatusMeta)}</FilterSelect>
           <FilterSelect label="Khách hàng" value={list.filters.customerId} onChange={(v) => list.setFilter('customerId', v)}>
             {customers.data?.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </FilterSelect>
-          <Input
-            aria-label="Từ ngày đặt"
-            type="date"
-            className="w-full sm:w-[160px]"
-            value={list.filters.placedFrom}
-            onChange={(e) => list.setFilter('placedFrom', e.target.value)}
-          />
-          <Input
-            aria-label="Đến ngày đặt"
-            type="date"
-            className="w-full sm:w-[160px]"
-            value={list.filters.placedTo}
-            onChange={(e) => list.setFilter('placedTo', e.target.value)}
-          />
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto" role="group" aria-label="Ngày đặt">
+            <span className="text-small text-ink-muted">Ngày đặt</span>
+            <label className="flex items-center gap-1.5 text-small text-ink-muted">
+              <span>Từ</span>
+              <Input
+                aria-label="Từ ngày đặt"
+                type="date"
+                className="w-[150px]"
+                value={list.filters.placedFrom}
+                onChange={(e) => list.setFilter('placedFrom', e.target.value)}
+              />
+            </label>
+            <label className="flex items-center gap-1.5 text-small text-ink-muted">
+              <span>Đến</span>
+              <Input
+                aria-label="Đến ngày đặt"
+                type="date"
+                className="w-[150px]"
+                value={list.filters.placedTo}
+                onChange={(e) => list.setFilter('placedTo', e.target.value)}
+              />
+            </label>
+          </div>
         </FilterBar>
-        <DataTable columns={columns} rows={data?.items} rowKey={(o) => o.id} loading={isLoading} error={error} onRetry={refetch} emptyText="Không có đơn hàng phù hợp" emptyAction={<LinkButton to="/orders/new">Tạo đơn đầu tiên</LinkButton>} />
+        <DataTable
+          columns={columns}
+          rows={data?.items}
+          rowKey={(o) => o.id}
+          loading={isLoading || isFetching}
+          error={error}
+          onRetry={refetch}
+          emptyText="Không có đơn hàng phù hợp"
+          emptyAction={<LinkButton to="/orders/new">Tạo đơn đầu tiên</LinkButton>}
+        />
         {data && <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onChange={list.setPage} />}
       </Card>
     </>

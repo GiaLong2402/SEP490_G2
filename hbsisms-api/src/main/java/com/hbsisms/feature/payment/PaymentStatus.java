@@ -13,6 +13,8 @@ public enum PaymentStatus {
     PARTIAL,
     DEBT,
     DIFF,
+    /** Đã hủy sau khi thu tiền — chờ hoàn. */
+    REFUND_PENDING,
     REFUNDED;
 
     @JsonValue

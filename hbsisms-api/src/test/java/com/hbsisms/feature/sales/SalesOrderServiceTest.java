@@ -321,6 +321,34 @@ class SalesOrderServiceTest {
     }
 
     @Test
+    void transition_preparingWhenNotFullyAllocated_returns409() {
+        SalesOrder order = baseOrder(13L, OrderState.CONFIRMED, PaymentStatus.PAID, AllocationStatus.HELD);
+        when(salesOrderRepository.findWithDetailsById(13L)).thenReturn(Optional.of(order));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        assertThatThrownBy(() -> service.transition(13L, OrderState.PREPARING, 9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(api.getMessage()).contains("phân bổ đủ");
+                });
+    }
+
+    @Test
+    void transition_preparingWhenPaidAndFull_succeeds() {
+        SalesOrder order = baseOrder(14L, OrderState.CONFIRMED, PaymentStatus.PAID, AllocationStatus.FULL);
+        when(salesOrderRepository.findWithDetailsById(14L)).thenReturn(Optional.of(order));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        service.transition(14L, OrderState.PREPARING, 9L);
+
+        assertThat(order.getState()).isEqualTo(OrderState.PREPARING);
+        verify(orderEventRepository).save(any(OrderEvent.class));
+        verify(salesOrderRepository).save(order);
+    }
+
+    @Test
     void cancel_releasesHold() {
         SalesOrder order = baseOrder(11L, OrderState.CONFIRMED, PaymentStatus.UNPAID, AllocationStatus.FULL);
         when(salesOrderRepository.findWithDetailsById(11L)).thenReturn(Optional.of(order));
@@ -332,8 +360,69 @@ class SalesOrderServiceTest {
         service.cancel(11L, "Khách đổi ý", 9L);
 
         assertThat(order.getState()).isEqualTo(OrderState.CANCELLED);
+        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.UNPAID);
         verify(orderAllocationService).releaseForOrder(eq(order), eq(9L), any());
         verify(auditLogService).record(eq(9L), eq("cancel"), eq("sales_order"), eq(11L), any());
+    }
+
+    @Test
+    void cancel_paidOrder_marksRefundPending() {
+        SalesOrder order = baseOrder(15L, OrderState.CONFIRMED, PaymentStatus.PAID, AllocationStatus.FULL);
+        when(salesOrderRepository.findWithDetailsById(15L)).thenReturn(Optional.of(order));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(deliveryRepository.findByOrder_IdOrderByIdAsc(15L)).thenReturn(List.of());
+        when(approvalTaskRepository.findByRefTypeAndRefIdAndStatus(any(), eq(15L), any()))
+                .thenReturn(Optional.empty());
+
+        service.cancel(15L, "Khách đổi ý sau khi trả tiền", 9L);
+
+        assertThat(order.getState()).isEqualTo(OrderState.CANCELLED);
+        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.REFUND_PENDING);
+        verify(orderAllocationService).releaseForOrder(eq(order), eq(9L), any());
+        verify(orderEventRepository).save(any(OrderEvent.class));
+        verify(auditLogService).record(eq(9L), eq("cancel"), eq("sales_order"), eq(15L), any());
+    }
+
+    @Test
+    void cancel_blankReason_returns400() {
+        assertThatThrownBy(() -> service.cancel(11L, "   ", 9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(api.getMessage()).contains("lý do hủy");
+                });
+    }
+
+    @Test
+    void receipt_unpaid_returns409() {
+        SalesOrder order = baseOrder(16L, OrderState.CONFIRMED, PaymentStatus.UNPAID, AllocationStatus.FULL);
+        when(salesOrderRepository.findWithDetailsById(16L)).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.receipt(16L, 9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(api.getMessage()).contains("thanh toán đủ");
+                });
+        verify(auditLogService, never()).record(any(), eq("print_receipt"), any(), any(), any());
+    }
+
+    @Test
+    void receipt_paid_returnsSnapshotAndAuditsReprint() {
+        SalesOrder order = baseOrder(17L, OrderState.CONFIRMED, PaymentStatus.PAID, AllocationStatus.FULL);
+        order.setCustomerName("Anh Minh");
+        order.setPlacedBy(actor);
+        when(salesOrderRepository.findWithDetailsById(17L)).thenReturn(Optional.of(order));
+
+        var receipt = service.receipt(17L, 9L);
+
+        assertThat(receipt.code()).isEqualTo("SO-17");
+        assertThat(receipt.customerName()).isEqualTo("Anh Minh");
+        assertThat(receipt.cashierName()).isEqualTo("NV Ban");
+        assertThat(receipt.total()).isEqualByComparingTo("100000.00");
+        verify(auditLogService).record(eq(9L), eq("print_receipt"), eq("sales_order"), eq(17L), any());
     }
 
     private SalesOrder baseOrder(long id, OrderState state, PaymentStatus pay, AllocationStatus alloc) {

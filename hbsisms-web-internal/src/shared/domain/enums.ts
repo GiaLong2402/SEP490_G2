@@ -14,8 +14,15 @@ export type AddressKind = 'shipping' | 'billing' | 'both';
 export type CustomerType = 'b2c' | 'b2b';
 export const customerTypeMeta: Meta<CustomerType> = { b2c: { label: 'B2C', tone: 'neutral' }, b2b: { label: 'B2B', tone: 'blue' } };
 
-export type SaleChannel = 'web' | 'phone' | 'zalo' | 'counter' | 'app';
-export const saleChannelLabels: Record<SaleChannel, string> = { web: 'Website', phone: 'Điện thoại', zalo: 'Zalo', counter: 'Tại quầy', app: 'Ứng dụng' };
+export type SaleChannel = 'web' | 'phone' | 'zalo' | 'facebook' | 'counter' | 'app';
+export const saleChannelLabels: Record<SaleChannel, string> = {
+  web: 'Website', phone: 'Điện thoại', zalo: 'Zalo', facebook: 'Facebook', counter: 'Tại quầy', app: 'Ứng dụng',
+};
+/** Kênh sale chọn tay khi tạo đơn / ghi yêu cầu — ẩn web/app (hệ thống tự gán). */
+export const staffSaleChannels: SaleChannel[] = ['phone', 'zalo', 'facebook', 'counter'];
+export const staffSaleChannelLabels: Record<string, string> = Object.fromEntries(
+  staffSaleChannels.map((c) => [c, saleChannelLabels[c]]),
+);
 
 export type RequestStatus = 'new' | 'quoting' | 'ordered' | 'rejected' | 'closed';
 export const requestStatusMeta: Meta<RequestStatus> = {
@@ -45,10 +52,11 @@ export const paymentMethodLabels: Record<PaymentMethod, string> = {
   cash: 'Tiền mặt', payos: 'PayOS', bank_transfer: 'Chuyển khoản', cod: 'COD', credit_net: 'Công nợ (NET)',
 };
 
-export type PaymentStatus = 'unpaid' | 'waiting' | 'paid' | 'partial' | 'debt' | 'diff' | 'refunded';
+export type PaymentStatus = 'unpaid' | 'waiting' | 'paid' | 'partial' | 'debt' | 'diff' | 'refund_pending' | 'refunded';
 export const paymentStatusMeta: Meta<PaymentStatus> = {
   unpaid: { label: 'Chưa thu', tone: 'neutral' }, waiting: { label: 'Chờ thanh toán', tone: 'amber' }, paid: { label: 'Đã thu', tone: 'green' },
-  partial: { label: 'Thu một phần', tone: 'amber' }, debt: { label: 'Công nợ', tone: 'blue' }, diff: { label: 'Lệch tiền', tone: 'red' }, refunded: { label: 'Đã hoàn', tone: 'neutral' },
+  partial: { label: 'Thu một phần', tone: 'amber' }, debt: { label: 'Công nợ', tone: 'blue' }, diff: { label: 'Lệch tiền', tone: 'red' },
+  refund_pending: { label: 'Chờ hoàn tiền', tone: 'amber' }, refunded: { label: 'Đã hoàn', tone: 'neutral' },
 };
 
 export type AllocationStatus = 'none' | 'incoming' | 'held' | 'full';

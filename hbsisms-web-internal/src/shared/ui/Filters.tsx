@@ -18,6 +18,18 @@ export function useListParams<K extends string = string>(filterKeys: readonly K[
       },
       { replace: true },
     );
+  const clearFilters = () =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('q');
+        next.delete('page');
+        for (const key of filterKeys) next.delete(key);
+        return next;
+      },
+      { replace: true },
+    );
+
   return {
     q: params.get('q') ?? '',
     page: Number(params.get('page') ?? 1),
@@ -25,6 +37,7 @@ export function useListParams<K extends string = string>(filterKeys: readonly K[
     setQ: (value: string) => set('q', value),
     setPage: (page: number) => set('page', page > 1 ? String(page) : ''),
     setFilter: (key: K, value: string) => set(key, value),
+    clearFilters,
   };
 }
 
