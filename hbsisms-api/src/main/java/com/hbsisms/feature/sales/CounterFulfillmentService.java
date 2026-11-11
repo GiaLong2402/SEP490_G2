@@ -54,8 +54,7 @@ public class CounterFulfillmentService {
             return salesOrderService.getDetail(orderId);
         }
 
-        if (order.getPaymentStatus() != PaymentStatus.PAID
-                && order.getPaymentStatus() != PaymentStatus.DEBT) {
+        if (order.getPaymentStatus() != PaymentStatus.PAID) {
             throw ApiException.conflict("Đơn chưa thu đủ — không thể hoàn tất tại quầy");
         }
 

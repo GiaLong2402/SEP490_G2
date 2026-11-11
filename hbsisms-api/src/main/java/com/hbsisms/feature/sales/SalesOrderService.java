@@ -12,7 +12,6 @@ import com.hbsisms.feature.customer.Customer;
 import com.hbsisms.feature.customer.CustomerAddress;
 import com.hbsisms.feature.customer.CustomerAddressRepository;
 import com.hbsisms.feature.customer.CustomerRepository;
-import com.hbsisms.feature.customer.CustomerType;
 import com.hbsisms.feature.customer.dto.AddressResponse;
 import com.hbsisms.feature.customer.pricing.PricingService;
 import com.hbsisms.feature.customer.pricing.dto.PricedLineResponse;
@@ -150,22 +149,29 @@ public class SalesOrderService {
 
     @Transactional
     public OrderDetailResponse create(OrderInputRequest request, Long actorId) {
-        Customer customer = customerRepository
-                .findById(request.customerId())
-                .orElseThrow(() -> ApiException.badRequest("Vui lòng chọn khách hàng"));
-        if (!customer.isActive()) {
-            throw ApiException.conflict("Khách hàng đã bị khóa, không thể tạo đơn");
-        }
-        if (request.paymentMethod() == PaymentMethod.CREDIT_NET
-                && customer.getCustomerType() != CustomerType.B2B) {
-            throw ApiException.badRequest("Chỉ khách B2B được mua công nợ");
-        }
+        return create(request, actorId, false);
+    }
+
+    /**
+     * @param allowOutstandingShortage {@code true} khi tạo từ yêu cầu đã khả thi — cho phép
+     *     ghi {@code outstandingQty}; đơn Sales thường phải giữ đủ hàng.
+     */
+    @Transactional
+    public OrderDetailResponse create(
+            OrderInputRequest request, Long actorId, boolean allowOutstandingShortage) {
+        rejectCreditNet(request.paymentMethod());
         if (request.lines() == null || request.lines().isEmpty()) {
             throw ApiException.badRequest("Đơn phải có ít nhất một dòng hàng");
         }
 
+        Customer customer = resolveCustomer(request.customerId());
+        String customerName = resolveCustomerName(customer, request.customerName());
+
         CustomerAddress shipAddress = null;
         if (request.shipAddressId() != null) {
+            if (customer == null) {
+                throw ApiException.badRequest("Khách vãng lai không gắn địa chỉ hồ sơ — chọn giao nhận phù hợp");
+            }
             shipAddress = customerAddressRepository
                     .findByIdAndCustomerId(request.shipAddressId(), customer.getId())
                     .orElseThrow(() -> ApiException.badRequest("Địa chỉ giao hàng không hợp lệ"));
@@ -178,7 +184,7 @@ public class SalesOrderService {
                         .orElseThrow(() -> ApiException.notFound("Không tìm thấy người dùng"));
 
         PricingResultResponse priced = pricingService.resolve(new PricingRequest(
-                customer.getId(),
+                customer == null ? null : customer.getId(),
                 request.paymentMethod().code(),
                 moneyOrZero(request.shippingFee()),
                 moneyOrZero(request.discountTotal()),
@@ -188,11 +194,11 @@ public class SalesOrderService {
         SalesOrder order = new SalesOrder();
         order.setCode(nextOrderCode());
         order.setCustomer(customer);
+        order.setCustomerName(customerName);
         order.setOrderType(request.orderType());
         order.setChannel(request.channel());
         order.setPaymentMethod(request.paymentMethod());
-        order.setPaymentTermDays(
-                request.paymentMethod() == PaymentMethod.CREDIT_NET ? customer.getNetDays() : 0);
+        order.setPaymentTermDays(0);
         order.setPaymentStatus(PaymentStatus.UNPAID);
         order.setAllocationStatus(AllocationStatus.NONE);
         order.setFulfillmentMethod(request.fulfillmentMethod());
@@ -203,8 +209,9 @@ public class SalesOrderService {
         order.setShippingFee(moneyOrZero(request.shippingFee()));
         order.setTotal(priced.total());
         order.setVoucherCode(Strings.trimToNull(request.voucherCode()));
-        order.setOverLimit(priced.isOverLimit());
-        order.setOverLimitAmount(priced.overLimitAmount());
+        // Không bán nợ → không còn vượt hạn mức công nợ trên đơn Sales mới.
+        order.setOverLimit(false);
+        order.setOverLimitAmount(ZERO);
         order.setPlacedBy(placedBy);
         order.setPlacedAt(now);
         order.setNote(Strings.trimToNull(request.note()));
@@ -228,13 +235,7 @@ public class SalesOrderService {
 
         salesOrderRepository.save(order);
         addEvent(order, "created", "Tạo đơn", placedBy);
-
-        if (order.isOverLimit()) {
-            createOverLimitApproval(order, customer, placedBy);
-            addEvent(order, "approval", "Đơn vượt hạn mức, chờ Chủ cửa hàng duyệt", placedBy);
-        } else {
-            confirmOrder(order, placedBy);
-        }
+        confirmOrder(order, placedBy, allowOutstandingShortage);
 
         Map<String, Object> auditDetail = new HashMap<>();
         auditDetail.put("total", order.getTotal());
@@ -262,7 +263,7 @@ public class SalesOrderService {
         if (approved) {
             order.setApprovedBy(actor);
             addEvent(order, "approved", "Chủ cửa hàng duyệt vượt hạn mức" + suffix, actor);
-            confirmOrder(order, actor);
+            confirmOrder(order, actor, false);
         } else {
             cancelOrderInternal(order, "Từ chối duyệt vượt hạn mức" + suffix, actor, false);
         }
@@ -286,22 +287,19 @@ public class SalesOrderService {
             throw ApiException.conflict("Đơn đã thu tiền, không thể sửa");
         }
 
-        Customer customer = customerRepository
-                .findById(request.customerId())
-                .orElseThrow(() -> ApiException.badRequest("Vui lòng chọn khách hàng"));
-        if (!customer.isActive()) {
-            throw ApiException.conflict("Khách hàng đã bị khóa, không thể sửa đơn");
-        }
-        if (request.paymentMethod() == PaymentMethod.CREDIT_NET
-                && customer.getCustomerType() != CustomerType.B2B) {
-            throw ApiException.badRequest("Chỉ khách B2B được mua công nợ");
-        }
+        rejectCreditNet(request.paymentMethod());
         if (request.lines() == null || request.lines().isEmpty()) {
             throw ApiException.badRequest("Đơn phải có ít nhất một dòng hàng");
         }
 
+        Customer customer = resolveCustomer(request.customerId());
+        String customerName = resolveCustomerName(customer, request.customerName());
+
         CustomerAddress shipAddress = null;
         if (request.shipAddressId() != null) {
+            if (customer == null) {
+                throw ApiException.badRequest("Khách vãng lai không gắn địa chỉ hồ sơ — chọn giao nhận phù hợp");
+            }
             shipAddress = customerAddressRepository
                     .findByIdAndCustomerId(request.shipAddressId(), customer.getId())
                     .orElseThrow(() -> ApiException.badRequest("Địa chỉ giao hàng không hợp lệ"));
@@ -326,7 +324,7 @@ public class SalesOrderService {
         }
 
         PricingResultResponse priced = pricingService.resolve(new PricingRequest(
-                customer.getId(),
+                customer == null ? null : customer.getId(),
                 request.paymentMethod().code(),
                 moneyOrZero(request.shippingFee()),
                 moneyOrZero(request.discountTotal()),
@@ -341,11 +339,11 @@ public class SalesOrderService {
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy đơn hàng"));
 
         order.setCustomer(customer);
+        order.setCustomerName(customerName);
         order.setOrderType(request.orderType());
         order.setChannel(request.channel());
         order.setPaymentMethod(request.paymentMethod());
-        order.setPaymentTermDays(
-                request.paymentMethod() == PaymentMethod.CREDIT_NET ? customer.getNetDays() : 0);
+        order.setPaymentTermDays(0);
         order.setFulfillmentMethod(request.fulfillmentMethod());
         order.setShipAddress(shipAddress);
         order.setSubtotal(priced.subtotal());
@@ -353,8 +351,8 @@ public class SalesOrderService {
         order.setShippingFee(moneyOrZero(request.shippingFee()));
         order.setTotal(priced.total());
         order.setVoucherCode(Strings.trimToNull(request.voucherCode()));
-        order.setOverLimit(priced.isOverLimit());
-        order.setOverLimitAmount(priced.overLimitAmount());
+        order.setOverLimit(false);
+        order.setOverLimitAmount(ZERO);
         order.setNote(Strings.trimToNull(request.note()));
         order.setHoldExpiresAt(null);
         order.setAllocationStatus(AllocationStatus.NONE);
@@ -379,49 +377,25 @@ public class SalesOrderService {
 
         final SalesOrder current = order;
         if (wasConfirmed) {
-            if (current.getPaymentMethod() == PaymentMethod.CREDIT_NET) {
-                chargeDebt(current);
-                current.setPaymentStatus(PaymentStatus.DEBT);
-            }
-            int held = orderAllocationService.holdForOrder(current, actorId);
+            int held = orderAllocationService.holdForOrder(current, actorId, false);
             addEvent(
                     current,
                     "updated",
                     "Sửa đơn — giữ lại " + held + " khay (" + current.getAllocationStatus().code() + ")",
                     actor);
             salesOrderRepository.save(current);
-        } else if (current.isOverLimit() && current.getApprovedBy() == null) {
-            approvalTaskRepository
-                    .findByRefTypeAndRefIdAndStatus(REF_TYPE, current.getId(), ApprovalStatus.PENDING)
-                    .ifPresentOrElse(
-                            task -> {
-                                task.setTitle(String.format(
-                                        Locale.ROOT,
-                                        "Đơn %s của %s vượt hạn mức %s ₫",
-                                        current.getCode(),
-                                        customer.getName(),
-                                        current.getOverLimitAmount().toPlainString()));
-                                approvalTaskRepository.save(task);
-                            },
-                            () -> createOverLimitApproval(current, customer, actor));
-            addEvent(current, "updated", "Sửa đơn (vẫn chờ duyệt vượt hạn mức)", actor);
-            salesOrderRepository.save(current);
-        } else if (!current.isOverLimit()) {
-            // PENDING không còn vượt hạn → xác nhận như tạo mới.
+        } else {
             approvalTaskRepository
                     .findByRefTypeAndRefIdAndStatus(REF_TYPE, current.getId(), ApprovalStatus.PENDING)
                     .ifPresent(task -> {
                         task.setStatus(ApprovalStatus.APPROVED);
-                        task.setNote("Đơn sau khi sửa không còn vượt hạn mức");
+                        task.setNote("Đơn sau khi sửa — không còn đường bán nợ/vượt hạn mức");
                         task.setDecidedAt(Instant.now(clock));
                         task.setDecidedBy(actor);
                         approvalTaskRepository.save(task);
                     });
             addEvent(current, "updated", "Sửa đơn", actor);
-            confirmOrder(current, actor);
-        } else {
-            addEvent(current, "updated", "Sửa đơn", actor);
-            salesOrderRepository.save(current);
+            confirmOrder(current, actor, false);
         }
 
         Map<String, Object> auditDetail = new HashMap<>();
@@ -441,8 +415,8 @@ public class SalesOrderService {
                 .findWithDetailsById(orderId)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy đơn hàng"));
         PaymentStatus pay = order.getPaymentStatus();
-        if (pay != PaymentStatus.PAID && pay != PaymentStatus.DEBT) {
-            throw ApiException.conflict("Chỉ in biên lai khi đã thanh toán đủ hoặc đã ghi công nợ");
+        if (pay != PaymentStatus.PAID) {
+            throw ApiException.conflict("Chỉ in biên lai khi đã thanh toán đủ");
         }
 
         List<OrderReceiptLineResponse> lines = new ArrayList<>();
@@ -471,7 +445,9 @@ public class SalesOrderService {
         }
 
         String cashierName = order.getPlacedBy() == null ? "—" : order.getPlacedBy().getFullName();
-        String customerName = order.getCustomer() == null ? "Khách lẻ" : order.getCustomer().getName();
+        String customerName = Strings.trimToNull(order.getCustomerName()) != null
+                ? order.getCustomerName().trim()
+                : (order.getCustomer() == null ? "Khách vãng lai" : order.getCustomer().getName());
 
         Map<String, Object> auditDetail = new HashMap<>();
         auditDetail.put("code", order.getCode());
@@ -509,7 +485,7 @@ public class SalesOrderService {
         }
 
         if (target == OrderState.CONFIRMED) {
-            confirmOrder(order, actor);
+            confirmOrder(order, actor, false);
             return;
         }
         if (target == OrderState.PREPARING) {
@@ -543,19 +519,12 @@ public class SalesOrderService {
         auditLogService.record(actorId, "cancel", REF_TYPE, order.getId(), detail);
     }
 
-    /**
-     * Xác nhận đơn + giữ hàng FEFO. Công nợ ghi trước để không áp hạn 15 phút hold.
-     */
-    private void confirmOrder(SalesOrder order, AppUser actor) {
+    /** Xác nhận đơn + giữ hàng FEFO. Không bán nợ — không ghi DEBT. */
+    private void confirmOrder(SalesOrder order, AppUser actor, boolean allowOutstandingShortage) {
         order.setState(OrderState.CONFIRMED);
 
-        if (order.getPaymentMethod() == PaymentMethod.CREDIT_NET && order.getCustomer() != null) {
-            chargeDebt(order);
-            order.setPaymentStatus(PaymentStatus.DEBT);
-        }
-
         Long actorId = actor == null ? null : actor.getId();
-        int held = orderAllocationService.holdForOrder(order, actorId);
+        int held = orderAllocationService.holdForOrder(order, actorId, allowOutstandingShortage);
         addEvent(
                 order,
                 "confirmed",
@@ -616,13 +585,39 @@ public class SalesOrderService {
     }
 
     private void assertReadyForPreparing(SalesOrder order) {
-        PaymentStatus pay = order.getPaymentStatus();
-        if (pay != PaymentStatus.PAID && pay != PaymentStatus.DEBT) {
-            throw ApiException.conflict("Chỉ chuẩn bị khi đã thanh toán đủ (hoặc công nợ đã ghi)");
+        if (order.getPaymentStatus() != PaymentStatus.PAID) {
+            throw ApiException.conflict("Chỉ chuẩn bị khi đã thanh toán đủ");
         }
         if (order.getAllocationStatus() != AllocationStatus.FULL) {
             throw ApiException.conflict("Chưa phân bổ đủ hàng — không thể chuẩn bị");
         }
+    }
+
+    private void rejectCreditNet(PaymentMethod method) {
+        if (method == PaymentMethod.CREDIT_NET) {
+            throw ApiException.conflict("Không bán nợ — mọi đơn phải thanh toán đủ trước khi chuẩn bị");
+        }
+    }
+
+    private Customer resolveCustomer(Long customerId) {
+        if (customerId == null) {
+            return null;
+        }
+        Customer customer = customerRepository
+                .findById(customerId)
+                .orElseThrow(() -> ApiException.badRequest("Vui lòng chọn khách hàng"));
+        if (!customer.isActive()) {
+            throw ApiException.conflict("Khách hàng đã bị khóa, không thể tạo đơn");
+        }
+        return customer;
+    }
+
+    private static String resolveCustomerName(Customer customer, String requestedName) {
+        if (customer != null) {
+            return customer.getName();
+        }
+        String walkIn = Strings.trimToNull(requestedName);
+        return walkIn != null ? walkIn : "Khách vãng lai";
     }
 
     private AppUser requireActor(Long actorId) {
@@ -634,10 +629,10 @@ public class SalesOrderService {
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy người dùng"));
     }
 
-    /** Public hook: tạo đơn từ yêu cầu khả thi (SalesRequestService). */
+    /** Public hook: tạo đơn từ yêu cầu khả thi — cho phép outstanding_qty phần thiếu. */
     @Transactional
     public OrderDetailResponse createFromRequest(OrderInputRequest request, Long actorId) {
-        return create(request, actorId);
+        return create(request, actorId, true);
     }
 
     /** Hủy đơn: RELEASE hold nếu còn. */

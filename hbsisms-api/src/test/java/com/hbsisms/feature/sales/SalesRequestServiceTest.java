@@ -94,6 +94,7 @@ class SalesRequestServiceTest {
         when(salesRequestRepository.findWithDetailsById(4L)).thenReturn(Optional.of(row));
         OrderInputRequest orderBody = new OrderInputRequest(
                 1L,
+                null,
                 OrderType.B2B,
                 SaleChannel.PHONE,
                 com.hbsisms.feature.payment.PaymentMethod.CASH,
