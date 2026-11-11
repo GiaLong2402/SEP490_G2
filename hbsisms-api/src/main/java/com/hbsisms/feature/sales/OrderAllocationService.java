@@ -289,7 +289,7 @@ public class OrderAllocationService {
 
     Map<HoldKey, Integer> netHeldByLot(long orderId) {
         List<StockLedger> entries =
-                stockLedgerRepository.findByRefTypeAndRefIdWithDetails(REF_TYPE, orderId);
+                stockLedgerRepository.findByRefTypeAndRefIdForAllocation(REF_TYPE, orderId);
         Map<HoldKey, Integer> net = new LinkedHashMap<>();
         for (StockLedger entry : entries) {
             if (entry.getLot() == null || entry.getLocation() == null || entry.getVariant() == null) {

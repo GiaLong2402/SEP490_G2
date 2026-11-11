@@ -52,8 +52,8 @@ app:
       issuer: hbsisms-api
       access-token-ttl: ${JWT_TTL:PT8H}
     cors:
-      # 5180 = hbsisms-web-internal (Vite); 5173 kept for older local setups
-      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5180,http://localhost:5173}
+      # 5180/5181 = hbsisms-web-internal (Vite); 5173 kept for older local setups
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5180,http://localhost:5181,http://localhost:5173}
     login:
       max-failed-attempts: 5
       lock-duration: PT15M

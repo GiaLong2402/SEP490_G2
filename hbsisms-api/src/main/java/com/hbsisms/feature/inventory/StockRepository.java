@@ -106,7 +106,7 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
      * Ordered by earliest {@code expDate} (nulls last), then stock id.
      */
     @Query("""
-            select distinct s from Stock s
+            select s from Stock s
             join fetch s.lot l
             join fetch s.location loc
             where s.variant.id = :variantId
