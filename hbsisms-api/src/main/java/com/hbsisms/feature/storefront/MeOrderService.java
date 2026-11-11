@@ -12,6 +12,8 @@ import com.hbsisms.feature.payment.Payment;
 import com.hbsisms.feature.payment.PaymentMethod;
 import com.hbsisms.feature.payment.PaymentRepository;
 import com.hbsisms.feature.payment.PaymentStatus;
+import com.hbsisms.feature.payment.payos.PayosCancelIds;
+import com.hbsisms.feature.payment.payos.PayosClient;
 import com.hbsisms.feature.sales.Delivery;
 import com.hbsisms.feature.sales.DeliveryRepository;
 import com.hbsisms.feature.sales.OrderAllocationService;
@@ -46,18 +48,21 @@ public class MeOrderService {
     private final PaymentRepository paymentRepository;
     private final OrderEventRepository orderEventRepository;
     private final OrderAllocationService orderAllocationService;
+    private final PayosClient payosClient;
 
     public MeOrderService(
             SalesOrderRepository salesOrderRepository,
             DeliveryRepository deliveryRepository,
             PaymentRepository paymentRepository,
             OrderEventRepository orderEventRepository,
-            OrderAllocationService orderAllocationService) {
+            OrderAllocationService orderAllocationService,
+            PayosClient payosClient) {
         this.salesOrderRepository = salesOrderRepository;
         this.deliveryRepository = deliveryRepository;
         this.paymentRepository = paymentRepository;
         this.orderEventRepository = orderEventRepository;
         this.orderAllocationService = orderAllocationService;
+        this.payosClient = payosClient;
     }
 
     @Transactional(readOnly = true)
@@ -88,9 +93,10 @@ public class MeOrderService {
 
         for (Payment payment : paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(order.getId())) {
             if (payment.getMethod() == PaymentMethod.PAYOS && payment.getStatus() == PayTxnStatus.PENDING) {
+                payosClient.cancelPaymentRequest(PayosCancelIds.from(payment), "Khách hủy đơn");
                 payment.setStatus(PayTxnStatus.CANCELLED);
                 payment.setCheckoutUrl(null);
-                payment.setNote("Stub: khách hủy đơn — Long thay cancel PayOS thật (#33)");
+                payment.setNote("Khách hủy đơn — đã hủy link PayOS");
                 paymentRepository.save(payment);
             }
         }
