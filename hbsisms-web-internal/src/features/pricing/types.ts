@@ -18,6 +18,8 @@ export interface PricedLine {
   priceBasis: PriceBasis;
   lineTotal: number;
   available: number;
+  /** Số khay thiếu: max(0, qtyKhay - available). */
+  shortfall: number;
 }
 
 export interface PricingRequest {

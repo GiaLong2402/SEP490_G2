@@ -84,7 +84,7 @@ mock('PUT', '/orders/:id', ({ params, body, userId }) => {
   if (wasDebt) order.paymentStatus = 'unpaid';
 
   db.orderLines = db.orderLines.filter((l) => l.orderId !== order.id);
-  priced.forEach(({ available: _available, ...line }) => db.orderLines.push({ ...line, id: nextId(db.orderLines), orderId: order.id, outstandingQty: 0, note: null }));
+  priced.forEach(({ available: _available, shortfall: _shortfall, ...line }) => db.orderLines.push({ ...line, id: nextId(db.orderLines), orderId: order.id, outstandingQty: 0, note: null }));
 
   if (wasConfirmed) {
     if (order.paymentMethod === 'credit_net') {
@@ -154,7 +154,7 @@ mock('POST', '/orders', ({ body, userId }) => {
     ...creditCheck(customer.id, body.paymentMethod, total), approvedBy: null, placedBy: userId, placedAt: now, holdExpiresAt: null, note: body.note, createdAt: now, updatedAt: now,
   };
   db.orders.push(order);
-  priced.forEach(({ available: _available, ...line }) => db.orderLines.push({ ...line, id: nextId(db.orderLines), orderId: id, outstandingQty: 0, note: null }));
+  priced.forEach(({ available: _available, shortfall: _shortfall, ...line }) => db.orderLines.push({ ...line, id: nextId(db.orderLines), orderId: id, outstandingQty: 0, note: null }));
   addOrderEvent(id, 'created', 'Tạo đơn', userId);
   audit(userId, 'create', 'sales_order', id, { total });
   if (order.isOverLimit) {

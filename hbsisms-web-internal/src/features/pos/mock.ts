@@ -50,7 +50,7 @@ mock('POST', '/pos/checkout', ({ body, userId }) => {
     voucherCode: null, isOverLimit: false, overLimitAmount: 0, approvedBy: null, placedBy: cashier.id, placedAt: now, holdExpiresAt: null, note: body.note, createdAt: now, updatedAt: now,
   };
   db.orders.push(order);
-  priced.forEach(({ available: _available, ...line }) => {
+  priced.forEach(({ available: _available, shortfall: _shortfall, ...line }) => {
     const lineId = nextId(db.orderLines);
     db.orderLines.push({ ...line, id: lineId, orderId: id, outstandingQty: 0, note: null });
     sellFefo(line.variantId, line.qtyKhay, lineId, cashier.id);

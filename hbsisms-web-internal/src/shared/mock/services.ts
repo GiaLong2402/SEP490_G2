@@ -188,9 +188,12 @@ export function priceLines(customerId: ID | null, lines: LineInput[]) {
     const manual = line.manualPrice !== null && line.manualPrice !== undefined && Number(line.manualPrice) >= 0;
     const unitPrice = manual ? Number(line.manualPrice) : resolved.unitPrice;
     const discountPct = Number(line.discountPct ?? 0);
+    const available = availableQty(variant.id);
     return {
       variantId: variant.id, unit: line.unit, qty, qtyKhay, unitPrice, discountPct, priceBasis: (manual ? 'manual' : resolved.priceBasis) as PriceBasis,
-      lineTotal: Math.round(unitPrice * qtyKhay * (1 - discountPct / 100)), available: availableQty(variant.id),
+      lineTotal: Math.round(unitPrice * qtyKhay * (1 - discountPct / 100)),
+      available,
+      shortfall: Math.max(0, qtyKhay - available),
     };
   });
 }
