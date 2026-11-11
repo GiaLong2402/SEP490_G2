@@ -11,7 +11,6 @@ import com.hbsisms.feature.payment.payos.dto.PayosLinkResponse;
 import com.hbsisms.feature.sales.SalesOrder;
 import com.hbsisms.feature.sales.SalesOrderService;
 import com.hbsisms.feature.storefront.dto.CheckoutPaymentResponse;
-import com.hbsisms.feature.user.AppUser;
 import java.time.Clock;
 import java.time.Instant;
 import org.springframework.http.HttpStatus;
@@ -91,7 +90,7 @@ public class PayosLinkService {
                 .findWithOrderCustomerByPayosOrderCode(payosOrderCode)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy thanh toán PayOS"));
 
-        assertOwner(payment, userId);
+        PayosPaymentAccess.assertOwner(payment, userId);
 
         if (payment.getStatus() != PayTxnStatus.PENDING) {
             throw ApiException.conflict("Thanh toán không còn ở trạng thái chờ");
@@ -138,14 +137,6 @@ public class PayosLinkService {
     private void requireEnabled() {
         if (!properties.enabled()) {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "PayOS chưa cấu hình");
-        }
-    }
-
-    private static void assertOwner(Payment payment, Long userId) {
-        Customer customer = payment.getCustomer();
-        AppUser account = customer == null ? null : customer.getAccountUser();
-        if (account == null || userId == null || !userId.equals(account.getId())) {
-            throw ApiException.notFound("Không tìm thấy thanh toán PayOS");
         }
     }
 

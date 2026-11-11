@@ -208,4 +208,6 @@ File FE: `src/api/payments.js`. Dùng ở màn quét QR (bước 4) và trang k�
 | Hủy đơn chưa TT (#30) | Đã nối | `POST /me/orders/{code}/cancel` |
 | Yêu cầu | Đã nối | `/me/sales-requests` (+ staff `/sales-requests`) |
 | Checkout | Đã nối | `POST /checkout` (+ Idempotency-Key, hold FEFO, stub PayOS) |
-| PayOS return / link | Xong (mock) | Chưa có (Long #33); checkout trả stub `checkoutUrl` |
+| PayOS create link (#33) | Đã nối | `POST /checkout` + `POST /payments/payos/{orderCode}/link` |
+| PayOS webhook (#34) | — | `POST /payments/payos/webhook` |
+| PayOS return (#36) | Đã nối | `GET /payments/payos/return?orderCode=` (JWT; PENDING → hỏi lại PayOS) |

@@ -54,12 +54,12 @@ class PayosWebhookServiceTest {
     void setUp() {
         PayosProperties props = new PayosProperties(
                 "sandbox", "c", "a", CHECKSUM, "https://api-merchant.payos.vn", "http://r", "http://c");
-        service = new PayosWebhookService(
-                props,
+        PayosPaymentCompleter completer = new PayosPaymentCompleter(
                 paymentRepository,
                 salesOrderRepository,
                 orderEventRepository,
                 Clock.fixed(NOW, ZoneOffset.UTC));
+        service = new PayosWebhookService(props, paymentRepository, completer);
     }
 
     @Test
