@@ -19,7 +19,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
-/** HTTP client for PayOS merchant API (create link #33, get status #36). */
+/** HTTP client for PayOS merchant API (create #33, get #36, cancel #37). */
 @Component
 public class PayosClient {
 
@@ -97,6 +97,42 @@ public class PayosClient {
         } catch (RestClientException ex) {
             log.warn("PayOS GET payment-request failed for orderCode={}: {}", orderCode, ex.getMessage());
             return Optional.empty();
+        }
+    }
+
+    /**
+     * Best-effort cancel of a payment link. {@code id} = paymentLinkId or orderCode.
+     * Failures are logged and return false so local expire can continue.
+     */
+    public boolean cancelPaymentRequest(String id, String cancellationReason) {
+        if (!properties.enabled() || id == null || id.isBlank()) {
+            return false;
+        }
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("cancellationReason", cancellationReason == null ? "" : cancellationReason);
+        try {
+            String raw = payosRestClient
+                    .post()
+                    .uri("/v2/payment-requests/{id}/cancel", id)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header(PayosConfig.HEADER_CLIENT_ID, properties.clientId())
+                    .header(PayosConfig.HEADER_API_KEY, properties.apiKey())
+                    .body(body)
+                    .retrieve()
+                    .body(String.class);
+            JsonNode root = objectMapper.readTree(raw == null ? "{}" : raw);
+            String code = text(root, "code");
+            if ("00".equals(code)) {
+                return true;
+            }
+            log.warn("PayOS cancel payment-request id={} code={} desc={}", id, code, text(root, "desc"));
+            return false;
+        } catch (RestClientResponseException ex) {
+            log.warn("PayOS cancel HTTP {} for id={}", ex.getStatusCode().value(), id);
+            return false;
+        } catch (Exception ex) {
+            log.warn("PayOS cancel failed for id={}: {}", id, ex.getMessage());
+            return false;
         }
     }
 
