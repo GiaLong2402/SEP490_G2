@@ -10,15 +10,17 @@ public record VariantOptionResponse(
         String packLabel,
         String productName,
         BigDecimal listPrice,
-        short packPerCase) {
+        short packPerCase,
+        long available) {
 
-    public static VariantOptionResponse from(ProductVariant variant) {
+    public static VariantOptionResponse from(ProductVariant variant, long available) {
         return new VariantOptionResponse(
                 variant.getId(),
                 variant.getSku(),
                 variant.getPackLabel(),
                 variant.getProduct().getName(),
                 variant.getListPrice(),
-                variant.getPackPerCase());
+                variant.getPackPerCase(),
+                available);
     }
 }

@@ -134,6 +134,8 @@ public class OrderAllocationService {
         }
 
         applyHoldExpiry(order);
+        // clearAutomatically trên StockRepository.adjust* làm detach order/lines — bắt buộc save.
+        salesOrderRepository.save(order);
         return totalHeld;
     }
 
@@ -165,6 +167,7 @@ public class OrderAllocationService {
         }
         order.setAllocationStatus(AllocationStatus.NONE);
         order.setHoldExpiresAt(null);
+        salesOrderRepository.save(order);
         return released;
     }
 
@@ -201,6 +204,7 @@ public class OrderAllocationService {
             order.setAllocationStatus(
                     outstanding > 0 ? AllocationStatus.HELD : AllocationStatus.FULL);
             order.setHoldExpiresAt(null);
+            salesOrderRepository.save(order);
         }
         return issued;
     }
@@ -243,6 +247,7 @@ public class OrderAllocationService {
             if (!Objects.equals(lastOrderId, order.getId())) {
                 if (current != null) {
                     refreshAllocationStatus(current);
+                    salesOrderRepository.save(current);
                 }
                 current = salesOrderRepository
                         .findWithDetailsById(order.getId())
@@ -259,6 +264,7 @@ public class OrderAllocationService {
         }
         if (current != null) {
             refreshAllocationStatus(current);
+            salesOrderRepository.save(current);
         }
         return total;
     }

@@ -105,6 +105,10 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
      * FEFO candidates: available &gt; 0, lot not past expiry, location not quarantine zone.
      * Ordered by earliest {@code expDate} (nulls last), then stock id.
      */
+    /**
+     * Không dùng {@code distinct} + {@code ORDER BY CASE}: PostgreSQL yêu cầu biểu thức ORDER BY
+     * nằm trong SELECT khi có DISTINCT. Lot/location là ManyToOne nên join fetch không nhân dòng.
+     */
     @Query("""
             select s from Stock s
             join fetch s.lot l

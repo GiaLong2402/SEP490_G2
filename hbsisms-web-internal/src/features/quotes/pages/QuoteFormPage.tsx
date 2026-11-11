@@ -3,9 +3,11 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCustomerOptions } from '@/features/customers';
 import { LineItemsEditor, isCompleteLine, newLine, toPricingLines, usePricing, type EditableLine } from '@/features/pricing';
 import { useVariantOptions } from '@/features/products';
+import { useRequest } from '@/features/requests';
 import { useAction } from '@/shared/api/useAction';
-import { money, todayISO } from '@/shared/lib/format';
-import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '@/shared/ui';
+import { requestStatusMeta, saleChannelLabels } from '@/shared/domain/enums';
+import { date, dateTime, money, num, todayISO } from '@/shared/lib/format';
+import { Alert, Button, Card, Chip, Field, Input, PageHeader, Select, StatusChip, Textarea } from '@/shared/ui';
 import { quotesApi } from '../api';
 
 export default function QuoteFormPage() {
@@ -15,10 +17,13 @@ export default function QuoteFormPage() {
   const variants = useVariantOptions();
   const requestId = params.get('requestId') ? Number(params.get('requestId')) : null;
   const [customerId, setCustomerId] = useState<number | null>(params.get('customerId') ? Number(params.get('customerId')) : null);
-  const [validUntil, setValidUntil] = useState(todayISO(7));
+  const [validUntil, setValidUntil] = useState(() => todayISO(7));
   const [note, setNote] = useState('');
   const [lines, setLines] = useState<EditableLine[]>([newLine()]);
   const [touched, setTouched] = useState(false);
+
+  const requestQuery = useRequest(requestId);
+  const request = requestQuery.data;
 
   const pricingLines = useMemo(() => toPricingLines(lines), [lines]);
   const pricing = usePricing({ customerId, lines: toPricingLines(lines.filter(isCompleteLine)) });
@@ -33,6 +38,59 @@ export default function QuoteFormPage() {
     <>
       <PageHeader breadcrumb={<><Link to="/quotes" className="hover:underline">Báo giá</Link> / Lập báo giá</>} title="Lập báo giá" />
       <div className="space-y-4">
+        {requestId != null && (
+          <Card title="Nội dung yêu cầu khách hàng">
+            {requestQuery.isLoading && <p className="text-ink-muted">Đang tải yêu cầu…</p>}
+            {requestQuery.error && (
+              <Alert tone="danger" title="Không tải được yêu cầu">
+                {requestQuery.error.message}
+              </Alert>
+            )}
+            {request && (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono font-semibold">{request.code}</span>
+                  <StatusChip meta={requestStatusMeta} value={request.status} />
+                  <Chip tone="neutral">{saleChannelLabels[request.channel]}</Chip>
+                </div>
+                <p className="whitespace-pre-wrap text-body text-ink">{request.summary?.trim() || '—'}</p>
+                <dl className="grid gap-2 text-small text-ink-muted sm:grid-cols-2">
+                  <div>
+                    <dt className="text-ink-faint">Khách</dt>
+                    <dd className="font-medium text-ink">{request.customerName ?? '—'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-ink-faint">Tiếp nhận</dt>
+                    <dd>{dateTime(request.receivedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-ink-faint">Khả thi</dt>
+                    <dd>
+                      {request.feasible == null
+                        ? 'Chưa đánh giá'
+                        : request.feasible
+                          ? `Có${request.fulfillableQty != null ? ` · ${num(request.fulfillableQty)} khay` : ''}`
+                          : 'Không'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-ink-faint">Ngày dự kiến</dt>
+                    <dd>{request.expectedDate ? date(request.expectedDate) : '—'}</dd>
+                  </div>
+                </dl>
+                {request.note && <p className="border-t border-line pt-3 text-small text-ink-muted">{request.note}</p>}
+                <p className="text-small text-ink-faint">
+                  Báo giá sẽ gắn với yêu cầu này. Quay lại{' '}
+                  <Link to="/requests" className="text-primary hover:underline">
+                    danh sách yêu cầu
+                  </Link>
+                  .
+                </p>
+              </div>
+            )}
+          </Card>
+        )}
+
         <Card title="Thông tin chung">
           <div className="grid gap-3 md:grid-cols-3">
             <Field label="Khách hàng" required error={touched && !customerId ? 'Vui lòng chọn khách' : undefined}>

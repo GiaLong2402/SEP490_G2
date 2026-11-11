@@ -2,17 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { customersApi, useCustomer, useCustomerOptions } from '@/features/customers';
-import { LineItemsEditor, isCompleteLine, newLine, toPricingLines, type EditableLine, usePricing } from '@/features/pricing';
+import { LineItemsEditor, isCompleteLine, newLine, toPricingLines, usePricing, type EditableLine } from '@/features/pricing';
 import { useVariantOptions } from '@/features/products';
 import { useAction } from '@/shared/api/useAction';
 import { fulfillmentLabels, paymentMethodLabels, saleChannelLabels, type FulfillmentMethod, type PaymentMethod, type SaleChannel } from '@/shared/domain/enums';
 import { money } from '@/shared/lib/format';
-import { Alert, Button, Card, Chip, Field, Input, PageHeader, Select, Textarea, enumOptions } from '@/shared/ui';
+import { Alert, Button, Card, Chip, Field, Input, Meter, PageHeader, Select, Textarea, enumOptions } from '@/shared/ui';
 import { ordersApi } from '../api';
 import { useOrder } from '../hooks';
-
-/** Không bán nợ — chỉ tiền mặt / CK / PayOS / COD trên form Sales. */
-const SALES_PAYMENT_OPTIONS = Object.entries(paymentMethodLabels).filter(([key]) => key !== 'credit_net');
 
 export default function OrderFormPage() {
   const navigate = useNavigate();
@@ -22,9 +19,7 @@ export default function OrderFormPage() {
   const existing = useOrder(editId ?? 0, isEdit);
   const customers = useCustomerOptions();
   const variants = useVariantOptions();
-  const [walkIn, setWalkIn] = useState(false);
   const [customerId, setCustomerId] = useState<number | null>(null);
-  const [walkInName, setWalkInName] = useState('Khách vãng lai');
   const customer = useCustomer(customerId).data;
   const addresses = useQuery({ queryKey: ['addresses', customerId], queryFn: () => customersApi.addresses(customerId!), enabled: !!customerId }).data;
 
@@ -39,7 +34,7 @@ export default function OrderFormPage() {
   const [touched, setTouched] = useState(false);
   const [hydrated, setHydrated] = useState(!isEdit);
 
-  const isB2b = !walkIn && customer?.customerType === 'b2b';
+  const isB2b = customer?.customerType === 'b2b';
 
   useEffect(() => {
     if (!isEdit || !existing.data || hydrated) return;
@@ -48,12 +43,9 @@ export default function OrderFormPage() {
       navigate(`/orders/${o.id}`, { replace: true });
       return;
     }
-    const isWalkIn = o.customerId == null;
-    setWalkIn(isWalkIn);
     setCustomerId(o.customerId);
-    setWalkInName(o.customerName ?? 'Khách vãng lai');
     setChannel(o.channel ?? 'phone');
-    setPaymentMethod(o.paymentMethod === 'credit_net' ? 'cash' : o.paymentMethod);
+    setPaymentMethod(o.paymentMethod);
     setFulfillment(o.fulfillmentMethod);
     setAddressId(o.shipAddressId);
     setShippingFee(String(o.shippingFee ?? 0));
@@ -65,39 +57,26 @@ export default function OrderFormPage() {
     setHydrated(true);
   }, [isEdit, existing.data, hydrated, navigate]);
 
+  // Đổi khách: chọn địa chỉ mặc định và phương thức thanh toán hợp lệ (chỉ khi tạo mới / đổi tay).
+  useEffect(() => {
+    if (!customer || (isEdit && !hydrated)) return;
+    if (!isEdit) setPaymentMethod(customer.customerType === 'b2b' ? 'credit_net' : 'cash');
+  }, [customer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (isEdit && !hydrated) return;
     if (isEdit && addressId != null) return;
     setAddressId(addresses?.find((a) => a.isDefault)?.id ?? addresses?.[0]?.id ?? null);
   }, [addresses, isEdit, hydrated, addressId]);
 
-  useEffect(() => {
-    if (walkIn) {
-      setCustomerId(null);
-      setAddressId(null);
-      if (fulfillment !== 'pickup') setFulfillment('pickup');
-      if (paymentMethod === 'credit_net') setPaymentMethod('cash');
-    }
-  }, [walkIn]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const selectedAddress = addresses?.find((a) => a.id === addressId);
   const pricingLines = useMemo(() => toPricingLines(lines), [lines]);
-  const pricing = usePricing({
-    customerId: walkIn ? null : customerId,
-    paymentMethod,
-    shippingFee: Number(shippingFee) || 0,
-    discountTotal: Number(discount) || 0,
-    lines: toPricingLines(lines.filter(isCompleteLine)),
-  });
+  const pricing = usePricing({ customerId, paymentMethod, shippingFee: Number(shippingFee) || 0, discountTotal: Number(discount) || 0, lines: toPricingLines(lines.filter(isCompleteLine)) });
   const linesValid = lines.every(isCompleteLine);
   const needsAddress = fulfillment !== 'pickup';
   const shortage = pricing.data?.lines.some((l) => l.shortfall > 0);
-  const customerOk = walkIn ? walkInName.trim().length > 0 : !!customerId;
-  const addressOk = !needsAddress || (!!customerId && !!addressId);
 
   const body = () => ({
-    customerId: walkIn ? null : customerId,
-    customerName: walkIn ? walkInName.trim() || 'Khách vãng lai' : null,
+    customerId: customerId!,
     orderType: (isB2b ? 'b2b' : 'retail') as 'b2b' | 'retail',
     channel,
     paymentMethod,
@@ -121,7 +100,8 @@ export default function OrderFormPage() {
 
   const submit = () => {
     setTouched(true);
-    if (customerOk && linesValid && addressOk) {
+    if (shortage) return;
+    if (customerId && linesValid && (!needsAddress || addressId)) {
       if (isEdit) update.mutate();
       else create.mutate();
     }
@@ -141,31 +121,17 @@ export default function OrderFormPage() {
       <div className="grid items-start gap-4 min-[1500px]:grid-cols-[1fr_320px]">
         <div className="min-w-0 space-y-4">
           <Card title="Khách hàng và giao nhận">
-            <div className="mb-3 flex flex-wrap gap-2">
-              <Chip tone={!walkIn ? 'blue' : 'slate'}>
-                <button type="button" className="bg-transparent" onClick={() => setWalkIn(false)}>Khách có sẵn</button>
-              </Chip>
-              <Chip tone={walkIn ? 'blue' : 'slate'}>
-                <button type="button" className="bg-transparent" onClick={() => setWalkIn(true)}>Khách vãng lai</button>
-              </Chip>
-            </div>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {walkIn ? (
-                <Field label="Tên khách" required error={touched && !walkInName.trim() ? 'Nhập tên khách vãng lai' : undefined} className="md:col-span-2 xl:col-span-1">
-                  <Input value={walkInName} onChange={(e) => setWalkInName(e.target.value)} placeholder="Khách vãng lai" />
-                </Field>
-              ) : (
-                <Field label="Khách hàng" required error={touched && !customerId ? 'Vui lòng chọn khách' : undefined} className="md:col-span-2 xl:col-span-1">
-                  <Select value={customerId ?? ''} onChange={(e) => setCustomerId(e.target.value ? Number(e.target.value) : null)}>
-                    <option value="">Chọn khách hàng...</option>
-                    {customers.data?.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
-                  </Select>
-                </Field>
-              )}
+              <Field label="Khách hàng" required error={touched && !customerId ? 'Vui lòng chọn khách' : undefined} className="md:col-span-2 xl:col-span-1">
+                <Select value={customerId ?? ''} onChange={(e) => setCustomerId(e.target.value ? Number(e.target.value) : null)}>
+                  <option value="">Chọn khách hàng...</option>
+                  {customers.data?.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
+                </Select>
+              </Field>
               <Field label="Kênh bán" required><Select value={channel} onChange={(e) => setChannel(e.target.value as SaleChannel)}>{enumOptions(saleChannelLabels)}</Select></Field>
               <Field label="Hình thức giao" required><Select value={fulfillment} onChange={(e) => setFulfillment(e.target.value as FulfillmentMethod)}>{enumOptions(fulfillmentLabels)}</Select></Field>
               {needsAddress && (
-                <Field label="Địa chỉ giao" required className="md:col-span-2 xl:col-span-3" error={touched && !addressOk ? (walkIn ? 'Khách vãng lai chỉ hỗ trợ nhận tại quầy hoặc bỏ địa chỉ hồ sơ' : 'Khách chưa có địa chỉ, hãy thêm ở hồ sơ khách hoặc chọn "Khách đến lấy"') : undefined}>
+                <Field label="Địa chỉ giao" required className="md:col-span-2 xl:col-span-3" error={touched && customerId && !addressId ? 'Khách chưa có địa chỉ, hãy thêm ở hồ sơ khách hoặc chọn "Khách đến lấy"' : undefined}>
                   <Select disabled={!customerId} value={addressId ?? ''} onChange={(e) => setAddressId(Number(e.target.value))}>
                     {!addresses?.length && <option value="">{customerId ? 'Khách chưa có địa chỉ' : 'Chọn khách trước'}</option>}
                     {addresses?.map((a) => <option key={a.id} value={a.id}>{[a.line1, a.ward, a.district].filter(Boolean).join(', ')}</option>)}
@@ -187,11 +153,18 @@ export default function OrderFormPage() {
         </div>
 
         <aside className="grid items-start gap-4 md:grid-cols-2 min-[1500px]:sticky min-[1500px]:top-0 min-[1500px]:grid-cols-1">
+          {isB2b && customer && (
+            <Card title="Công nợ khách">
+              <div className="mb-2 flex justify-between text-small"><span className="text-ink-muted">Nợ / hạn mức</span><span className="num">{money(customer.currentDebt)} / {money(customer.creditLimit)}</span></div>
+              <Meter value={customer.currentDebt} max={customer.creditLimit} label="Tỷ lệ sử dụng hạn mức" />
+              <p className="mt-2 text-small text-ink-muted">Kỳ hạn NET {customer.netDays} ngày</p>
+            </Card>
+          )}
           <Card title="Tóm tắt đơn">
             <div className="space-y-3">
               <Field label="Thanh toán" required>
                 <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}>
-                  {SALES_PAYMENT_OPTIONS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                  {Object.entries(paymentMethodLabels).filter(([key]) => key !== 'credit_net' || isB2b).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                 </Select>
               </Field>
               <div className="grid grid-cols-2 gap-2">
@@ -203,10 +176,15 @@ export default function OrderFormPage() {
                 <div className="flex justify-between"><dt className="text-ink-muted">Tạm tính</dt><dd className="num">{money(pricing.data?.subtotal ?? 0)}</dd></div>
                 <div className="flex justify-between text-h2"><dt>Tổng cộng</dt><dd className="tabular-nums">{money(pricing.data?.total ?? 0)}</dd></div>
               </dl>
-              {shortage && <Alert tone="warning" title="Không đủ hàng khả dụng">Đơn Sales thường phải giữ đủ hàng; hệ thống sẽ từ chối nếu tồn không đủ khi xác nhận.</Alert>}
+              {pricing.data?.isOverLimit && <Alert tone="danger" title={`Vượt hạn mức ${money(pricing.data.overLimitAmount)}`}>Đơn sẽ chuyển Chủ cửa hàng duyệt, chưa giữ hàng cho đến khi được duyệt.</Alert>}
+              {shortage && (
+                <Alert tone="danger" title="Không đủ hàng khả dụng">
+                  Không thể lưu đơn khi số lượng vượt tồn. Giảm SL hoặc nhập thêm hàng trước.
+                </Alert>
+              )}
               {pricing.error && <Alert tone="danger">{pricing.error.message}</Alert>}
-              <Button variant="primary" className="w-full" loading={saving} onClick={submit}>
-                {isEdit ? 'Lưu thay đổi' : 'Tạo đơn'}
+              <Button variant="primary" className="w-full" loading={saving} disabled={!!shortage} onClick={submit}>
+                {isEdit ? 'Lưu thay đổi' : pricing.data?.isOverLimit ? 'Tạo đơn và gửi duyệt' : 'Tạo đơn'}
               </Button>
             </div>
           </Card>
