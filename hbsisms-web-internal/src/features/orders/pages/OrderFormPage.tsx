@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { customersApi, useCustomer, useCustomerOptions } from '@/features/customers';
 import { LineItemsEditor, isCompleteLine, newLine, toPricingLines, usePricing, type EditableLine } from '@/features/pricing';
 import { useVariantOptions } from '@/features/products';
@@ -9,9 +9,14 @@ import { fulfillmentLabels, paymentMethodLabels, saleChannelLabels, type Fulfill
 import { money } from '@/shared/lib/format';
 import { Alert, Button, Card, Chip, Field, Input, Meter, PageHeader, Select, Textarea, enumOptions } from '@/shared/ui';
 import { ordersApi } from '../api';
+import { useOrder } from '../hooks';
 
 export default function OrderFormPage() {
   const navigate = useNavigate();
+  const params = useParams();
+  const editId = params.id ? Number(params.id) : null;
+  const isEdit = editId != null && Number.isFinite(editId);
+  const existing = useOrder(editId ?? 0, isEdit);
   const customers = useCustomerOptions();
   const variants = useVariantOptions();
   const [customerId, setCustomerId] = useState<number | null>(null);
@@ -27,17 +32,41 @@ export default function OrderFormPage() {
   const [note, setNote] = useState('');
   const [lines, setLines] = useState<EditableLine[]>([newLine()]);
   const [touched, setTouched] = useState(false);
+  const [hydrated, setHydrated] = useState(!isEdit);
 
   const isB2b = customer?.customerType === 'b2b';
 
-  // Đổi khách: chọn địa chỉ mặc định và phương thức thanh toán hợp lệ.
   useEffect(() => {
-    if (!customer) return;
-    setPaymentMethod(customer.customerType === 'b2b' ? 'credit_net' : 'cash');
+    if (!isEdit || !existing.data || hydrated) return;
+    const o = existing.data;
+    if (!['pending', 'confirmed'].includes(o.state)) {
+      navigate(`/orders/${o.id}`, { replace: true });
+      return;
+    }
+    setCustomerId(o.customerId);
+    setChannel(o.channel ?? 'phone');
+    setPaymentMethod(o.paymentMethod);
+    setFulfillment(o.fulfillmentMethod);
+    setAddressId(o.shipAddressId);
+    setShippingFee(String(o.shippingFee ?? 0));
+    setDiscount(String(o.discountTotal ?? 0));
+    setNote(o.note ?? '');
+    setLines(o.lines.length
+      ? o.lines.map((l) => ({ ...newLine(l.variantId, String(l.qty)), unit: l.unit }))
+      : [newLine()]);
+    setHydrated(true);
+  }, [isEdit, existing.data, hydrated, navigate]);
+
+  // Đổi khách: chọn địa chỉ mặc định và phương thức thanh toán hợp lệ (chỉ khi tạo mới / đổi tay).
+  useEffect(() => {
+    if (!customer || (isEdit && !hydrated)) return;
+    if (!isEdit) setPaymentMethod(customer.customerType === 'b2b' ? 'credit_net' : 'cash');
   }, [customer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
+    if (isEdit && !hydrated) return;
+    if (isEdit && addressId != null) return;
     setAddressId(addresses?.find((a) => a.isDefault)?.id ?? addresses?.[0]?.id ?? null);
-  }, [addresses]);
+  }, [addresses, isEdit, hydrated, addressId]);
 
   const selectedAddress = addresses?.find((a) => a.id === addressId);
   const pricingLines = useMemo(() => toPricingLines(lines), [lines]);
@@ -46,32 +75,48 @@ export default function OrderFormPage() {
   const needsAddress = fulfillment !== 'pickup';
   const shortage = pricing.data?.lines.some((l) => l.qtyKhay > l.available);
 
+  const body = () => ({
+    customerId: customerId!,
+    orderType: (isB2b ? 'b2b' : 'retail') as 'b2b' | 'retail',
+    channel,
+    paymentMethod,
+    fulfillmentMethod: fulfillment,
+    shipAddressId: needsAddress ? addressId : null,
+    shippingFee: Number(shippingFee) || 0,
+    discountTotal: Number(discount) || 0,
+    voucherCode: null,
+    note: note.trim() || null,
+    lines: pricingLines,
+  });
+
   const create = useAction(
-    () =>
-      ordersApi.create({
-        customerId: customerId!,
-        orderType: isB2b ? 'b2b' : 'retail',
-        channel,
-        paymentMethod,
-        fulfillmentMethod: fulfillment,
-        shipAddressId: needsAddress ? addressId : null,
-        shippingFee: Number(shippingFee) || 0,
-        discountTotal: Number(discount) || 0,
-        voucherCode: null,
-        note: note.trim() || null,
-        lines: pricingLines,
-      }),
+    () => ordersApi.create(body()),
     { success: (o) => `Đã tạo đơn ${o.code}`, onDone: (o) => navigate(`/orders/${o.id}`) },
+  );
+  const update = useAction(
+    () => ordersApi.update(editId!, body()),
+    { success: (o) => `Đã cập nhật đơn ${o.code}`, onDone: (o) => navigate(`/orders/${o.id}`) },
   );
 
   const submit = () => {
     setTouched(true);
-    if (customerId && linesValid && (!needsAddress || addressId)) create.mutate();
+    if (customerId && linesValid && (!needsAddress || addressId)) {
+      if (isEdit) update.mutate();
+      else create.mutate();
+    }
   };
+
+  const saving = create.isPending || update.isPending;
+  const title = isEdit ? 'Sửa đơn hàng' : 'Tạo đơn hàng';
+  const crumb = isEdit
+    ? <><Link to="/orders" className="hover:underline">Đơn hàng</Link> / <Link to={`/orders/${editId}`} className="hover:underline">{existing.data?.code ?? `#${editId}`}</Link> / Sửa</>
+    : <><Link to="/orders" className="hover:underline">Đơn hàng</Link> / Tạo đơn</>;
+
+  if (isEdit && existing.isLoading) return null;
 
   return (
     <>
-      <PageHeader breadcrumb={<><Link to="/orders" className="hover:underline">Đơn hàng</Link> / Tạo đơn</>} title="Tạo đơn hàng" />
+      <PageHeader breadcrumb={crumb} title={title} />
       <div className="grid items-start gap-4 min-[1500px]:grid-cols-[1fr_320px]">
         <div className="min-w-0 space-y-4">
           <Card title="Khách hàng và giao nhận">
@@ -131,9 +176,11 @@ export default function OrderFormPage() {
                 <div className="flex justify-between text-h2"><dt>Tổng cộng</dt><dd className="tabular-nums">{money(pricing.data?.total ?? 0)}</dd></div>
               </dl>
               {pricing.data?.isOverLimit && <Alert tone="danger" title={`Vượt hạn mức ${money(pricing.data.overLimitAmount)}`}>Đơn sẽ chuyển Chủ cửa hàng duyệt, chưa giữ hàng cho đến khi được duyệt.</Alert>}
-              {shortage && <Alert tone="warning" title="Không đủ hàng khả dụng">Đơn vẫn tạo được; phần thiếu ở trạng thái chờ hàng về.</Alert>}
+              {shortage && <Alert tone="warning" title="Không đủ hàng khả dụng">Đơn vẫn lưu được; phần thiếu ở trạng thái chờ hàng về.</Alert>}
               {pricing.error && <Alert tone="danger">{pricing.error.message}</Alert>}
-              <Button variant="primary" className="w-full" loading={create.isPending} onClick={submit}>{pricing.data?.isOverLimit ? 'Tạo đơn và gửi duyệt' : 'Tạo đơn'}</Button>
+              <Button variant="primary" className="w-full" loading={saving} onClick={submit}>
+                {isEdit ? 'Lưu thay đổi' : pricing.data?.isOverLimit ? 'Tạo đơn và gửi duyệt' : 'Tạo đơn'}
+              </Button>
             </div>
           </Card>
         </aside>
