@@ -62,5 +62,10 @@ export interface OrderQuery {
   state?: string;
   orderType?: string;
   paymentStatus?: string;
+  channel?: string;
+  allocationStatus?: string;
+  customerId?: string | number;
+  placedFrom?: string;
+  placedTo?: string;
   [key: string]: string | number | undefined;
 }

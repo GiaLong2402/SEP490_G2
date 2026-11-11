@@ -46,11 +46,19 @@ function toDetail(id: number) {
 }
 
 mock('GET', '/orders', ({ query }) => {
+  const placedFrom = query.placedFrom ? String(query.placedFrom) : '';
+  const placedTo = query.placedTo ? String(query.placedTo) : '';
+  const customerId = query.customerId ? Number(query.customerId) : null;
   const rows = db.orders
     .filter((o) => matches(query.q, o.code, toItem(o).customerName))
     .filter((o) => !query.state || o.state === query.state)
     .filter((o) => !query.orderType || o.orderType === query.orderType)
     .filter((o) => !query.paymentStatus || o.paymentStatus === query.paymentStatus)
+    .filter((o) => !query.channel || o.channel === query.channel)
+    .filter((o) => !query.allocationStatus || o.allocationStatus === query.allocationStatus)
+    .filter((o) => customerId == null || Number.isNaN(customerId) || o.customerId === customerId)
+    .filter((o) => !placedFrom || o.placedAt.slice(0, 10) >= placedFrom)
+    .filter((o) => !placedTo || o.placedAt.slice(0, 10) <= placedTo)
     .sort((a, b) => b.placedAt.localeCompare(a.placedAt));
   return paginate(rows.map(toItem), query);
 });
