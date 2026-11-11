@@ -63,11 +63,19 @@ export function LineItemsEditor({ lines, onChange, variants, priced, showStock =
                   <td className="px-3 py-1.5">
                     <Select aria-label={`Sản phẩm dòng ${index + 1}`} value={line.variantId || ''} onChange={(e) => update(line.key, { variantId: Number(e.target.value), manualPrice: '' })}>
                       <option value="">Chọn sản phẩm...</option>
-                      {variants.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.productName} · {v.packLabel} ({v.sku})
-                        </option>
-                      ))}
+                      {variants.map((v) => {
+                        const stock =
+                          typeof v.available === 'number'
+                            ? v.available > 0
+                              ? ` — Còn ${num(v.available)}`
+                              : ' — Hết'
+                            : '';
+                        return (
+                          <option key={v.id} value={v.id}>
+                            {v.productName} · {v.packLabel}{stock}
+                          </option>
+                        );
+                      })}
                     </Select>
                   </td>
                   <td className="px-2">

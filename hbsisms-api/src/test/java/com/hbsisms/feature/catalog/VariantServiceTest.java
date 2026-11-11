@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.feature.catalog.dto.TierInput;
 import com.hbsisms.feature.catalog.dto.VariantRequest;
+import com.hbsisms.feature.inventory.StockRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -33,12 +34,15 @@ class VariantServiceTest {
     private ProductVariantRepository productVariantRepository;
     @Mock
     private VolumeTierRepository volumeTierRepository;
+    @Mock
+    private StockRepository stockRepository;
 
     private VariantService variantService;
 
     @BeforeEach
     void setUp() {
-        variantService = new VariantService(productRepository, productVariantRepository, volumeTierRepository);
+        variantService = new VariantService(
+                productRepository, productVariantRepository, volumeTierRepository, stockRepository);
     }
 
     // --- create ---

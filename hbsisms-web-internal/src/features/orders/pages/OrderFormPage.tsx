@@ -66,6 +66,7 @@ export default function OrderFormPage() {
 
   const submit = () => {
     setTouched(true);
+    if (shortage) return;
     if (customerId && linesValid && (!needsAddress || addressId)) create.mutate();
   };
 
@@ -131,9 +132,21 @@ export default function OrderFormPage() {
                 <div className="flex justify-between text-h2"><dt>Tổng cộng</dt><dd className="tabular-nums">{money(pricing.data?.total ?? 0)}</dd></div>
               </dl>
               {pricing.data?.isOverLimit && <Alert tone="danger" title={`Vượt hạn mức ${money(pricing.data.overLimitAmount)}`}>Đơn sẽ chuyển Chủ cửa hàng duyệt, chưa giữ hàng cho đến khi được duyệt.</Alert>}
-              {shortage && <Alert tone="warning" title="Không đủ hàng khả dụng">Đơn vẫn tạo được; phần thiếu ở trạng thái chờ hàng về.</Alert>}
+              {shortage && (
+                <Alert tone="danger" title="Không đủ hàng khả dụng">
+                  Không thể tạo đơn khi số lượng vượt tồn. Giảm SL hoặc nhập thêm hàng trước.
+                </Alert>
+              )}
               {pricing.error && <Alert tone="danger">{pricing.error.message}</Alert>}
-              <Button variant="primary" className="w-full" loading={create.isPending} onClick={submit}>{pricing.data?.isOverLimit ? 'Tạo đơn và gửi duyệt' : 'Tạo đơn'}</Button>
+              <Button
+                variant="primary"
+                className="w-full"
+                loading={create.isPending}
+                disabled={!!shortage}
+                onClick={submit}
+              >
+                {pricing.data?.isOverLimit ? 'Tạo đơn và gửi duyệt' : 'Tạo đơn'}
+              </Button>
             </div>
           </Card>
         </aside>

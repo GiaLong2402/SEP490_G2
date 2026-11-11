@@ -18,6 +18,8 @@ public interface SalesOrderRepository
 
     Optional<SalesOrder> findByCode(String code);
 
+    Optional<SalesOrder> findFirstBySourceQuote_Id(Long quoteId);
+
     @EntityGraph(attributePaths = {"customer", "shipAddress", "placedBy", "approvedBy", "sourceQuote"})
     Optional<SalesOrder> findWithHeaderById(Long id);
 

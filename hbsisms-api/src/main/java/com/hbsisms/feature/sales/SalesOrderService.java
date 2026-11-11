@@ -16,6 +16,7 @@ import com.hbsisms.feature.customer.CustomerType;
 import com.hbsisms.feature.customer.dto.AddressResponse;
 import com.hbsisms.feature.customer.pricing.PricingService;
 import com.hbsisms.feature.customer.pricing.dto.PricedLineResponse;
+import com.hbsisms.feature.customer.pricing.dto.PricingLineInput;
 import com.hbsisms.feature.customer.pricing.dto.PricingRequest;
 import com.hbsisms.feature.customer.pricing.dto.PricingResultResponse;
 import com.hbsisms.feature.payment.CustomerDebtLedger;
@@ -46,9 +47,11 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -85,6 +88,7 @@ public class SalesOrderService {
     private final UserRepository userRepository;
     private final ApprovalTaskRepository approvalTaskRepository;
     private final CustomerDebtLedgerRepository customerDebtLedgerRepository;
+    private final QuoteRepository quoteRepository;
     private final PricingService pricingService;
     private final AuditLogService auditLogService;
     private final OrderAllocationService orderAllocationService;
@@ -101,6 +105,7 @@ public class SalesOrderService {
             UserRepository userRepository,
             ApprovalTaskRepository approvalTaskRepository,
             CustomerDebtLedgerRepository customerDebtLedgerRepository,
+            QuoteRepository quoteRepository,
             PricingService pricingService,
             AuditLogService auditLogService,
             OrderAllocationService orderAllocationService,
@@ -115,6 +120,7 @@ public class SalesOrderService {
         this.userRepository = userRepository;
         this.approvalTaskRepository = approvalTaskRepository;
         this.customerDebtLedgerRepository = customerDebtLedgerRepository;
+        this.quoteRepository = quoteRepository;
         this.pricingService = pricingService;
         this.auditLogService = auditLogService;
         this.orderAllocationService = orderAllocationService;
@@ -178,6 +184,9 @@ public class SalesOrderService {
                 moneyOrZero(request.shippingFee()),
                 moneyOrZero(request.discountTotal()),
                 request.lines()));
+
+        // Sales nội bộ: thiếu tồn → không tạo đơn / không HOLD (khác luồng request đặt trước).
+        assertSufficientStock(priced);
 
         Instant now = Instant.now(clock);
         SalesOrder order = new SalesOrder();
@@ -251,10 +260,14 @@ public class SalesOrderService {
 
         Long actorId = actor == null ? null : actor.getId();
         int held = orderAllocationService.holdForOrder(order, actorId);
+        // Re-read sau hold (persist + detach) để event/response có allocationStatus đúng.
+        SalesOrder fresh = salesOrderRepository.findWithDetailsById(order.getId()).orElse(order);
+        order.setAllocationStatus(fresh.getAllocationStatus());
+        order.setHoldExpiresAt(fresh.getHoldExpiresAt());
         addEvent(
                 order,
                 "confirmed",
-                "Xác nhận đơn — giữ " + held + " khay (FEFO, " + order.getAllocationStatus().code() + ")",
+                "Xác nhận đơn — giữ " + held + " khay (FEFO, " + fresh.getAllocationStatus().code() + ")",
                 actor);
     }
 
@@ -262,6 +275,125 @@ public class SalesOrderService {
     @Transactional
     public OrderDetailResponse createFromRequest(OrderInputRequest request, Long actorId) {
         return create(request, actorId);
+    }
+
+    /**
+     * Chuyển báo giá đã chốt → đơn: giữ snapshot giá báo giá ({@link PriceBasis#QUOTE}).
+     * Kiểm tra tồn như tạo đơn nội bộ; credit check theo phương thức thanh toán mặc định.
+     */
+    @Transactional
+    public OrderDetailResponse createFromQuote(Long quoteId, Long actorId) {
+        Quote quote = quoteRepository
+                .findWithDetailsById(quoteId)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy báo giá"));
+        if (quote.getStatus() != QuoteStatus.APPROVED) {
+            throw ApiException.conflict("Chỉ báo giá đã chốt mới chuyển được thành đơn");
+        }
+        if (salesOrderRepository.findFirstBySourceQuote_Id(quote.getId()).isPresent()) {
+            throw ApiException.conflict("Báo giá này đã có đơn hàng");
+        }
+
+        Customer customer = quote.getCustomer();
+        if (customer == null) {
+            throw ApiException.badRequest("Báo giá thiếu khách hàng");
+        }
+        if (!customer.isActive()) {
+            throw ApiException.conflict("Khách hàng đã bị khóa, không thể tạo đơn");
+        }
+        if (quote.getLines().isEmpty()) {
+            throw ApiException.badRequest("Báo giá không có dòng hàng");
+        }
+
+        boolean b2b = customer.getCustomerType() == CustomerType.B2B;
+        PaymentMethod paymentMethod = b2b ? PaymentMethod.CREDIT_NET : PaymentMethod.BANK_TRANSFER;
+        OrderType orderType = b2b ? OrderType.B2B : OrderType.RETAIL;
+
+        CustomerAddress shipAddress = customerAddressRepository
+                .findByCustomerIdOrderByDefaultAddressDescIdAsc(customer.getId())
+                .stream()
+                .findFirst()
+                .orElse(null);
+        FulfillmentMethod fulfillment = shipAddress == null
+                ? FulfillmentMethod.PICKUP
+                : (shipAddress.isInDeliveryRadius()
+                        ? FulfillmentMethod.SHOP_DELIVERY
+                        : FulfillmentMethod.PARTNER_DELIVERY);
+
+        List<PricingLineInput> pricingLines = quote.getLines().stream()
+                .map(line -> new PricingLineInput(
+                        line.getVariant().getId(), line.getUnit(), line.getQty(), line.getUnitPrice()))
+                .toList();
+        PricingResultResponse priced = pricingService.resolve(new PricingRequest(
+                customer.getId(), paymentMethod.code(), ZERO, ZERO, pricingLines));
+        assertSufficientStock(priced);
+
+        AppUser placedBy = actorId == null
+                ? null
+                : userRepository
+                        .findById(actorId)
+                        .orElseThrow(() -> ApiException.notFound("Không tìm thấy người dùng"));
+
+        Instant now = Instant.now(clock);
+        SalesOrder order = new SalesOrder();
+        order.setCode(nextOrderCode());
+        order.setCustomer(customer);
+        order.setOrderType(orderType);
+        order.setChannel(SaleChannel.PHONE);
+        order.setSourceQuote(quote);
+        order.setPaymentMethod(paymentMethod);
+        order.setPaymentTermDays(paymentMethod == PaymentMethod.CREDIT_NET ? customer.getNetDays() : 0);
+        order.setPaymentStatus(PaymentStatus.UNPAID);
+        order.setAllocationStatus(AllocationStatus.NONE);
+        order.setFulfillmentMethod(fulfillment);
+        order.setShipAddress(shipAddress);
+        order.setState(OrderState.PENDING);
+        order.setSubtotal(quote.getSubtotal());
+        order.setDiscountTotal(ZERO);
+        order.setShippingFee(ZERO);
+        order.setTotal(quote.getTotal());
+        order.setOverLimit(priced.isOverLimit());
+        order.setOverLimitAmount(moneyOrZero(priced.overLimitAmount()));
+        order.setPlacedBy(placedBy);
+        order.setPlacedAt(now);
+        order.setNote("Từ báo giá " + quote.getCode());
+
+        for (QuoteLine line : quote.getLines()) {
+            SalesOrderLine row = new SalesOrderLine();
+            row.setVariant(line.getVariant());
+            row.setUnit(line.getUnit());
+            row.setQty(line.getQty());
+            row.setQtyKhay(line.getQtyKhay());
+            row.setUnitPrice(line.getUnitPrice());
+            row.setDiscountPct(ZERO);
+            row.setLineTotal(line.getLineTotal());
+            row.setPriceBasis(PriceBasis.QUOTE);
+            row.setOutstandingQty(0);
+            order.addLine(row);
+        }
+
+        salesOrderRepository.save(order);
+        addEvent(order, "created", "Tạo đơn từ báo giá " + quote.getCode(), placedBy);
+
+        SalesRequest linked = quote.getRequest();
+        if (linked != null
+                && linked.getStatus() != RequestStatus.REJECTED
+                && linked.getStatus() != RequestStatus.CLOSED) {
+            linked.setStatus(RequestStatus.ORDERED);
+        }
+
+        if (order.isOverLimit()) {
+            createOverLimitApproval(order, customer, placedBy);
+            addEvent(order, "approval", "Đơn vượt hạn mức, chờ Chủ cửa hàng duyệt", placedBy);
+        } else {
+            confirmOrder(order, placedBy);
+        }
+
+        Map<String, Object> auditDetail = new HashMap<>();
+        auditDetail.put("total", order.getTotal());
+        auditDetail.put("sourceQuoteId", quote.getId());
+        auditLogService.record(actorId, "create", "sales_order", order.getId(), auditDetail);
+
+        return getDetail(order.getId());
     }
 
     /** Hủy đơn: RELEASE hold nếu còn. */
@@ -460,5 +592,33 @@ public class SalesOrderService {
 
     private static BigDecimal moneyOrZero(BigDecimal value) {
         return value == null ? ZERO : value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Chặn tạo đơn Sales nội bộ khi bất kỳ variant nào vượt tồn khả dụng (gộp theo variant).
+     */
+    private void assertSufficientStock(PricingResultResponse priced) {
+        Map<Long, Integer> neededByVariant = new LinkedHashMap<>();
+        Map<Long, Long> availableByVariant = new LinkedHashMap<>();
+        for (PricedLineResponse line : priced.lines()) {
+            neededByVariant.merge(line.variantId(), line.qtyKhay(), Integer::sum);
+            availableByVariant.putIfAbsent(line.variantId(), line.available());
+        }
+
+        List<String> shortages = new ArrayList<>();
+        for (Map.Entry<Long, Integer> entry : neededByVariant.entrySet()) {
+            long available = availableByVariant.getOrDefault(entry.getKey(), 0L);
+            if (entry.getValue() <= available) {
+                continue;
+            }
+            ProductVariant variant = productVariantRepository.findById(entry.getKey()).orElse(null);
+            String label = variant == null
+                    ? ("#" + entry.getKey())
+                    : variant.getProduct().getName() + " · " + variant.getPackLabel();
+            shortages.add(label + " chỉ còn " + available + " khay (cần " + entry.getValue() + ")");
+        }
+        if (!shortages.isEmpty()) {
+            throw ApiException.conflict("Một số sản phẩm không đủ hàng: " + String.join("; ", shortages));
+        }
     }
 }

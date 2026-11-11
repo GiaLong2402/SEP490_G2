@@ -59,6 +59,21 @@ mock('POST', '/orders', ({ body, userId }) => {
   if (body.paymentMethod === 'credit_net' && customer.customerType !== 'b2b') fail(400, 'Chỉ khách B2B được mua công nợ');
   if (!body.lines?.length) fail(400, 'Đơn phải có ít nhất một dòng hàng');
   const priced = priceLines(customer.id, body.lines);
+  const needed = new Map<number, number>();
+  const available = new Map<number, number>();
+  for (const line of priced) {
+    needed.set(line.variantId, (needed.get(line.variantId) ?? 0) + line.qtyKhay);
+    if (!available.has(line.variantId)) available.set(line.variantId, line.available);
+  }
+  const shortages: string[] = [];
+  for (const [variantId, qty] of needed) {
+    const avail = available.get(variantId) ?? 0;
+    if (qty > avail) {
+      const label = variantLabel(variantId);
+      shortages.push(`${label.productName} · ${label.packLabel} chỉ còn ${avail} khay (cần ${qty})`);
+    }
+  }
+  if (shortages.length) fail(409, `Một số sản phẩm không đủ hàng: ${shortages.join('; ')}`);
   const subtotal = priced.reduce((sum, l) => sum + l.lineTotal, 0);
   const total = Math.max(0, subtotal - Number(body.discountTotal ?? 0) + Number(body.shippingFee ?? 0));
   const now = new Date().toISOString();

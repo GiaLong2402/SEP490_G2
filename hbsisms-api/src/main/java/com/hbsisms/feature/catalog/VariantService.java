@@ -3,13 +3,16 @@ package com.hbsisms.feature.catalog;
 import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.common.text.Strings;
 import com.hbsisms.feature.catalog.dto.TierInput;
+import com.hbsisms.feature.catalog.dto.VariantOptionResponse;
 import com.hbsisms.feature.catalog.dto.VariantRequest;
+import com.hbsisms.feature.inventory.StockRepository;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,14 +23,26 @@ public class VariantService {
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
     private final VolumeTierRepository volumeTierRepository;
+    private final StockRepository stockRepository;
 
     public VariantService(
             ProductRepository productRepository,
             ProductVariantRepository productVariantRepository,
-            VolumeTierRepository volumeTierRepository) {
+            VolumeTierRepository volumeTierRepository,
+            StockRepository stockRepository) {
         this.productRepository = productRepository;
         this.productVariantRepository = productVariantRepository;
         this.volumeTierRepository = volumeTierRepository;
+        this.stockRepository = stockRepository;
+    }
+
+    /** Dropdown đơn/POS: kèm số khay khả dụng. */
+    public List<VariantOptionResponse> listOptions() {
+        return productVariantRepository.findAll(Sort.by("id")).stream()
+                .filter(ProductVariant::isActive)
+                .map(v -> VariantOptionResponse.from(
+                        v, stockRepository.sumQtyAvailableByVariantId(v.getId())))
+                .toList();
     }
 
     @Transactional

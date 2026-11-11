@@ -72,7 +72,15 @@ mock('PUT', '/categories/:id', ({ params, body, userId }) => {
 mock('GET', '/variants', () =>
   db.variants
     .filter((v) => v.isActive)
-    .map((v) => ({ id: v.id, sku: v.sku, packLabel: v.packLabel, productName: db.products.find((p) => p.id === v.productId)?.name ?? '', listPrice: v.listPrice, packPerCase: v.packPerCase })),
+    .map((v) => ({
+      id: v.id,
+      sku: v.sku,
+      packLabel: v.packLabel,
+      productName: db.products.find((p) => p.id === v.productId)?.name ?? '',
+      listPrice: v.listPrice,
+      packPerCase: v.packPerCase,
+      available: availableQty(v.id),
+    })),
 );
 
 function categoryIdsIncludingDescendants(categoryId: number) {
