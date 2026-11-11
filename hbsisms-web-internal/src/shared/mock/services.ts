@@ -221,16 +221,10 @@ export function shipHeld(variantId: ID, qty: number, refId: ID, userId: ID | nul
   }
 }
 
-/** Xác nhận đơn: giữ hàng FEFO và ghi nợ nếu mua công nợ. */
+/** Xác nhận đơn: giữ hàng FEFO. Không bán nợ trên đơn Sales mới. */
 export function confirmOrder(order: SalesOrder, userId: ID | null) {
   order.state = 'confirmed';
   allocateOrder(order, userId);
-  if (order.paymentMethod === 'credit_net' && order.customerId) {
-    const due = new Date();
-    due.setDate(due.getDate() + order.paymentTermDays);
-    postDebtEntry(order.customerId, { orderId: order.id, entryType: 'charge', amount: order.total, dueDate: due.toISOString().slice(0, 10), note: `Đơn ${order.code}` });
-    order.paymentStatus = 'debt';
-  }
   addOrderEvent(order.id, 'confirmed', order.allocationStatus === 'full' ? 'Xác nhận đơn, đã giữ đủ hàng theo FEFO' : 'Xác nhận đơn, chưa giữ đủ hàng', userId);
   order.updatedAt = new Date().toISOString();
 }

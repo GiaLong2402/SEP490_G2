@@ -14,8 +14,11 @@ import java.util.List;
 
 /** Body of POST /orders. Matches FE {@code OrderInput}. */
 public record OrderInputRequest(
-        @NotNull(message = "Vui lòng chọn khách hàng")
+        /** Null = khách vãng lai; khi đó dùng {@link #customerName()}. */
         Long customerId,
+
+        /** Tên khách vãng lai (bỏ qua nếu đã có {@code customerId}). */
+        String customerName,
 
         @NotNull(message = "orderType là bắt buộc")
         OrderType orderType,
