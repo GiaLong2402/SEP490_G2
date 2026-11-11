@@ -13,5 +13,7 @@ public record PricedLineResponse(
         BigDecimal unitPrice,
         PriceBasis priceBasis,
         BigDecimal lineTotal,
-        long available) {
+        long available,
+        /** Số khay thiếu so với tồn khả dụng: max(0, qtyKhay - available). */
+        long shortfall) {
 }
