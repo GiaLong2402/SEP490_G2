@@ -69,6 +69,8 @@ class SalesOrderServiceTest {
     @Mock
     private CustomerDebtLedgerRepository customerDebtLedgerRepository;
     @Mock
+    private QuoteRepository quoteRepository;
+    @Mock
     private PricingService pricingService;
     @Mock
     private AuditLogService auditLogService;
@@ -96,6 +98,7 @@ class SalesOrderServiceTest {
                 userRepository,
                 approvalTaskRepository,
                 customerDebtLedgerRepository,
+                quoteRepository,
                 pricingService,
                 auditLogService,
                 orderAllocationService,

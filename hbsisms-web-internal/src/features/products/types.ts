@@ -45,6 +45,8 @@ export interface VariantOption {
   productName: string;
   listPrice: number;
   packPerCase: number;
+  /** Số khay khả dụng — dropdown đơn/POS. */
+  available?: number;
 }
 
 export interface CategoryListItem extends Category {

@@ -102,12 +102,13 @@ class VariantDtoJacksonTest {
     @Test
     void optionResponse_matchesFeVariantOption() throws Exception {
         VariantOptionResponse response =
-                new VariantOptionResponse(1L, "SKU-1", "Khay", "Tôm sú", new BigDecimal("180000"), (short) 10);
+                new VariantOptionResponse(1L, "SKU-1", "Khay", "Tôm sú", new BigDecimal("180000"), (short) 10, 42L);
         JsonNode json = objectMapper.readTree(objectMapper.writeValueAsString(response));
         assertThat(json.get("sku").asText()).isEqualTo("SKU-1");
         assertThat(json.get("productName").asText()).isEqualTo("Tôm sú");
         assertThat(json.get("listPrice").decimalValue()).isEqualByComparingTo("180000");
         assertThat(json.get("packPerCase").asInt()).isEqualTo(10);
+        assertThat(json.get("available").asLong()).isEqualTo(42L);
         assertThat(json.has("isActive")).isFalse();
     }
 }

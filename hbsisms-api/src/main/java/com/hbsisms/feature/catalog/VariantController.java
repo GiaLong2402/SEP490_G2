@@ -4,7 +4,6 @@ import com.hbsisms.feature.catalog.dto.VariantOptionResponse;
 import com.hbsisms.feature.catalog.dto.VariantRequest;
 import jakarta.validation.Valid;
 import java.util.List;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,22 +20,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class VariantController {
 
-    private final ProductVariantRepository productVariantRepository;
     private final VariantService variantService;
 
-    public VariantController(
-            ProductVariantRepository productVariantRepository, VariantService variantService) {
-        this.productVariantRepository = productVariantRepository;
+    public VariantController(VariantService variantService) {
         this.variantService = variantService;
     }
 
     @GetMapping("/variants")
     @PreAuthorize("hasAnyAuthority('products', 'customers', 'orders', 'inventory')")
     public List<VariantOptionResponse> options() {
-        return productVariantRepository.findAll(Sort.by("id")).stream()
-                .filter(ProductVariant::isActive)
-                .map(VariantOptionResponse::from)
-                .toList();
+        return variantService.listOptions();
     }
 
     @PostMapping("/products/{productId}/variants")

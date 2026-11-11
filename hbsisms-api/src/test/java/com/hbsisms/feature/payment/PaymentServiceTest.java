@@ -12,6 +12,8 @@ import com.hbsisms.feature.customer.Customer;
 import com.hbsisms.feature.customer.CustomerRepository;
 import com.hbsisms.feature.customer.CustomerType;
 import com.hbsisms.feature.payment.dto.PaymentInputRequest;
+import com.hbsisms.feature.payment.dto.PaymentListItemResponse;
+import com.hbsisms.feature.payment.dto.PaymentRefundRequest;
 import com.hbsisms.feature.sales.FulfillmentMethod;
 import com.hbsisms.feature.sales.OrderEventRepository;
 import com.hbsisms.feature.sales.OrderState;
@@ -26,13 +28,19 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 
 @ExtendWith(MockitoExtension.class)
@@ -157,6 +165,243 @@ class PaymentServiceTest {
                 .isInstanceOf(ApiException.class)
                 .extracting(ex -> ((ApiException) ex).getStatus())
                 .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void markReconcile_setsShortFlag_andAudits() {
+        SalesOrder order = order(8L, OrderState.CONFIRMED, PaymentStatus.PAID, "100000.00");
+        order.setChannel(SaleChannel.WEB);
+        Payment payment = paymentRow(21L, order, PaymentReconcileFlag.NONE);
+        payment.setRawPayload(Map.of("needsRefund", true));
+
+        when(paymentRepository.findWithDetailsById(21L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(payment)).thenReturn(payment);
+
+        PaymentListItemResponse response = service.markReconcile(21L, "short", 9L);
+
+        assertThat(payment.getReconcileFlag()).isEqualTo(PaymentReconcileFlag.SHORT);
+        assertThat(response.reconcileFlag()).isEqualTo(PaymentReconcileFlag.SHORT);
+        assertThat(response.channel()).isEqualTo(SaleChannel.WEB);
+        assertThat(response.needsRefund()).isTrue();
+        verify(auditLogService)
+                .record(eq(9L), eq("reconcile"), eq("payment"), eq(21L), eq(Map.of("reconcileFlag", "short")));
+    }
+
+    @Test
+    void markReconcile_clearWithNone_isIdempotent() {
+        SalesOrder order = order(9L, OrderState.CONFIRMED, PaymentStatus.PAID, "50000.00");
+        Payment payment = paymentRow(22L, order, PaymentReconcileFlag.DUPLICATE);
+
+        when(paymentRepository.findWithDetailsById(22L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(payment)).thenReturn(payment);
+
+        PaymentListItemResponse first = service.markReconcile(22L, "none", 9L);
+        PaymentListItemResponse second = service.markReconcile(22L, "none", 9L);
+
+        assertThat(payment.getReconcileFlag()).isEqualTo(PaymentReconcileFlag.NONE);
+        assertThat(first.reconcileFlag()).isEqualTo(PaymentReconcileFlag.NONE);
+        assertThat(second.reconcileFlag()).isEqualTo(PaymentReconcileFlag.NONE);
+    }
+
+    @Test
+    void markReconcile_missingPayment_returns404() {
+        when(paymentRepository.findWithDetailsById(404L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.markReconcile(404L, "over", 9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void markReconcile_rejectsInvalidFlag() {
+        SalesOrder order = order(10L, OrderState.CONFIRMED, PaymentStatus.PAID, "10000.00");
+        Payment payment = paymentRow(23L, order, PaymentReconcileFlag.NONE);
+        when(paymentRepository.findWithDetailsById(23L)).thenReturn(Optional.of(payment));
+
+        assertThatThrownBy(() -> service.markReconcile(23L, "weird", 9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(api.getMessage()).contains("Cờ đối soát");
+                });
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void search_passesStatusChannelOrderIdAndReconcileFlagToSpec() {
+        SalesOrder order = order(11L, OrderState.CONFIRMED, PaymentStatus.PAID, "200000.00");
+        order.setChannel(SaleChannel.WEB);
+        Payment payment = paymentRow(24L, order, PaymentReconcileFlag.OVER);
+        when(paymentRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(payment)));
+
+        var page = service.search(null, null, null, "success", "web", 11L, "over", 1, 20);
+
+        assertThat(page.items()).hasSize(1);
+        PaymentListItemResponse item = page.items().get(0);
+        assertThat(item.channel()).isEqualTo(SaleChannel.WEB);
+        assertThat(item.status()).isEqualTo(PayTxnStatus.SUCCESS);
+        assertThat(item.reconcileFlag()).isEqualTo(PaymentReconcileFlag.OVER);
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(paymentRepository).findAll(any(Specification.class), pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getPageNumber()).isZero();
+    }
+
+    @Test
+    void search_rejectsInvalidStatus() {
+        assertThatThrownBy(() -> service.search(null, null, null, "nope", null, null, null, 1, 20))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void search_rejectsInvalidChannel() {
+        assertThatThrownBy(() -> service.search(null, null, null, null, "telegram", null, null, 1, 20))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void recordRefund_fullAmount_setsRefundedAndClearsNeedsRefund() {
+        SalesOrder order = order(30L, OrderState.PENDING, PaymentStatus.PAID, "100000.00");
+        order.setChannel(SaleChannel.WEB);
+        Payment source = paymentRow(31L, order, PaymentReconcileFlag.NONE);
+        source.setRawPayload(Map.of("needsRefund", true));
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(salesOrderRepository.findWithDetailsById(30L)).thenReturn(Optional.of(order));
+        when(paymentRepository.sumSuccessfulInByOrderId(30L)).thenReturn(new BigDecimal("100000.00"));
+        when(paymentRepository.sumSuccessfulRefundByOrderId(30L))
+                .thenReturn(ZERO)
+                .thenReturn(new BigDecimal("100000.00"));
+        when(paymentRepository.findCodesByPrefix("TT-")).thenReturn(List.of());
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
+            Payment p = inv.getArgument(0);
+            if (p.getId() == null) {
+                setId(p, ids.incrementAndGet());
+            }
+            return p;
+        });
+        when(paymentRepository.findWithDetailsById(any())).thenAnswer(inv -> {
+            Long id = inv.getArgument(0);
+            if (id.equals(31L)) {
+                return Optional.of(source);
+            }
+            Payment refund = new Payment();
+            setId(refund, id);
+            refund.setCode("TT-" + id);
+            refund.setOrder(order);
+            refund.setCustomer(customer);
+            refund.setMethod(PaymentMethod.BANK_TRANSFER);
+            refund.setDirection(PayDirection.REFUND);
+            refund.setAmount(new BigDecimal("100000.00"));
+            refund.setStatus(PayTxnStatus.SUCCESS);
+            refund.setReconcileFlag(PaymentReconcileFlag.NONE);
+            refund.setPaidAt(Instant.now(clock));
+            refund.setReceivedBy(actor);
+            return Optional.of(refund);
+        });
+
+        PaymentListItemResponse response = service.recordRefund(
+                new PaymentRefundRequest(
+                        30L, 31L, PaymentMethod.BANK_TRANSFER, new BigDecimal("100000.00"), "CK-HOAN", null),
+                9L);
+
+        assertThat(response.direction()).isEqualTo(PayDirection.REFUND);
+        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.REFUNDED);
+        assertThat(source.getRawPayload()).containsEntry("needsRefund", false);
+        verify(orderEventRepository).save(any());
+        verify(auditLogService).record(eq(9L), eq("refund"), eq("payment"), any(), any());
+    }
+
+    @Test
+    void recordRefund_amountAboveNet_returns409() {
+        SalesOrder order = order(32L, OrderState.CONFIRMED, PaymentStatus.PAID, "100000.00");
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(salesOrderRepository.findWithDetailsById(32L)).thenReturn(Optional.of(order));
+        when(paymentRepository.sumSuccessfulInByOrderId(32L)).thenReturn(new BigDecimal("100000.00"));
+        when(paymentRepository.sumSuccessfulRefundByOrderId(32L)).thenReturn(new BigDecimal("40000.00"));
+
+        assertThatThrownBy(() -> service.recordRefund(
+                        new PaymentRefundRequest(
+                                32L, null, PaymentMethod.CASH, new BigDecimal("70000.00"), null, null),
+                        9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(api.getMessage()).contains("vượt quá");
+                });
+    }
+
+    @Test
+    void recordRefund_cancelledOrder_stillAllowed() {
+        SalesOrder order = order(33L, OrderState.CANCELLED, PaymentStatus.PAID, "50000.00");
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(salesOrderRepository.findWithDetailsById(33L)).thenReturn(Optional.of(order));
+        when(paymentRepository.sumSuccessfulInByOrderId(33L)).thenReturn(new BigDecimal("50000.00"));
+        when(paymentRepository.sumSuccessfulRefundByOrderId(33L))
+                .thenReturn(ZERO)
+                .thenReturn(new BigDecimal("50000.00"));
+        when(paymentRepository.findCodesByPrefix("TT-")).thenReturn(List.of());
+        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(33L)).thenReturn(List.of());
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
+            Payment p = inv.getArgument(0);
+            setId(p, ids.incrementAndGet());
+            return p;
+        });
+        when(paymentRepository.findWithDetailsById(any())).thenAnswer(inv -> {
+            Payment refund = new Payment();
+            setId(refund, inv.getArgument(0));
+            refund.setCode("TT-R");
+            refund.setOrder(order);
+            refund.setCustomer(customer);
+            refund.setMethod(PaymentMethod.CASH);
+            refund.setDirection(PayDirection.REFUND);
+            refund.setAmount(new BigDecimal("50000.00"));
+            refund.setStatus(PayTxnStatus.SUCCESS);
+            refund.setPaidAt(Instant.now(clock));
+            return Optional.of(refund);
+        });
+
+        PaymentListItemResponse response = service.recordRefund(
+                new PaymentRefundRequest(33L, null, PaymentMethod.CASH, new BigDecimal("50000.00"), null, "hoàn sau hủy"),
+                9L);
+
+        assertThat(response.direction()).isEqualTo(PayDirection.REFUND);
+        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.REFUNDED);
+        assertThat(order.getState()).isEqualTo(OrderState.CANCELLED);
+    }
+
+    @Test
+    void recordRefund_rejectsPayosMethod() {
+        assertThatThrownBy(() -> service.recordRefund(
+                        new PaymentRefundRequest(
+                                34L, null, PaymentMethod.PAYOS, new BigDecimal("10000.00"), null, null),
+                        9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
+
+    private Payment paymentRow(long id, SalesOrder order, PaymentReconcileFlag flag) {
+        Payment payment = new Payment();
+        setId(payment, id);
+        payment.setCode("TT-" + id);
+        payment.setOrder(order);
+        payment.setCustomer(customer);
+        payment.setMethod(PaymentMethod.PAYOS);
+        payment.setDirection(PayDirection.IN);
+        payment.setAmount(order.getTotal());
+        payment.setStatus(PayTxnStatus.SUCCESS);
+        payment.setReconcileFlag(flag);
+        payment.setGateway("payos");
+        payment.setPaidAt(Instant.now(clock));
+        payment.setReceivedBy(actor);
+        return payment;
     }
 
     private SalesOrder order(long id, OrderState state, PaymentStatus pay, String total) {

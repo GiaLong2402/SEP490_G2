@@ -27,6 +27,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ErrorResponse> handleApi(ApiException ex, HttpServletRequest request) {
+        if (ex.getShortages() != null && !ex.getShortages().isEmpty()) {
+            return ResponseEntity.status(ex.getStatus())
+                    .body(ErrorResponse.withShortages(
+                            ex.getStatus(), ex.getMessage(), ex.getShortages(), request.getRequestURI()));
+        }
         return respond(ex.getStatus(), ex.getMessage(), request);
     }
 

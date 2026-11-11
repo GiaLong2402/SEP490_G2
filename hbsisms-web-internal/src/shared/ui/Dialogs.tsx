@@ -120,7 +120,9 @@ export function ConfirmDialog({ open, title, message, confirmLabel = 'Xác nhậ
       onClose={onClose}
       onSubmit={() => {
         setTouched(true);
-        if (!missing) onConfirm(note.trim());
+        const reason = note.trim();
+        if (withNote && noteRequired && !reason) return;
+        onConfirm(reason);
       }}
       footer={
         <>
@@ -134,7 +136,7 @@ export function ConfirmDialog({ open, title, message, confirmLabel = 'Xác nhậ
       {message && <div className="text-body text-ink-muted">{message}</div>}
       {withNote && (
         <Field label={noteLabel} required={noteRequired} error={touched && missing ? 'Vui lòng nhập nội dung' : undefined} className={message ? 'mt-3' : ''}>
-          <Textarea value={note} onChange={(e) => setNote(e.target.value)} />
+          <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={noteRequired ? 'Nhập lý do…' : undefined} />
         </Field>
       )}
     </Modal>

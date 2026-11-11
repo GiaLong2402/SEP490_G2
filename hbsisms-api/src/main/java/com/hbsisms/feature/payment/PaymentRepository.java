@@ -19,6 +19,9 @@ public interface PaymentRepository
 
     Optional<Payment> findByPayosOrderCode(Long payosOrderCode);
 
+    @EntityGraph(attributePaths = {"order", "customer", "customer.accountUser"})
+    Optional<Payment> findWithOrderCustomerByPayosOrderCode(Long payosOrderCode);
+
     @EntityGraph(attributePaths = {"order", "customer", "receivedBy"})
     Optional<Payment> findWithDetailsById(Long id);
 
@@ -37,6 +40,17 @@ public interface PaymentRepository
             """)
     java.math.BigDecimal sumSuccessfulInByOrderId(@Param("orderId") Long orderId);
 
+    @Query("""
+            select coalesce(sum(p.amount), 0) from Payment p
+            where p.order.id = :orderId
+              and p.direction = com.hbsisms.feature.payment.PayDirection.REFUND
+              and p.status = com.hbsisms.feature.payment.PayTxnStatus.SUCCESS
+            """)
+    java.math.BigDecimal sumSuccessfulRefundByOrderId(@Param("orderId") Long orderId);
+
     @Query("select p.code from Payment p where p.code like concat(:prefix, '%')")
     List<String> findCodesByPrefix(@Param("prefix") String prefix);
+
+    @Query("select coalesce(max(p.payosOrderCode), 130000) from Payment p")
+    Long maxPayosOrderCode();
 }

@@ -1,7 +1,8 @@
 import { ArrowRightCircle, Send } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useRequest } from '@/features/requests';
 import { useAction } from '@/shared/api/useAction';
-import { priceBasisMeta, quoteStatusMeta, sellUnitLabels } from '@/shared/domain/enums';
+import { priceBasisMeta, quoteStatusMeta, saleChannelLabels, sellUnitLabels } from '@/shared/domain/enums';
 import { date, money, num } from '@/shared/lib/format';
 import { Button, Card, DataTable, ErrorState, InfoList, PageHeader, PageLoading, StatusChip, type Column } from '@/shared/ui';
 import { quotesApi } from '../api';
@@ -12,6 +13,7 @@ export default function QuoteDetailPage() {
   const id = Number(useParams().id);
   const navigate = useNavigate();
   const { data: quote, isLoading, error, refetch } = useQuote(id);
+  const requestQuery = useRequest(quote?.requestId);
   const setStatus = useAction((status: QuoteStatus) => quotesApi.setStatus(id, status), { success: 'Đã cập nhật báo giá' });
   const convert = useAction(() => quotesApi.convert(id), { success: (r) => `Đã tạo đơn ${r.orderCode}`, onDone: (r) => navigate(`/orders/${r.orderId}`) });
 
@@ -46,9 +48,22 @@ export default function QuoteDetailPage() {
         }
       />
       <div className="grid items-start gap-4 lg:grid-cols-[1fr_300px]">
-        <Card title="Dòng hàng" flush>
-          <DataTable columns={columns} rows={quote.lines} rowKey={(l) => l.id} footer={<tr className="border-t border-line text-h2"><td colSpan={6} className="px-3 py-2 text-right"><span className="mr-3">Tổng cộng</span><span className="tabular-nums">{money(quote.total)}</span></td></tr>} />
-        </Card>
+        <div className="min-w-0 space-y-4">
+          {requestQuery.data && (
+            <Card title="Nội dung yêu cầu">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2 text-small">
+                  <span className="font-mono font-semibold">{requestQuery.data.code}</span>
+                  <span className="text-ink-muted">{saleChannelLabels[requestQuery.data.channel]}</span>
+                </div>
+                <p className="whitespace-pre-wrap text-body">{requestQuery.data.summary?.trim() || '—'}</p>
+              </div>
+            </Card>
+          )}
+          <Card title="Dòng hàng" flush>
+            <DataTable columns={columns} rows={quote.lines} rowKey={(l) => l.id} footer={<tr className="border-t border-line text-h2"><td colSpan={6} className="px-3 py-2 text-right"><span className="mr-3">Tổng cộng</span><span className="tabular-nums">{money(quote.total)}</span></td></tr>} />
+          </Card>
+        </div>
         <Card title="Thông tin">
           <InfoList
             items={[

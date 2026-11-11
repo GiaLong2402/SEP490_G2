@@ -165,18 +165,25 @@ public class StorefrontCatalogDemoSeeder implements ApplicationRunner {
         if (lotRepository.findByLotCodeIgnoreCase(LOT_CODE).isPresent()) {
             return;
         }
-        Warehouse warehouse = warehouseRepository.findByCodeIgnoreCase("KHO-HP").orElse(null);
-        if (warehouse == null) {
-            log.warn("Skip stock seed for {}: warehouse KHO-HP missing", SKU_IN_STOCK);
-            return;
-        }
+        Warehouse warehouse = warehouseRepository.findByCodeIgnoreCase("KHO-HP").orElseGet(() -> {
+            Warehouse created = new Warehouse();
+            created.setCode("KHO-HP");
+            created.setName("Kho lạnh Hải Phòng (demo)");
+            created.setAddress("Hải Phòng");
+            created.setCapacity(500);
+            created.setActive(true);
+            return warehouseRepository.save(created);
+        });
         Location location = locationRepository.findByWarehouse_IdOrderByCodeAsc(warehouse.getId()).stream()
                 .findFirst()
-                .orElse(null);
-        if (location == null) {
-            log.warn("Skip stock seed for {}: no location in KHO-HP", SKU_IN_STOCK);
-            return;
-        }
+                .orElseGet(() -> {
+                    Location created = new Location();
+                    created.setWarehouse(warehouse);
+                    created.setCode("A-01");
+                    created.setZone("Lạnh 1");
+                    created.setCapacity(100);
+                    return locationRepository.save(created);
+                });
 
         Lot lot = new Lot();
         lot.setLotCode(LOT_CODE);
@@ -196,5 +203,6 @@ public class StorefrontCatalogDemoSeeder implements ApplicationRunner {
         stock.setQtyQuarantine(0);
         stock.setQtyExpired(0);
         stockRepository.save(stock);
+        log.info("Seeded stock qty=20 for SKU {} at KHO-HP/{}", SKU_IN_STOCK, location.getCode());
     }
 }

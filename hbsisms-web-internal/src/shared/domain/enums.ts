@@ -94,6 +94,21 @@ export const payTxnStatusMeta: Meta<PayTxnStatus> = {
   pending: { label: 'Đang xử lý', tone: 'amber' }, success: { label: 'Thành công', tone: 'green' }, failed: { label: 'Thất bại', tone: 'red' }, cancelled: { label: 'Đã hủy', tone: 'neutral' },
 };
 
+/** Cờ đối soát thủ công trên giao dịch (Excel #39). */
+export type PaymentReconcileFlag = 'none' | 'short' | 'over' | 'duplicate';
+export const paymentReconcileFlagLabels: Record<PaymentReconcileFlag, string> = {
+  none: 'Không',
+  short: 'Thiếu',
+  over: 'Thừa',
+  duplicate: 'Trùng',
+};
+export const paymentReconcileFlagMeta: Meta<PaymentReconcileFlag> = {
+  none: { label: 'Không', tone: 'neutral' },
+  short: { label: 'Thiếu', tone: 'amber' },
+  over: { label: 'Thừa', tone: 'blue' },
+  duplicate: { label: 'Trùng', tone: 'red' },
+};
+
 export type DebtEntryType = 'charge' | 'payment' | 'adjust' | 'writeoff';
 export const debtEntryLabels: Record<DebtEntryType, string> = { charge: 'Phát sinh nợ', payment: 'Thanh toán', adjust: 'Điều chỉnh', writeoff: 'Xóa nợ' };
 

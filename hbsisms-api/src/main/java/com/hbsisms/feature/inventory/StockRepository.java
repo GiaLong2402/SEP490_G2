@@ -105,6 +105,10 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
      * FEFO candidates: available &gt; 0, lot not past expiry, location not quarantine zone.
      * Ordered by earliest {@code expDate} (nulls last), then stock id.
      */
+    /**
+     * Không dùng {@code distinct} + {@code ORDER BY CASE}: PostgreSQL yêu cầu biểu thức ORDER BY
+     * nằm trong SELECT khi có DISTINCT. Lot/location là ManyToOne nên join fetch không nhân dòng.
+     */
     @Query("""
             select s from Stock s
             join fetch s.lot l
@@ -116,7 +120,7 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
                    or (lower(loc.zone) not like '%quarantine%'
                        and lower(loc.zone) not like '%cach ly%'
                        and lower(loc.zone) not like '%cách ly%'))
-            order by case when l.expDate is null then 1 else 0 end, l.expDate asc, s.id asc
+            order by l.expDate asc nulls last, s.id asc
             """)
     List<Stock> findFefoCandidates(
             @Param("variantId") Long variantId, @Param("today") java.time.LocalDate today);

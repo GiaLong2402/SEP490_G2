@@ -14,7 +14,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -70,6 +69,11 @@ public class Payment {
     @Column(nullable = false, length = 20)
     private PayTxnStatus status = PayTxnStatus.SUCCESS;
 
+    /** Manual owner mark: thiếu / thừa / trùng (Excel #39). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reconcile_flag", nullable = false, length = 20)
+    private PaymentReconcileFlag reconcileFlag = PaymentReconcileFlag.NONE;
+
     @Column(length = 120)
     private String reference;
 
@@ -87,7 +91,8 @@ public class Payment {
     @JdbcTypeCode(SqlTypes.JSON)
     private Map<String, Object> rawPayload;
 
-    @Column(nullable = false)
+    /** Null while gateway payment is still PENDING (PayOS). */
+    @Column(nullable = true)
     private Instant paidAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -103,12 +108,5 @@ public class Payment {
 
     public void setRawPayload(Map<String, Object> rawPayload) {
         this.rawPayload = rawPayload == null ? null : new HashMap<>(rawPayload);
-    }
-
-    @PrePersist
-    void defaultPaidAt() {
-        if (paidAt == null) {
-            paidAt = Instant.now();
-        }
     }
 }

@@ -15,22 +15,26 @@ const num = (v) => (v == null ? 0 : Number(v))
 export function fromOrderDto(dto) {
   checkDto(dto, REQUIRED, 'Order (OrderDetailResponse)', '2. Đơn hàng')
   if (dto?.lines?.[0]) checkDto(dto.lines[0], REQUIRED_LINE, 'Order.lines[]', '2. Đơn hàng')
-  const isDelivery = dto.fulfillmentMethod !== 'PICKUP'
+  const state = dto.state == null ? dto.state : String(dto.state).toUpperCase()
+  const paymentStatus = dto.paymentStatus == null ? dto.paymentStatus : String(dto.paymentStatus).toUpperCase()
+  const fulfillmentMethod =
+    dto.fulfillmentMethod == null ? dto.fulfillmentMethod : String(dto.fulfillmentMethod).toUpperCase()
+  const isDelivery = fulfillmentMethod !== 'PICKUP'
   const delivery = dto.deliveries?.[0] || null
-  const payment = [...(dto.payments || [])].reverse().find((p) => p.direction !== 'OUT') || null
+  const payment = [...(dto.payments || [])].reverse().find((p) => String(p.direction || '').toUpperCase() !== 'OUT') || null
 
   return {
     id: dto.id,
     code: dto.code,
     displayCode: `#${dto.code}`,
     placedAt: dto.placedAt || dto.createdAt || null,
-    state: dto.state,
-    paymentStatus: dto.paymentStatus,
-    uiStatus: orderUiStatus(dto.state, dto.paymentStatus),
-    isPaid: dto.paymentStatus === 'PAID',
+    state,
+    paymentStatus,
+    uiStatus: orderUiStatus(state, paymentStatus),
+    isPaid: paymentStatus === 'PAID',
     canCancel: Boolean(dto.canCancel),
     isDelivery,
-    fulfillmentMethod: dto.fulfillmentMethod,
+    fulfillmentMethod,
     subtotal: num(dto.subtotal),
     shippingFee: num(dto.shippingFee),
     discount: num(dto.discountTotal),
@@ -61,8 +65,8 @@ export function fromOrderDto(dto) {
       .map((e) => ({ id: e.id, at: e.createdAt, title: e.description || e.eventType })),
     payment: payment
       ? {
-          method: payment.method,
-          status: payment.status,
+          method: payment.method == null ? payment.method : String(payment.method).toUpperCase(),
+          status: payment.status == null ? payment.status : String(payment.status).toUpperCase(),
           paidAt: payment.paidAt || null,
           checkoutUrl: payment.checkoutUrl || null,
           payosOrderCode: payment.payosOrderCode ?? null,
