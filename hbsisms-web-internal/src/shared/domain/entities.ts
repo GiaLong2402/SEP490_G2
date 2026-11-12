@@ -88,7 +88,9 @@ export interface DamageReport {
 }
 
 export interface SalesRequest {
-  id: ID; code: string; customerId: ID | null; customerName: string | null; channel: E.SaleChannel; summary: string | null;
+  id: ID; code: string; customerId: ID | null; customerName: string | null;
+  contactPhone: string | null; contactAddress: string | null;
+  channel: E.SaleChannel; summary: string | null;
   status: E.RequestStatus; receivedAt: ISODateTime; handledBy: ID | null; note: string | null;
   /** Kết quả khả thi: true=Có, false=Không, null=chưa đánh giá. */
   feasible: boolean | null;

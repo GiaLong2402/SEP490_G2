@@ -12,6 +12,8 @@ public record SalesRequestResponse(
         String code,
         Long customerId,
         String customerName,
+        String contactPhone,
+        String contactAddress,
         SaleChannel channel,
         String summary,
         RequestStatus status,
@@ -32,11 +34,17 @@ public record SalesRequestResponse(
         if ((name == null || name.isBlank()) && customer != null) {
             name = customer.getName();
         }
+        String phone = request.getContactPhone();
+        if ((phone == null || phone.isBlank()) && customer != null) {
+            phone = customer.getPhone();
+        }
         return new SalesRequestResponse(
                 request.getId(),
                 request.getCode(),
                 customer == null ? null : customer.getId(),
                 name,
+                phone,
+                request.getContactAddress(),
                 request.getChannel(),
                 request.getSummary(),
                 request.getStatus(),

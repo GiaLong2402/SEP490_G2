@@ -222,7 +222,9 @@ function seed(): MockDb {
     [3, 'phone', 'Xin 500 khay mực giao gấp trong ngày — Sales từ chối', 'rejected', -2],
     [2, 'facebook', 'Inbox fanpage hỏi giá chả mực 50 khay', 'new', -1],
   ] as const).map(([customerId, channel, summary, status, day], i) => ({
-    id: i + 1, code: `YC-${pad(i + 1, 4)}`, customerId, customerName: customerId ? customers[customerId - 1].name : 'Khách vãng lai', channel, summary, status, receivedAt: isoTime(day, 9 + i), handledBy: status === 'new' ? null : 3, note: null,
+    id: i + 1, code: `YC-${pad(i + 1, 4)}`, customerId, customerName: customerId ? customers[customerId - 1].name : 'Khách vãng lai',
+    contactPhone: customerId ? null : '0900000000', contactAddress: customerId ? null : null,
+    channel, summary, status, receivedAt: isoTime(day, 9 + i), handledBy: status === 'new' ? null : 3, note: null,
     feasible: status === 'rejected' ? false : null,
     fulfillableQty: null,
     shortageQty: status === 'rejected' ? 500 : null,

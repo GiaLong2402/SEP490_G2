@@ -9,6 +9,8 @@ export interface RequestListItem extends SalesRequest {
 export interface RequestInput {
   customerId: ID | null;
   customerName: string | null;
+  contactPhone: string | null;
+  contactAddress: string | null;
   channel: SaleChannel;
   summary: string;
 }

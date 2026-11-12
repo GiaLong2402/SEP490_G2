@@ -68,6 +68,7 @@ public class CounterFulfillmentService {
 
         int issued = orderAllocationService.issueOutHeldForOrder(order, actorId);
         order.setState(OrderState.COMPLETED);
+        salesOrderRepository.save(order);
 
         OrderEvent event = new OrderEvent();
         event.setOrder(order);

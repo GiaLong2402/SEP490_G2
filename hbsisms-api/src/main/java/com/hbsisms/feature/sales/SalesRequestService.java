@@ -97,6 +97,14 @@ public class SalesRequestService {
         row.setCode(nextCode());
         row.setCustomer(customer);
         row.setCustomerName(customer != null ? customer.getName() : walkInName);
+        // SĐT / địa chỉ chỉ lưu cho khách vãng lai; khách hệ thống lấy từ hồ sơ khi trả response.
+        if (customer == null) {
+            row.setContactPhone(Strings.trimToNull(request.contactPhone()));
+            row.setContactAddress(Strings.trimToNull(request.contactAddress()));
+        } else {
+            row.setContactPhone(null);
+            row.setContactAddress(null);
+        }
         row.setChannel(request.channel());
         row.setSummary(Strings.trimToNull(request.summary()));
         row.setStatus(RequestStatus.NEW);
