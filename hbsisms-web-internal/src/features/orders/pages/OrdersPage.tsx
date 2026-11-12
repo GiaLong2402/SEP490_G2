@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useCustomerOptions } from '@/features/customers';
+import { CustomerSearchField } from '@/features/customers';
 import { allocationStatusMeta, orderStateMeta, orderTypeLabels, paymentStatusMeta, saleChannelLabels } from '@/shared/domain/enums';
 import { dateTime, money } from '@/shared/lib/format';
 import { Button, Card, DataTable, FilterBar, FilterSelect, Input, LinkButton, PageHeader, Pagination, SearchBox, StatusChip, enumOptions, useListParams, type Column } from '@/shared/ui';
@@ -19,7 +20,7 @@ export default function OrdersPage() {
     'placedTo',
   ] as const;
   const list = useListParams(filterKeys);
-  const customers = useCustomerOptions();
+  const [customerFilterKey, setCustomerFilterKey] = useState(0);
   const { data, isLoading, isFetching, error, refetch } = useOrders({
     q: list.q,
     page: list.page,
@@ -36,6 +37,11 @@ export default function OrdersPage() {
   const hasFilters =
     !!list.q
     || filterKeys.some((key) => !!list.filters[key]);
+
+  const clearFilters = () => {
+    list.clearFilters();
+    setCustomerFilterKey((k) => k + 1);
+  };
 
   const columns: Column<OrderListItem>[] = [
     { key: 'code', header: 'Mã đơn', cell: (o) => <Link to={`/orders/${o.id}`} className="num whitespace-nowrap text-primary hover:underline">{o.code}</Link> },
@@ -64,7 +70,7 @@ export default function OrdersPage() {
         <FilterBar
           actions={
             hasFilters ? (
-              <Button type="button" variant="ghost" onClick={list.clearFilters}>
+              <Button type="button" variant="ghost" onClick={clearFilters}>
                 Xóa bộ lọc
               </Button>
             ) : undefined
@@ -76,11 +82,14 @@ export default function OrdersPage() {
           <FilterSelect label="Thanh toán" value={list.filters.paymentStatus} onChange={(v) => list.setFilter('paymentStatus', v)}>{enumOptions(paymentStatusMeta)}</FilterSelect>
           <FilterSelect label="Kênh" value={list.filters.channel} onChange={(v) => list.setFilter('channel', v)}>{enumOptions(saleChannelLabels)}</FilterSelect>
           <FilterSelect label="Giữ hàng" value={list.filters.allocationStatus} onChange={(v) => list.setFilter('allocationStatus', v)}>{enumOptions(allocationStatusMeta)}</FilterSelect>
-          <FilterSelect label="Khách hàng" value={list.filters.customerId} onChange={(v) => list.setFilter('customerId', v)}>
-            {customers.data?.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </FilterSelect>
+          <div className="w-full sm:w-[260px]">
+            <CustomerSearchField
+              key={customerFilterKey}
+              value={list.filters.customerId ? Number(list.filters.customerId) : null}
+              onChange={(id) => list.setFilter('customerId', id == null ? '' : String(id))}
+              placeholder="Khách hàng: tìm SĐT, tên, mã…"
+            />
+          </div>
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto" role="group" aria-label="Ngày đặt">
             <span className="text-small text-ink-muted">Ngày đặt</span>
             <label className="flex items-center gap-1.5 text-small text-ink-muted">
