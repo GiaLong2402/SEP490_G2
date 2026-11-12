@@ -84,6 +84,7 @@ class MeOrderServiceCancelTest {
         assertThat(payment.getCheckoutUrl()).isNull();
         assertThat(payment.getNote()).contains("đã hủy link PayOS");
         assertThat(order.getState()).isEqualTo(OrderState.CANCELLED);
+        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.UNPAID);
         verify(orderAllocationService).releaseForOrder(eq(order), any(), anyString());
     }
 

@@ -106,6 +106,28 @@ class CartServiceTest {
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
+    @Test
+    void getOrCreate_newSession_persistsEmptyCart() {
+        when(cartRepository.findWithItemsBySessionTokenAndStatus(session, CartStatus.ACTIVE))
+                .thenReturn(Optional.empty());
+        when(cartRepository.save(any(Cart.class))).thenAnswer(inv -> {
+            Cart cart = inv.getArgument(0);
+            ReflectionTestUtils.setField(cart, "id", 7L);
+            return cart;
+        });
+        when(cartRepository.findWithItemsByIdAndStatus(7L, CartStatus.ACTIVE)).thenAnswer(inv -> {
+            Cart cart = Cart.forSession(session);
+            ReflectionTestUtils.setField(cart, "id", 7L);
+            return Optional.of(cart);
+        });
+
+        CartResponse response = cartService.getOrCreate(session);
+
+        assertThat(response.items()).isEmpty();
+        assertThat(response.totalQty()).isZero();
+        verify(cartRepository).save(any(Cart.class));
+    }
+
     private static ProductVariant sellableVariant(Long variantId, Long productId) {
         Product product = new Product();
         ReflectionTestUtils.setField(product, "id", productId);
