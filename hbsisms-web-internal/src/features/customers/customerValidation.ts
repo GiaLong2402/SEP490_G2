@@ -20,6 +20,13 @@ export function validateOptionalPhone(raw: string | null | undefined, label = 'S
   return undefined;
 }
 
+export function validateRequiredPhone(raw: string | null | undefined, label = 'Số điện thoại'): string | undefined {
+  const digits = normalizeVnPhone(raw);
+  if (digits === null) return `Nhập ${label.toLowerCase()}`;
+  if (!VN_PHONE.test(digits)) return `${label} không hợp lệ`;
+  return undefined;
+}
+
 export function validateOptionalTaxCode(raw: string | null | undefined): string | undefined {
   const tax = raw?.trim() || null;
   if (!tax) return undefined;

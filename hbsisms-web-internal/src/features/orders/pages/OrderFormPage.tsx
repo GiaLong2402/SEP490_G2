@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AddressFormModal, CustomerSearchField, customersApi, emptyAddress, useCustomer, type AddressInput } from '@/features/customers';
+import { normalizeVnPhone, validateRequiredPhone } from '@/features/customers/customerValidation';
 import { LineItemsEditor, isCompleteLine, newLine, toPricingLines, type EditableLine, usePricing } from '@/features/pricing';
 import { useVariantOptions } from '@/features/products';
 import { useAction } from '@/shared/api/useAction';
@@ -11,9 +12,20 @@ import { money } from '@/shared/lib/format';
 import { Alert, Button, Card, Chip, Field, Input, PageHeader, Select, Textarea, enumOptions } from '@/shared/ui';
 import { ordersApi } from '../api';
 import { useOrder } from '../hooks';
+import type { ShipAddressInput } from '../types';
 
 /** Không bán nợ — chỉ tiền mặt / CK / PayOS / COD trên form Sales. */
 const SALES_PAYMENT_OPTIONS = Object.entries(paymentMethodLabels).filter(([key]) => key !== 'credit_net');
+
+const emptyWalkInAddress = (): ShipAddressInput => ({
+  recipientName: '',
+  phone: '',
+  line1: '',
+  ward: '',
+  district: '',
+  province: 'Quảng Ninh',
+  distanceKm: null,
+});
 
 export default function OrderFormPage() {
   const navigate = useNavigate();
@@ -25,6 +37,8 @@ export default function OrderFormPage() {
   const [walkIn, setWalkIn] = useState(false);
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [walkInName, setWalkInName] = useState('Khách vãng lai');
+  const [walkInPhone, setWalkInPhone] = useState('');
+  const [walkInAddress, setWalkInAddress] = useState<ShipAddressInput>(emptyWalkInAddress);
   const customer = useCustomer(customerId).data;
   const addresses = useQuery({ queryKey: ['addresses', customerId], queryFn: () => customersApi.addresses(customerId!), enabled: !!customerId }).data;
 
@@ -57,6 +71,18 @@ export default function OrderFormPage() {
     setWalkIn(isWalkIn);
     setCustomerId(o.customerId);
     setWalkInName(o.customerName ?? 'Khách vãng lai');
+    setWalkInPhone(o.customer?.phone ?? '');
+    if (o.address && isWalkIn) {
+      setWalkInAddress({
+        recipientName: o.address.recipientName ?? '',
+        phone: o.address.phone ?? '',
+        line1: o.address.line1,
+        ward: o.address.ward ?? '',
+        district: o.address.district ?? '',
+        province: o.address.province ?? 'Quảng Ninh',
+        distanceKm: o.address.distanceKm,
+      });
+    }
     setChannel(o.channel ?? 'phone');
     setPaymentMethod(o.paymentMethod === 'credit_net' ? 'cash' : o.paymentMethod);
     setFulfillment(o.fulfillmentMethod);
@@ -72,9 +98,10 @@ export default function OrderFormPage() {
 
   useEffect(() => {
     if (isEdit && !hydrated) return;
+    if (walkIn) return;
     if (addressId != null && addresses?.some((a) => a.id === addressId)) return;
     setAddressId(addresses?.find((a) => a.isDefault)?.id ?? addresses?.[0]?.id ?? null);
-  }, [addresses, isEdit, hydrated, addressId]);
+  }, [addresses, isEdit, hydrated, addressId, walkIn]);
 
   const openAddAddress = () => {
     if (!customerId) return;
@@ -92,7 +119,6 @@ export default function OrderFormPage() {
     if (walkIn) {
       setCustomerId(null);
       setAddressId(null);
-      if (fulfillment !== 'pickup') setFulfillment('pickup');
       if (paymentMethod === 'credit_net') setPaymentMethod('cash');
     }
   }, [walkIn]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -109,17 +135,33 @@ export default function OrderFormPage() {
   const linesValid = lines.every(isCompleteLine);
   const needsAddress = fulfillment !== 'pickup';
   const shortage = pricing.data?.lines.some((l) => l.shortfall > 0);
-  const customerOk = walkIn ? walkInName.trim().length > 0 : !!customerId;
-  const addressOk = !needsAddress || (!!customerId && !!addressId);
+  const phoneError = walkIn ? validateRequiredPhone(walkInPhone, 'Số điện thoại') : undefined;
+  const customerOk = walkIn
+    ? walkInName.trim().length > 0 && !phoneError
+    : !!customerId;
+  const walkInAddressOk = !!walkInAddress.line1.trim();
+  const addressOk = !needsAddress || (walkIn ? walkInAddressOk : (!!customerId && !!addressId));
 
   const body = () => ({
     customerId: walkIn ? null : customerId,
     customerName: walkIn ? walkInName.trim() || 'Khách vãng lai' : null,
+    phone: walkIn ? normalizeVnPhone(walkInPhone) : null,
     orderType: (isB2b ? 'b2b' : 'retail') as 'b2b' | 'retail',
     channel,
     paymentMethod,
     fulfillmentMethod: fulfillment,
-    shipAddressId: needsAddress ? addressId : null,
+    shipAddressId: walkIn || !needsAddress ? null : addressId,
+    shipAddress: walkIn && needsAddress
+      ? {
+          recipientName: walkInAddress.recipientName?.trim() || walkInName.trim() || null,
+          phone: normalizeVnPhone(walkInAddress.phone) || normalizeVnPhone(walkInPhone),
+          line1: walkInAddress.line1.trim(),
+          ward: walkInAddress.ward?.trim() || null,
+          district: walkInAddress.district?.trim() || null,
+          province: walkInAddress.province?.trim() || 'Quảng Ninh',
+          distanceKm: walkInAddress.distanceKm ?? null,
+        }
+      : null,
     shippingFee: Number(shippingFee) || 0,
     discountTotal: Number(discount) || 0,
     voucherCode: null,
@@ -168,9 +210,14 @@ export default function OrderFormPage() {
             </div>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {walkIn ? (
-                <Field label="Tên khách" required error={touched && !walkInName.trim() ? 'Nhập tên khách vãng lai' : undefined} className="md:col-span-2 xl:col-span-1">
-                  <Input value={walkInName} onChange={(e) => setWalkInName(e.target.value)} placeholder="Khách vãng lai" />
-                </Field>
+                <>
+                  <Field label="Tên khách" required error={touched && !walkInName.trim() ? 'Nhập tên khách vãng lai' : undefined} className="md:col-span-2 xl:col-span-1">
+                    <Input value={walkInName} onChange={(e) => setWalkInName(e.target.value)} placeholder="Khách vãng lai" />
+                  </Field>
+                  <Field label="Số điện thoại" required error={touched ? phoneError : undefined}>
+                    <Input value={walkInPhone} onChange={(e) => setWalkInPhone(e.target.value)} placeholder="09xxxxxxxx" inputMode="tel" />
+                  </Field>
+                </>
               ) : (
                 <Field label="Khách hàng" required error={touched && !customerId ? 'Vui lòng chọn khách' : undefined} className="md:col-span-2 xl:col-span-1">
                   <CustomerSearchField value={customerId} onChange={setCustomerId} />
@@ -178,15 +225,65 @@ export default function OrderFormPage() {
               )}
               <Field label="Kênh bán" required><Select value={channel} onChange={(e) => setChannel(e.target.value as SaleChannel)}>{enumOptions(channelLabels)}</Select></Field>
               <Field label="Hình thức giao" required><Select value={fulfillment} onChange={(e) => setFulfillment(e.target.value as FulfillmentMethod)}>{enumOptions(fulfillmentLabels)}</Select></Field>
-              {needsAddress && (
+              {needsAddress && walkIn && (
+                <>
+                  <Field
+                    label="Địa chỉ giao"
+                    required
+                    className="md:col-span-2 xl:col-span-3"
+                    error={touched && !walkInAddressOk ? 'Nhập địa chỉ giao hàng' : undefined}
+                  >
+                    <Input
+                      value={walkInAddress.line1}
+                      onChange={(e) => setWalkInAddress((a) => ({ ...a, line1: e.target.value }))}
+                      placeholder="Số nhà, đường…"
+                    />
+                  </Field>
+                  <Field label="Phường/xã">
+                    <Input value={walkInAddress.ward ?? ''} onChange={(e) => setWalkInAddress((a) => ({ ...a, ward: e.target.value }))} />
+                  </Field>
+                  <Field label="Quận/huyện">
+                    <Input value={walkInAddress.district ?? ''} onChange={(e) => setWalkInAddress((a) => ({ ...a, district: e.target.value }))} />
+                  </Field>
+                  <Field label="Tỉnh/thành">
+                    <Input value={walkInAddress.province ?? ''} onChange={(e) => setWalkInAddress((a) => ({ ...a, province: e.target.value }))} />
+                  </Field>
+                  <Field label="Người nhận">
+                    <Input
+                      value={walkInAddress.recipientName ?? ''}
+                      onChange={(e) => setWalkInAddress((a) => ({ ...a, recipientName: e.target.value }))}
+                      placeholder={walkInName || 'Người nhận'}
+                    />
+                  </Field>
+                  <Field label="SĐT người nhận">
+                    <Input
+                      value={walkInAddress.phone ?? ''}
+                      onChange={(e) => setWalkInAddress((a) => ({ ...a, phone: e.target.value }))}
+                      placeholder={walkInPhone || '09xxxxxxxx'}
+                      inputMode="tel"
+                    />
+                  </Field>
+                  <Field label="Khoảng cách từ kho (km)" hint="Backend sẽ tự tính khi tích hợp bản đồ">
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.1"
+                      value={walkInAddress.distanceKm ?? ''}
+                      onChange={(e) => setWalkInAddress((a) => ({
+                        ...a,
+                        distanceKm: e.target.value === '' ? null : Number(e.target.value),
+                      }))}
+                    />
+                  </Field>
+                </>
+              )}
+              {needsAddress && !walkIn && (
                 <Field
                   label="Địa chỉ giao"
                   required
                   className="md:col-span-2 xl:col-span-3"
                   error={touched && !addressOk
-                    ? (walkIn
-                      ? 'Khách vãng lai chỉ hỗ trợ nhận tại quầy hoặc bỏ địa chỉ hồ sơ'
-                      : 'Khách chưa có địa chỉ — hãy thêm địa chỉ hoặc chọn "Khách đến lấy"')
+                    ? 'Khách chưa có địa chỉ — hãy thêm địa chỉ hoặc chọn "Khách đến lấy"'
                     : undefined}
                 >
                   {customerId && !addresses?.length ? (
@@ -217,10 +314,18 @@ export default function OrderFormPage() {
                 </Field>
               )}
             </div>
-            {needsAddress && selectedAddress && (
+            {needsAddress && !walkIn && selectedAddress && (
               <div className="mt-2 flex items-center gap-2">
                 <Chip tone={selectedAddress.inDeliveryRadius ? 'green' : 'amber'}>{selectedAddress.inDeliveryRadius ? 'Trong bán kính tự giao' : 'Ngoài bán kính, nên dùng đối tác giao'}</Chip>
                 {selectedAddress.distanceKm !== null && <span className="text-small text-ink-muted">{selectedAddress.distanceKm} km</span>}
+              </div>
+            )}
+            {needsAddress && walkIn && walkInAddress.distanceKm != null && (
+              <div className="mt-2 flex items-center gap-2">
+                <Chip tone={walkInAddress.distanceKm <= 8 ? 'green' : 'amber'}>
+                  {walkInAddress.distanceKm <= 8 ? 'Trong bán kính tự giao' : 'Ngoài bán kính, nên dùng đối tác giao'}
+                </Chip>
+                <span className="text-small text-ink-muted">{walkInAddress.distanceKm} km</span>
               </div>
             )}
           </Card>
