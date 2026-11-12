@@ -18,7 +18,7 @@ export default defineConfig({
     // Sau này gọi Spring Boot qua proxy (vd: /api -> http://localhost:8080)
     proxy: {
       '/api': {
-        target: 'http://localhost:8081',
+        target: 'http://localhost:8080',
         changeOrigin: true,
       },
     },

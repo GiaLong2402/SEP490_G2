@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Plus } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { CustomerSearchField, customersApi, useCustomer } from '@/features/customers';
+import { AddressFormModal, CustomerSearchField, customersApi, emptyAddress, useCustomer, type AddressInput } from '@/features/customers';
 import { LineItemsEditor, isCompleteLine, newLine, toPricingLines, type EditableLine, usePricing } from '@/features/pricing';
 import { useVariantOptions } from '@/features/products';
 import { useAction } from '@/shared/api/useAction';
@@ -31,6 +32,8 @@ export default function OrderFormPage() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [fulfillment, setFulfillment] = useState<FulfillmentMethod>('shop_delivery');
   const [addressId, setAddressId] = useState<number | null>(null);
+  const [addressModalOpen, setAddressModalOpen] = useState(false);
+  const [addressInitial, setAddressInitial] = useState<AddressInput | null>(null);
   const [shippingFee, setShippingFee] = useState('0');
   const [discount, setDiscount] = useState('0');
   const [note, setNote] = useState('');
@@ -69,9 +72,21 @@ export default function OrderFormPage() {
 
   useEffect(() => {
     if (isEdit && !hydrated) return;
-    if (isEdit && addressId != null) return;
+    if (addressId != null && addresses?.some((a) => a.id === addressId)) return;
     setAddressId(addresses?.find((a) => a.isDefault)?.id ?? addresses?.[0]?.id ?? null);
   }, [addresses, isEdit, hydrated, addressId]);
+
+  const openAddAddress = () => {
+    if (!customerId) return;
+    const isFirst = !addresses?.length;
+    setAddressInitial({
+      ...emptyAddress,
+      recipientName: customer?.name ?? '',
+      phone: customer?.phone ?? '',
+      isDefault: isFirst,
+    });
+    setAddressModalOpen(true);
+  };
 
   useEffect(() => {
     if (walkIn) {
@@ -164,11 +179,41 @@ export default function OrderFormPage() {
               <Field label="Kênh bán" required><Select value={channel} onChange={(e) => setChannel(e.target.value as SaleChannel)}>{enumOptions(channelLabels)}</Select></Field>
               <Field label="Hình thức giao" required><Select value={fulfillment} onChange={(e) => setFulfillment(e.target.value as FulfillmentMethod)}>{enumOptions(fulfillmentLabels)}</Select></Field>
               {needsAddress && (
-                <Field label="Địa chỉ giao" required className="md:col-span-2 xl:col-span-3" error={touched && !addressOk ? (walkIn ? 'Khách vãng lai chỉ hỗ trợ nhận tại quầy hoặc bỏ địa chỉ hồ sơ' : 'Khách chưa có địa chỉ, hãy thêm ở hồ sơ khách hoặc chọn "Khách đến lấy"') : undefined}>
-                  <Select disabled={!customerId} value={addressId ?? ''} onChange={(e) => setAddressId(Number(e.target.value))}>
-                    {!addresses?.length && <option value="">{customerId ? 'Khách chưa có địa chỉ' : 'Chọn khách trước'}</option>}
-                    {addresses?.map((a) => <option key={a.id} value={a.id}>{[a.line1, a.ward, a.district].filter(Boolean).join(', ')}</option>)}
-                  </Select>
+                <Field
+                  label="Địa chỉ giao"
+                  required
+                  className="md:col-span-2 xl:col-span-3"
+                  error={touched && !addressOk
+                    ? (walkIn
+                      ? 'Khách vãng lai chỉ hỗ trợ nhận tại quầy hoặc bỏ địa chỉ hồ sơ'
+                      : 'Khách chưa có địa chỉ — hãy thêm địa chỉ hoặc chọn "Khách đến lấy"')
+                    : undefined}
+                >
+                  {customerId && !addresses?.length ? (
+                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-line bg-card px-3 py-2.5">
+                      <p className="min-w-0 flex-1 text-small text-ink-muted">Khách chưa có địa chỉ giao hàng.</p>
+                      <Button type="button" icon={<Plus size={14} />} onClick={openAddAddress}>
+                        Thêm địa chỉ
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      <Select
+                        className="min-w-0 flex-1"
+                        disabled={!customerId}
+                        value={addressId ?? ''}
+                        onChange={(e) => setAddressId(Number(e.target.value))}
+                      >
+                        {!customerId && <option value="">Chọn khách trước</option>}
+                        {addresses?.map((a) => (
+                          <option key={a.id} value={a.id}>{[a.line1, a.ward, a.district].filter(Boolean).join(', ')}</option>
+                        ))}
+                      </Select>
+                      <Button type="button" icon={<Plus size={14} />} disabled={!customerId} onClick={openAddAddress}>
+                        Thêm địa chỉ
+                      </Button>
+                    </div>
+                  )}
                 </Field>
               )}
             </div>
@@ -211,6 +256,19 @@ export default function OrderFormPage() {
           </Card>
         </aside>
       </div>
+
+      {customerId != null && (
+        <AddressFormModal
+          open={addressModalOpen}
+          customerId={customerId}
+          initial={addressInitial}
+          onClose={() => {
+            setAddressModalOpen(false);
+            setAddressInitial(null);
+          }}
+          onSaved={(saved) => setAddressId(saved.id)}
+        />
+      )}
     </>
   );
 }
