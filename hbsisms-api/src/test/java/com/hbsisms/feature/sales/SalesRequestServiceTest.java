@@ -101,10 +101,12 @@ class SalesRequestServiceTest {
         OrderInputRequest orderBody = new OrderInputRequest(
                 1L,
                 null,
+                null,
                 OrderType.B2B,
                 SaleChannel.PHONE,
                 com.hbsisms.feature.payment.PaymentMethod.CASH,
                 FulfillmentMethod.PICKUP,
+                null,
                 null,
                 null,
                 null,

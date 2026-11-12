@@ -1,7 +1,8 @@
+import { normalizeVnPhone } from '@/features/customers/customerValidation';
 import { fail, matches, mock, paginate } from '@/shared/api/mockServer';
 import type { OrderState } from '@/shared/domain/enums';
 import { db, nextCode, nextId } from '@/shared/mock/db';
-import { addOrderEvent, allocateOrder, audit, confirmOrder, postDebtEntry, priceLines, releaseOrder, userName, variantLabel } from '@/shared/mock/services';
+import { addOrderEvent, allocateOrder, audit, configInt, confirmOrder, postDebtEntry, priceLines, releaseOrder, userName, variantLabel } from '@/shared/mock/services';
 
 const MANUAL_NEXT: Partial<Record<OrderState, OrderState[]>> = {
   pending: ['confirmed'],
@@ -70,6 +71,102 @@ mock('GET', '/orders', ({ query }) => {
 
 mock('GET', '/orders/:id', ({ params }) => toDetail(Number(params.id)));
 
+function phoneKey(raw: string | null | undefined) {
+  return normalizeVnPhone(raw);
+}
+
+function resolveCustomerForOrder(body: Record<string, unknown>) {
+  if (body.customerId != null) {
+    const customer = db.customers.find((c) => c.id === Number(body.customerId));
+    if (!customer) fail(400, 'Vui lòng chọn khách hàng');
+    if (!customer.isActive) fail(409, 'Khách hàng đã bị khóa, không thể tạo đơn');
+    return customer;
+  }
+
+  const phone = phoneKey(body.phone == null ? null : String(body.phone));
+  if (!phone || !/^0\d{9}$/.test(phone)) fail(400, 'Số điện thoại khách là bắt buộc');
+  const name = String(body.customerName ?? '').trim() || 'Khách vãng lai';
+  const now = new Date().toISOString();
+
+  let customer = db.customers.find((c) => phoneKey(c.phone) === phone && c.accountUserId == null)
+    ?? db.customers.find((c) => phoneKey(c.phone) === phone);
+  if (customer) {
+    if (!customer.isActive) fail(409, 'Khách hàng đã bị khóa, không thể tạo đơn');
+    if (customer.accountUserId == null && customer.name !== name) {
+      customer.name = name;
+      customer.updatedAt = now;
+    }
+    return customer;
+  }
+
+  customer = {
+    id: nextId(db.customers),
+    code: nextCode('KH', db.customers.filter((c) => c.customerType === 'b2c')),
+    customerType: 'b2c',
+    name,
+    email: null,
+    phone,
+    taxCode: null,
+    contactName: null,
+    contactPhone: null,
+    accountUserId: null,
+    creditLimit: 0,
+    netDays: 0,
+    currentDebt: 0,
+    isActive: true,
+    note: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  db.customers.push(customer);
+  return customer;
+}
+
+function resolveShipAddressId(customer: (typeof db.customers)[number], body: Record<string, unknown>) {
+  const needsAddress = body.fulfillmentMethod !== 'pickup';
+  if (body.shipAddressId != null) {
+    const address = db.addresses.find((a) => a.id === Number(body.shipAddressId) && a.customerId === customer.id);
+    if (!address) fail(400, 'Địa chỉ giao hàng không hợp lệ');
+    return address.id;
+  }
+
+  const ship = body.shipAddress as Record<string, unknown> | null | undefined;
+  if (ship) {
+    const line1 = String(ship.line1 ?? '').trim();
+    if (!line1) fail(400, 'Địa chỉ là bắt buộc');
+    const distanceKm = ship.distanceKm === null || ship.distanceKm === undefined || ship.distanceKm === ''
+      ? null
+      : Number(ship.distanceKm);
+    const radius = configInt('delivery_radius_km', 8);
+    const isFirst = !db.addresses.some((a) => a.customerId === customer.id);
+    if (isFirst) {
+      db.addresses.filter((a) => a.customerId === customer.id).forEach((a) => { a.isDefault = false; });
+    }
+    const id = nextId(db.addresses);
+    db.addresses.push({
+      id,
+      customerId: customer.id,
+      kind: 'shipping',
+      recipientName: String(ship.recipientName ?? '').trim() || customer.name,
+      phone: phoneKey(ship.phone == null ? null : String(ship.phone)) || customer.phone,
+      line1,
+      ward: String(ship.ward ?? '').trim() || null,
+      district: String(ship.district ?? '').trim() || null,
+      province: String(ship.province ?? '').trim() || 'Quảng Ninh',
+      latitude: null,
+      longitude: null,
+      distanceKm: Number.isFinite(distanceKm as number) ? (distanceKm as number) : null,
+      inDeliveryRadius: distanceKm != null && Number.isFinite(distanceKm) && distanceKm <= radius,
+      isDefault: isFirst,
+      createdAt: new Date().toISOString(),
+    });
+    return id;
+  }
+
+  if (needsAddress) fail(400, 'Vui lòng nhập địa chỉ giao hàng');
+  return null;
+}
+
 mock('PUT', '/orders/:id', ({ params, body, userId }) => {
   const order = db.orders.find((o) => o.id === Number(params.id));
   if (!order) fail(404, 'Không tìm thấy đơn hàng');
@@ -78,30 +175,28 @@ mock('PUT', '/orders/:id', ({ params, body, userId }) => {
   if (body.paymentMethod === 'credit_net') fail(409, 'Không bán nợ — mọi đơn phải thanh toán đủ trước khi chuẩn bị');
   if (!body.lines?.length) fail(400, 'Đơn phải có ít nhất một dòng hàng');
 
-  const customer = body.customerId == null ? null : db.customers.find((c) => c.id === body.customerId);
-  if (body.customerId != null && !customer) fail(400, 'Vui lòng chọn khách hàng');
-  if (customer && !customer.isActive) fail(409, 'Khách hàng đã bị khóa, không thể sửa đơn');
-  if (body.shipAddressId != null && !customer) fail(400, 'Khách vãng lai không gắn địa chỉ hồ sơ — chọn giao nhận phù hợp');
-  const customerName = customer?.name ?? (String(body.customerName ?? '').trim() || 'Khách vãng lai');
+  const customer = resolveCustomerForOrder(body);
+  const customerName = customer.name;
+  const shipAddressId = resolveShipAddressId(customer, body);
 
   const wasConfirmed = order.state === 'confirmed';
   const wasDebt = order.paymentStatus === 'debt';
   if (wasConfirmed) releaseOrder(order, userId);
   if (wasDebt && order.customerId) postDebtEntry(order.customerId, { orderId: order.id, entryType: 'adjust', amount: -order.total, note: `Sửa đơn ${order.code} — đảo nợ cũ` });
 
-  const priced = priceLines(customer?.id ?? null, body.lines);
+  const priced = priceLines(customer.id, body.lines);
   const subtotal = priced.reduce((sum, l) => sum + l.lineTotal, 0);
   const total = Math.max(0, subtotal - Number(body.discountTotal ?? 0) + Number(body.shippingFee ?? 0));
   const now = new Date().toISOString();
   Object.assign(order, {
-    customerId: customer?.id ?? null,
+    customerId: customer.id,
     customerName,
     orderType: body.orderType,
     channel: body.channel,
     paymentMethod: body.paymentMethod,
     paymentTermDays: 0,
     fulfillmentMethod: body.fulfillmentMethod,
-    shipAddressId: body.shipAddressId,
+    shipAddressId,
     subtotal,
     discountTotal: Number(body.discountTotal ?? 0),
     shippingFee: Number(body.shippingFee ?? 0),
@@ -162,12 +257,10 @@ mock('GET', '/orders/:id/receipt', ({ params, userId }) => {
 mock('POST', '/orders', ({ body, userId }) => {
   if (body.paymentMethod === 'credit_net') fail(409, 'Không bán nợ — mọi đơn phải thanh toán đủ trước khi chuẩn bị');
   if (!body.lines?.length) fail(400, 'Đơn phải có ít nhất một dòng hàng');
-  const customer = body.customerId == null ? null : db.customers.find((c) => c.id === body.customerId);
-  if (body.customerId != null && !customer) fail(400, 'Vui lòng chọn khách hàng');
-  if (customer && !customer.isActive) fail(409, 'Khách hàng đã bị khóa, không thể tạo đơn');
-  if (body.shipAddressId != null && !customer) fail(400, 'Khách vãng lai không gắn địa chỉ hồ sơ — chọn giao nhận phù hợp');
-  const customerName = customer?.name ?? (String(body.customerName ?? '').trim() || 'Khách vãng lai');
-  const priced = priceLines(customer?.id ?? null, body.lines);
+  const customer = resolveCustomerForOrder(body);
+  const customerName = customer.name;
+  const shipAddressId = resolveShipAddressId(customer, body);
+  const priced = priceLines(customer.id, body.lines);
   const short = priced.some((l) => l.shortfall > 0);
   if (short) fail(409, 'Không đủ hàng khả dụng để giữ đủ số lượng — không thể xác nhận đơn');
   const subtotal = priced.reduce((sum, l) => sum + l.lineTotal, 0);
@@ -175,9 +268,9 @@ mock('POST', '/orders', ({ body, userId }) => {
   const now = new Date().toISOString();
   const id = nextId(db.orders);
   const order = {
-    id, code: nextCode('SO-2026', db.orders), customerId: customer?.id ?? null, customerName, orderType: body.orderType, channel: body.channel, sourceQuoteId: body.sourceQuoteId ?? null, paymentMethod: body.paymentMethod,
+    id, code: nextCode('SO-2026', db.orders), customerId: customer.id, customerName, orderType: body.orderType, channel: body.channel, sourceQuoteId: body.sourceQuoteId ?? null, paymentMethod: body.paymentMethod,
     paymentTermDays: 0, paymentStatus: 'unpaid' as const, allocationStatus: 'none' as const, fulfillmentMethod: body.fulfillmentMethod,
-    shipAddressId: body.shipAddressId, state: 'pending' as const, subtotal, discountTotal: Number(body.discountTotal ?? 0), shippingFee: Number(body.shippingFee ?? 0), total, voucherCode: body.voucherCode,
+    shipAddressId, state: 'pending' as const, subtotal, discountTotal: Number(body.discountTotal ?? 0), shippingFee: Number(body.shippingFee ?? 0), total, voucherCode: body.voucherCode,
     isOverLimit: false, overLimitAmount: 0, approvedBy: null, placedBy: userId, placedAt: now, holdExpiresAt: null, note: body.note, createdAt: now, updatedAt: now,
   };
   db.orders.push(order);

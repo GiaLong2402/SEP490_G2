@@ -38,16 +38,31 @@ export interface OrderDetail extends OrderListItem {
   canCancel: boolean;
 }
 
+/** Địa chỉ nhập nhanh khi khách vãng lai chọn giao hàng — BE tạo CustomerAddress. */
+export interface ShipAddressInput {
+  recipientName?: string | null;
+  phone?: string | null;
+  line1: string;
+  ward?: string | null;
+  district?: string | null;
+  province?: string | null;
+  distanceKm?: number | null;
+}
+
 export interface OrderInput {
-  /** Null = khách vãng lai. */
+  /** Null = nhập nhanh vãng lai; BE find-or-create B2C từ phone + customerName. */
   customerId: ID | null;
   /** Tên khi khách vãng lai. */
   customerName?: string | null;
+  /** SĐT bắt buộc khi customerId null. */
+  phone?: string | null;
   orderType: OrderType;
   channel: SaleChannel;
   paymentMethod: PaymentMethod;
   fulfillmentMethod: FulfillmentMethod;
   shipAddressId: ID | null;
+  /** Địa chỉ nhập nhanh (thay shipAddressId) khi vãng lai giao hàng. */
+  shipAddress?: ShipAddressInput | null;
   shippingFee: number;
   discountTotal: number;
   voucherCode: string | null;

@@ -14,11 +14,17 @@ import java.util.List;
 
 /** Body of POST /orders. Matches FE {@code OrderInput}. */
 public record OrderInputRequest(
-        /** Null = khách vãng lai; khi đó dùng {@link #customerName()}. */
+        /**
+         * Null = nhập nhanh khách vãng lai; BE find-or-create hồ sơ B2C từ {@link #phone()} +
+         * {@link #customerName()}.
+         */
         Long customerId,
 
-        /** Tên khách vãng lai (bỏ qua nếu đã có {@code customerId}). */
+        /** Tên khi nhập nhanh vãng lai (bỏ qua nếu đã có {@code customerId}). */
         String customerName,
+
+        /** SĐT bắt buộc khi {@code customerId} null — khóa find-or-create / link OTP sau này. */
+        String phone,
 
         @NotNull(message = "orderType là bắt buộc")
         OrderType orderType,
@@ -33,6 +39,10 @@ public record OrderInputRequest(
         FulfillmentMethod fulfillmentMethod,
 
         Long shipAddressId,
+
+        /** Địa chỉ nhập nhanh khi vãng lai giao hàng (thay {@link #shipAddressId()}). */
+        @Valid
+        ShipAddressInput shipAddress,
 
         @DecimalMin(value = "0", message = "Phí ship không được âm")
         BigDecimal shippingFee,

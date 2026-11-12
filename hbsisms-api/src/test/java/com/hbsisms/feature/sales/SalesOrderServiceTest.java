@@ -16,6 +16,7 @@ import com.hbsisms.feature.catalog.ProductVariant;
 import com.hbsisms.feature.catalog.ProductVariantRepository;
 import com.hbsisms.feature.customer.Customer;
 import com.hbsisms.feature.customer.CustomerAddressRepository;
+import com.hbsisms.feature.customer.CustomerAddressService;
 import com.hbsisms.feature.customer.CustomerRepository;
 import com.hbsisms.feature.customer.CustomerType;
 import com.hbsisms.feature.customer.pricing.PricingService;
@@ -61,6 +62,8 @@ class SalesOrderServiceTest {
     @Mock
     private CustomerAddressRepository customerAddressRepository;
     @Mock
+    private CustomerAddressService customerAddressService;
+    @Mock
     private ProductVariantRepository productVariantRepository;
     @Mock
     private UserRepository userRepository;
@@ -94,6 +97,7 @@ class SalesOrderServiceTest {
                 paymentRepository,
                 customerRepository,
                 customerAddressRepository,
+                customerAddressService,
                 productVariantRepository,
                 userRepository,
                 approvalTaskRepository,
@@ -209,6 +213,17 @@ class SalesOrderServiceTest {
 
     @Test
     void create_walkIn_withoutCustomerId() {
+        when(customerRepository.findFirstByPhoneAndAccountUserIsNullOrderByIdAsc("0912345678"))
+                .thenReturn(Optional.empty());
+        when(customerRepository.findFirstByPhoneOrderByIdAsc("0912345678")).thenReturn(Optional.empty());
+        when(customerRepository.findCodesByPrefix("KH-")).thenReturn(List.of());
+        when(customerRepository.save(any(Customer.class))).thenAnswer(inv -> {
+            Customer c = inv.getArgument(0);
+            if (c.getId() == null) {
+                setId(c, ids.incrementAndGet());
+            }
+            return c;
+        });
         when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
         when(pricingService.resolve(any(PricingRequest.class))).thenReturn(priced(false));
         when(productVariantRepository.findById(10L)).thenReturn(Optional.of(variant));
@@ -223,13 +238,20 @@ class SalesOrderServiceTest {
         when(orderAllocationService.holdForOrder(any(), eq(9L), eq(false))).thenAnswer(inv -> {
             SalesOrder o = inv.getArgument(0);
             o.setAllocationStatus(AllocationStatus.FULL);
-            assertThat(o.getCustomer()).isNull();
+            assertThat(o.getCustomer()).isNotNull();
+            assertThat(o.getCustomer().getPhone()).isEqualTo("0912345678");
             assertThat(o.getCustomerName()).isEqualTo("Anh Minh");
             return 1;
         });
         when(salesOrderRepository.findWithDetailsById(anyLong())).thenAnswer(inv -> {
             SalesOrder o = baseOrder(inv.getArgument(0), OrderState.CONFIRMED, PaymentStatus.UNPAID, AllocationStatus.FULL);
-            o.setCustomer(null);
+            Customer walkIn = new Customer();
+            setId(walkIn, 55L);
+            walkIn.setName("Anh Minh");
+            walkIn.setPhone("0912345678");
+            walkIn.setCustomerType(CustomerType.B2C);
+            walkIn.setActive(true);
+            o.setCustomer(walkIn);
             o.setCustomerName("Anh Minh");
             o.setPlacedBy(actor);
             return Optional.of(o);
@@ -242,6 +264,7 @@ class SalesOrderServiceTest {
 
         assertThat(detail.state()).isEqualTo(OrderState.CONFIRMED);
         assertThat(detail.customerName()).isEqualTo("Anh Minh");
+        verify(customerRepository).save(any(Customer.class));
         verify(customerRepository, never()).findById(any());
     }
 
@@ -469,10 +492,12 @@ class SalesOrderServiceTest {
         return new OrderInputRequest(
                 customerId,
                 null,
+                null,
                 OrderType.RETAIL,
                 SaleChannel.PHONE,
                 method,
                 FulfillmentMethod.PICKUP,
+                null,
                 null,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
@@ -485,10 +510,12 @@ class SalesOrderServiceTest {
         return new OrderInputRequest(
                 null,
                 customerName,
+                "0912345678",
                 OrderType.RETAIL,
                 SaleChannel.COUNTER,
                 PaymentMethod.CASH,
                 FulfillmentMethod.PICKUP,
+                null,
                 null,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
