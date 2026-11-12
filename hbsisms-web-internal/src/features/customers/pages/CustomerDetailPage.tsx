@@ -6,14 +6,14 @@ import { useAction } from '@/shared/api/useAction';
 import type { CustomerAddress, ID } from '@/shared/domain/entities';
 import { approvalStatusMeta, customerTypeMeta, orderStateMeta } from '@/shared/domain/enums';
 import { date, dateTime, money } from '@/shared/lib/format';
-import { Button, Card, Checkbox, Chip, ConfirmDialog, DataTable, ErrorState, Field, IconButton, InfoList, Input, Meter, Modal, PageHeader, PageLoading, Select, StatusChip, Tabs, type Column } from '@/shared/ui';
+import { Button, Card, Chip, ConfirmDialog, DataTable, ErrorState, Field, IconButton, InfoList, Input, Meter, Modal, PageHeader, PageLoading, Select, StatusChip, Tabs, type Column } from '@/shared/ui';
 import { customersApi } from '../api';
+import { AddressFormModal, emptyAddress, toAddressInput } from '../components/AddressFormModal';
 import { CustomerFormModal } from '../components/CustomerFormModal';
 import { useCustomer } from '../hooks';
 import type { AddressInput, CustomerOrderRow, CustomerPriceRow } from '../types';
 
 type Tab = 'address' | 'prices' | 'orders';
-const emptyAddress: AddressInput = { kind: 'shipping', recipientName: '', phone: '', line1: '', ward: '', district: '', province: 'Quảng Ninh', distanceKm: null, isDefault: false };
 
 /** Phân biệt note duyệt giá đang dùng vs lý do từ chối đề xuất mới trên cùng dòng approved. */
 function formatPriceDecisionNote(p: CustomerPriceRow): string {
@@ -29,20 +29,6 @@ function formatPriceDecisionNote(p: CustomerPriceRow): string {
   return note || '—';
 }
 
-function toAddressInput(a: CustomerAddress): AddressInput {
-  return {
-    kind: a.kind,
-    recipientName: a.recipientName,
-    phone: a.phone,
-    line1: a.line1,
-    ward: a.ward,
-    district: a.district,
-    province: a.province ?? 'Quảng Ninh',
-    distanceKm: a.distanceKm,
-    isDefault: a.isDefault,
-  };
-}
-
 export default function CustomerDetailPage() {
   const id = Number(useParams().id);
   const { data: customer, isLoading, error, refetch } = useCustomer(id);
@@ -51,9 +37,8 @@ export default function CustomerDetailPage() {
   const [editing, setEditing] = useState(false);
   const [addressOpen, setAddressOpen] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<ID | null>(null);
+  const [addressInitial, setAddressInitial] = useState<AddressInput | null>(null);
   const [deletingAddress, setDeletingAddress] = useState<CustomerAddress | null>(null);
-  const [address, setAddress] = useState<AddressInput>(emptyAddress);
-  const [addressTouched, setAddressTouched] = useState(false);
   const [priceOpen, setPriceOpen] = useState(false);
   const [price, setPrice] = useState({ variantId: '', unitPrice: '', effectiveFrom: '', effectiveTo: '' });
   const [priceTouched, setPriceTouched] = useState(false);
@@ -62,13 +47,9 @@ export default function CustomerDetailPage() {
   const closeAddressModal = () => {
     setAddressOpen(false);
     setEditingAddressId(null);
+    setAddressInitial(null);
   };
 
-  const addAddress = useAction(() => customersApi.addAddress(id, address), { success: 'Đã thêm địa chỉ', onDone: closeAddressModal });
-  const updateAddress = useAction(
-    () => customersApi.updateAddress(id, editingAddressId!, address),
-    { success: 'Đã cập nhật địa chỉ', onDone: closeAddressModal },
-  );
   const deleteAddress = useAction(
     () => customersApi.deleteAddress(id, deletingAddress!.id),
     { success: 'Đã xóa địa chỉ', onDone: () => setDeletingAddress(null) },
@@ -89,9 +70,6 @@ export default function CustomerDetailPage() {
   if (error || !customer) return <ErrorState error={error} onRetry={refetch} />;
   const isB2b = customer.customerType === 'b2b';
   const prices = customer.prices ?? [];
-  const isEditingAddress = editingAddressId !== null;
-  const addressSaving = addAddress.isPending || updateAddress.isPending;
-
   const priceColumns: Column<CustomerPriceRow>[] = [
     { key: 'sku', header: 'SKU', cell: (p) => <span className="num">{p.sku}</span> },
     { key: 'name', header: 'Sản phẩm', cell: (p) => `${p.productName} · ${p.packLabel}` },
@@ -169,8 +147,7 @@ export default function CustomerDetailPage() {
                   icon={<Plus size={14} />}
                   onClick={() => {
                     setEditingAddressId(null);
-                    setAddress(emptyAddress);
-                    setAddressTouched(false);
+                    setAddressInitial(emptyAddress);
                     setAddressOpen(true);
                   }}
                 >
@@ -197,8 +174,7 @@ export default function CustomerDetailPage() {
                           label={`Sửa địa chỉ ${a.line1}`}
                           onClick={() => {
                             setEditingAddressId(a.id);
-                            setAddress(toAddressInput(a));
-                            setAddressTouched(false);
+                            setAddressInitial(toAddressInput(a));
                             setAddressOpen(true);
                           }}
                         >
@@ -228,28 +204,13 @@ export default function CustomerDetailPage() {
 
       <CustomerFormModal open={editing} customer={customer} onClose={() => setEditing(false)} />
 
-      <Modal
+      <AddressFormModal
         open={addressOpen}
-        title={isEditingAddress ? 'Sửa địa chỉ' : 'Thêm địa chỉ'}
+        customerId={id}
+        addressId={editingAddressId}
+        initial={addressInitial}
         onClose={closeAddressModal}
-        onSubmit={() => {
-          setAddressTouched(true);
-          if (!address.line1.trim()) return;
-          if (isEditingAddress) updateAddress.mutate();
-          else addAddress.mutate();
-        }}
-        footer={<><Button onClick={closeAddressModal}>Hủy bỏ</Button><Button type="submit" variant="primary" loading={addressSaving}>Lưu</Button></>}
-      >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Địa chỉ" required className="sm:col-span-2" error={addressTouched && !address.line1.trim() ? 'Vui lòng nhập địa chỉ' : undefined}><Input value={address.line1} onChange={(e) => setAddress({ ...address, line1: e.target.value })} /></Field>
-          <Field label="Phường/xã"><Input value={address.ward ?? ''} onChange={(e) => setAddress({ ...address, ward: e.target.value })} /></Field>
-          <Field label="Quận/huyện"><Input value={address.district ?? ''} onChange={(e) => setAddress({ ...address, district: e.target.value })} /></Field>
-          <Field label="Người nhận"><Input value={address.recipientName ?? ''} onChange={(e) => setAddress({ ...address, recipientName: e.target.value })} /></Field>
-          <Field label="SĐT người nhận"><Input value={address.phone ?? ''} onChange={(e) => setAddress({ ...address, phone: e.target.value })} /></Field>
-          <Field label="Khoảng cách từ kho (km)" hint="Backend sẽ tự tính khi tích hợp bản đồ"><Input type="number" min={0} step="0.1" value={address.distanceKm ?? ''} onChange={(e) => setAddress({ ...address, distanceKm: e.target.value === '' ? null : Number(e.target.value) })} /></Field>
-          <div className="self-end pb-2"><Checkbox label="Đặt làm mặc định" checked={address.isDefault} onChange={(e) => setAddress({ ...address, isDefault: e.target.checked })} /></div>
-        </div>
-      </Modal>
+      />
 
       <ConfirmDialog
         open={!!deletingAddress}
