@@ -14,6 +14,7 @@ import com.hbsisms.feature.catalog.ProductVariant;
 import com.hbsisms.feature.catalog.ProductVariantRepository;
 import com.hbsisms.feature.customer.Customer;
 import com.hbsisms.feature.customer.CustomerAddressRepository;
+import com.hbsisms.feature.customer.CustomerAddressService;
 import com.hbsisms.feature.customer.CustomerRepository;
 import com.hbsisms.feature.customer.CustomerType;
 import com.hbsisms.feature.customer.pricing.PricingService;
@@ -55,6 +56,8 @@ class SalesOrderStockGuardTest {
     @Mock
     private CustomerAddressRepository customerAddressRepository;
     @Mock
+    private CustomerAddressService customerAddressService;
+    @Mock
     private ProductVariantRepository productVariantRepository;
     @Mock
     private UserRepository userRepository;
@@ -82,6 +85,7 @@ class SalesOrderStockGuardTest {
                 paymentRepository,
                 customerRepository,
                 customerAddressRepository,
+                customerAddressService,
                 productVariantRepository,
                 userRepository,
                 approvalTaskRepository,
@@ -127,10 +131,12 @@ class SalesOrderStockGuardTest {
         OrderInputRequest request = new OrderInputRequest(
                 1L,
                 null,
+                null,
                 OrderType.RETAIL,
                 SaleChannel.PHONE,
                 PaymentMethod.CASH,
                 FulfillmentMethod.PICKUP,
+                null,
                 null,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,

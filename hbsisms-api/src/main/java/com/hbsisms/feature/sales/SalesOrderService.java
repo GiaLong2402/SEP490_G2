@@ -8,10 +8,15 @@ import com.hbsisms.feature.approval.ApprovalStatus;
 import com.hbsisms.feature.approval.ApprovalTask;
 import com.hbsisms.feature.approval.ApprovalTaskRepository;
 import com.hbsisms.feature.approval.ApprovalType;
+import com.hbsisms.feature.customer.AddressKind;
 import com.hbsisms.feature.customer.Customer;
 import com.hbsisms.feature.customer.CustomerAddress;
 import com.hbsisms.feature.customer.CustomerAddressRepository;
+import com.hbsisms.feature.customer.CustomerAddressService;
+import com.hbsisms.feature.customer.CustomerCodeGenerator;
 import com.hbsisms.feature.customer.CustomerRepository;
+import com.hbsisms.feature.customer.CustomerType;
+import com.hbsisms.feature.customer.dto.AddressRequest;
 import com.hbsisms.feature.customer.dto.AddressResponse;
 import com.hbsisms.feature.customer.pricing.PricingService;
 import com.hbsisms.feature.customer.pricing.dto.PricedLineResponse;
@@ -39,6 +44,7 @@ import com.hbsisms.feature.sales.dto.OrderListItemResponse;
 import com.hbsisms.feature.sales.dto.OrderReceiptLineResponse;
 import com.hbsisms.feature.sales.dto.OrderReceiptResponse;
 import com.hbsisms.feature.sales.dto.PaymentViewResponse;
+import com.hbsisms.feature.sales.dto.ShipAddressInput;
 import com.hbsisms.feature.system.AuditLogService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
@@ -56,6 +62,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -71,6 +78,7 @@ public class SalesOrderService {
 
     private static final Sort LIST_SORT = Sort.by(Sort.Direction.DESC, "placedAt");
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+    private static final Pattern VN_PHONE = Pattern.compile("^0\\d{9}$");
 
     private static final Map<OrderState, List<OrderState>> MANUAL_NEXT = new EnumMap<>(OrderState.class);
 
@@ -87,6 +95,7 @@ public class SalesOrderService {
     private final PaymentRepository paymentRepository;
     private final CustomerRepository customerRepository;
     private final CustomerAddressRepository customerAddressRepository;
+    private final CustomerAddressService customerAddressService;
     private final ProductVariantRepository productVariantRepository;
     private final UserRepository userRepository;
     private final ApprovalTaskRepository approvalTaskRepository;
@@ -104,6 +113,7 @@ public class SalesOrderService {
             PaymentRepository paymentRepository,
             CustomerRepository customerRepository,
             CustomerAddressRepository customerAddressRepository,
+            CustomerAddressService customerAddressService,
             ProductVariantRepository productVariantRepository,
             UserRepository userRepository,
             ApprovalTaskRepository approvalTaskRepository,
@@ -119,6 +129,7 @@ public class SalesOrderService {
         this.paymentRepository = paymentRepository;
         this.customerRepository = customerRepository;
         this.customerAddressRepository = customerAddressRepository;
+        this.customerAddressService = customerAddressService;
         this.productVariantRepository = productVariantRepository;
         this.userRepository = userRepository;
         this.approvalTaskRepository = approvalTaskRepository;
@@ -184,18 +195,9 @@ public class SalesOrderService {
             throw ApiException.badRequest("Đơn phải có ít nhất một dòng hàng");
         }
 
-        Customer customer = resolveCustomer(request.customerId());
+        Customer customer = resolveCustomerForOrder(request);
         String customerName = resolveCustomerName(customer, request.customerName());
-
-        CustomerAddress shipAddress = null;
-        if (request.shipAddressId() != null) {
-            if (customer == null) {
-                throw ApiException.badRequest("Khách vãng lai không gắn địa chỉ hồ sơ — chọn giao nhận phù hợp");
-            }
-            shipAddress = customerAddressRepository
-                    .findByIdAndCustomerId(request.shipAddressId(), customer.getId())
-                    .orElseThrow(() -> ApiException.badRequest("Địa chỉ giao hàng không hợp lệ"));
-        }
+        CustomerAddress shipAddress = resolveShipAddress(customer, request);
 
         AppUser placedBy = actorId == null
                 ? null
@@ -204,7 +206,7 @@ public class SalesOrderService {
                         .orElseThrow(() -> ApiException.notFound("Không tìm thấy người dùng"));
 
         PricingResultResponse priced = pricingService.resolve(new PricingRequest(
-                customer == null ? null : customer.getId(),
+                customer.getId(),
                 request.paymentMethod().code(),
                 moneyOrZero(request.shippingFee()),
                 moneyOrZero(request.discountTotal()),
@@ -315,18 +317,9 @@ public class SalesOrderService {
             throw ApiException.badRequest("Đơn phải có ít nhất một dòng hàng");
         }
 
-        Customer customer = resolveCustomer(request.customerId());
+        Customer customer = resolveCustomerForOrder(request);
         String customerName = resolveCustomerName(customer, request.customerName());
-
-        CustomerAddress shipAddress = null;
-        if (request.shipAddressId() != null) {
-            if (customer == null) {
-                throw ApiException.badRequest("Khách vãng lai không gắn địa chỉ hồ sơ — chọn giao nhận phù hợp");
-            }
-            shipAddress = customerAddressRepository
-                    .findByIdAndCustomerId(request.shipAddressId(), customer.getId())
-                    .orElseThrow(() -> ApiException.badRequest("Địa chỉ giao hàng không hợp lệ"));
-        }
+        CustomerAddress shipAddress = resolveShipAddress(customer, request);
 
         AppUser actor = actorId == null
                 ? null
@@ -347,7 +340,7 @@ public class SalesOrderService {
         }
 
         PricingResultResponse priced = pricingService.resolve(new PricingRequest(
-                customer == null ? null : customer.getId(),
+                customer.getId(),
                 request.paymentMethod().code(),
                 moneyOrZero(request.shippingFee()),
                 moneyOrZero(request.discountTotal()),
@@ -666,6 +659,121 @@ public class SalesOrderService {
             throw ApiException.conflict("Khách hàng đã bị khóa, không thể tạo đơn");
         }
         return customer;
+    }
+
+    /**
+     * Khách có sẵn theo {@code customerId}, hoặc find-or-create B2C theo SĐT (nhập nhanh vãng lai).
+     * Đơn staff sau bước này luôn có {@code customer} — không còn {@code customer_id} null.
+     */
+    private Customer resolveCustomerForOrder(OrderInputRequest request) {
+        if (request.customerId() != null) {
+            return resolveCustomer(request.customerId());
+        }
+
+        String phone = normalizeRequiredPhone(request.phone());
+        String name = Strings.trimToNull(request.customerName());
+        if (name == null) {
+            name = "Khách vãng lai";
+        }
+
+        Customer existing = customerRepository
+                .findFirstByPhoneAndAccountUserIsNullOrderByIdAsc(phone)
+                .or(() -> customerRepository.findFirstByPhoneOrderByIdAsc(phone))
+                .orElse(null);
+        if (existing != null) {
+            if (!existing.isActive()) {
+                throw ApiException.conflict("Khách hàng đã bị khóa, không thể tạo đơn");
+            }
+            if (existing.getAccountUser() == null && !name.equals(existing.getName())) {
+                existing.setName(name);
+                return customerRepository.save(existing);
+            }
+            return existing;
+        }
+
+        Customer created = new Customer();
+        created.setCode(nextB2cCustomerCode());
+        created.setCustomerType(CustomerType.B2C);
+        created.setName(name);
+        created.setPhone(phone);
+        created.setAccountUser(null);
+        created.setCreditLimit(BigDecimal.ZERO);
+        created.setNetDays((short) 0);
+        created.setCurrentDebt(BigDecimal.ZERO);
+        created.setActive(true);
+        return customerRepository.save(created);
+    }
+
+    private CustomerAddress resolveShipAddress(Customer customer, OrderInputRequest request) {
+        boolean needsAddress = request.fulfillmentMethod() != FulfillmentMethod.PICKUP;
+
+        if (request.shipAddressId() != null) {
+            return customerAddressRepository
+                    .findByIdAndCustomerId(request.shipAddressId(), customer.getId())
+                    .orElseThrow(() -> ApiException.badRequest("Địa chỉ giao hàng không hợp lệ"));
+        }
+
+        ShipAddressInput input = request.shipAddress();
+        if (input != null) {
+            String line1 = Strings.trimToNull(input.line1());
+            if (line1 == null) {
+                throw ApiException.badRequest("Địa chỉ là bắt buộc");
+            }
+            String recipient = Strings.trimToNull(input.recipientName());
+            if (recipient == null) {
+                recipient = customer.getName();
+            }
+            String phone = Strings.trimToNull(input.phone());
+            if (phone == null) {
+                phone = customer.getPhone();
+            }
+            String province = Strings.trimToNull(input.province());
+            if (province == null) {
+                province = "Quảng Ninh";
+            }
+            AddressResponse created = customerAddressService.create(
+                    customer.getId(),
+                    new AddressRequest(
+                            AddressKind.SHIPPING,
+                            recipient,
+                            phone,
+                            line1,
+                            Strings.trimToNull(input.ward()),
+                            Strings.trimToNull(input.district()),
+                            province,
+                            input.distanceKm(),
+                            Boolean.TRUE));
+            return customerAddressRepository
+                    .findByIdAndCustomerId(created.id(), customer.getId())
+                    .orElseThrow(() -> ApiException.badRequest("Địa chỉ giao hàng không hợp lệ"));
+        }
+
+        if (needsAddress) {
+            throw ApiException.badRequest("Vui lòng nhập địa chỉ giao hàng");
+        }
+        return null;
+    }
+
+    private String nextB2cCustomerCode() {
+        String prefix = CustomerCodeGenerator.prefixFor(CustomerType.B2C);
+        return CustomerCodeGenerator.nextCode(CustomerType.B2C, customerRepository.findCodesByPrefix(prefix));
+    }
+
+    private static String normalizeRequiredPhone(String raw) {
+        String value = Strings.trimToNull(raw);
+        if (value == null) {
+            throw ApiException.badRequest("Số điện thoại khách là bắt buộc");
+        }
+        String digits = value.replaceAll("[\\s.-]", "");
+        if (digits.startsWith("+84")) {
+            digits = "0" + digits.substring(3);
+        } else if (digits.startsWith("84") && digits.length() == 11) {
+            digits = "0" + digits.substring(2);
+        }
+        if (!VN_PHONE.matcher(digits).matches()) {
+            throw ApiException.badRequest("Số điện thoại không hợp lệ");
+        }
+        return digits;
     }
 
     private static String resolveCustomerName(Customer customer, String requestedName) {
