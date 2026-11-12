@@ -45,6 +45,14 @@ public class SalesRequest {
     @Column(length = 200)
     private String customerName;
 
+    /** SĐT khách vãng lai (null khi gắn customer_id). */
+    @Column(length = 30)
+    private String contactPhone;
+
+    /** Địa chỉ liên hệ khách vãng lai (null khi gắn customer_id). */
+    @Column(length = 500)
+    private String contactAddress;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private SaleChannel channel;

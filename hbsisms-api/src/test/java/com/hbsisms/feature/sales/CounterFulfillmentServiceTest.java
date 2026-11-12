@@ -66,6 +66,7 @@ class CounterFulfillmentServiceTest {
         assertThat(result).isSameAs(detail);
         assertThat(order.getState()).isEqualTo(OrderState.COMPLETED);
         verify(orderAllocationService).issueOutHeldForOrder(order, 1L);
+        verify(salesOrderRepository).save(order);
         verify(orderEventRepository).save(any(OrderEvent.class));
     }
 

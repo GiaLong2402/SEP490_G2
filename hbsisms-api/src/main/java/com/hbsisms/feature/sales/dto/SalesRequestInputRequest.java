@@ -10,6 +10,9 @@ import java.time.LocalDate;
 public record SalesRequestInputRequest(
         Long customerId,
         String customerName,
+        /** SĐT / địa chỉ chỉ dùng khi khách vãng lai ({@code customerId} null). */
+        String contactPhone,
+        String contactAddress,
         @NotNull(message = "Kênh là bắt buộc") SaleChannel channel,
         @NotBlank(message = "Vui lòng nhập nội dung yêu cầu") String summary,
         LocalDate neededDate,

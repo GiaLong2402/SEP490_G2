@@ -113,6 +113,8 @@ Tổng cộng 97 endpoint, sinh từ `src/features/*/mock.ts`. Kiểu dữ liệ
 | POST | `/orders` |
 | POST | `/orders/:id/transition` |
 | POST | `/orders/:id/cancel` |
+| POST | `/orders/:id/complete-at-counter` |
+| POST | `/sales/hold-expire` |
 
 ## payments
 
@@ -183,7 +185,10 @@ Jackson khóa tên field `isPublished` / `isActive` (không `published` / `activ
 | Phương thức | Đường dẫn |
 |---|---|
 | GET | `/sales-requests` |
+| GET | `/sales-requests/:id` |
 | POST | `/sales-requests` |
+| POST | `/sales-requests/:id/feasibility` |
+| POST | `/sales-requests/:id/reject` |
 | PATCH | `/sales-requests/:id` |
 
 ## returns
