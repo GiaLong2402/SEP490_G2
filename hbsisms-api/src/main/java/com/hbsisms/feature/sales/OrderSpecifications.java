@@ -77,6 +77,7 @@ final class OrderSpecifications {
         };
     }
 
+    /** Tìm theo mã đơn, tên khách (snapshot/hiện tại), mã KH, SĐT, MST. */
     private static Specification<SalesOrder> keywordSpec(String keyword) {
         String pattern = "%" + Strings.escapeLike(keyword.toLowerCase(Locale.ROOT)) + "%";
         return (root, query, cb) -> {
@@ -87,7 +88,10 @@ final class OrderSpecifications {
             return cb.or(
                     cb.like(cb.lower(root.get("code")), pattern, LIKE_ESCAPE),
                     cb.like(cb.lower(root.get("customerName")), pattern, LIKE_ESCAPE),
-                    cb.like(cb.lower(customer.get("name")), pattern, LIKE_ESCAPE));
+                    cb.like(cb.lower(customer.get("name")), pattern, LIKE_ESCAPE),
+                    cb.like(cb.lower(customer.get("code")), pattern, LIKE_ESCAPE),
+                    cb.like(cb.lower(customer.get("phone")), pattern, LIKE_ESCAPE),
+                    cb.like(cb.lower(customer.get("taxCode")), pattern, LIKE_ESCAPE));
         };
     }
 }
