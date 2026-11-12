@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { CustomerSearchField } from '@/features/customers';
 import { allocationStatusMeta, orderStateMeta, orderTypeLabels, paymentStatusMeta, saleChannelLabels } from '@/shared/domain/enums';
 import { dateTime, money } from '@/shared/lib/format';
-import { Button, Card, DataTable, FilterBar, FilterSelect, Input, LinkButton, PageHeader, Pagination, SearchBox, StatusChip, enumOptions, useListParams, type Column } from '@/shared/ui';
+import { Button, Card, DataTable, FilterBar, FilterSelect, Input, LinkButton, PageHeader, Pagination, StatusChip, enumOptions, useListParams, type Column } from '@/shared/ui';
+import { OrderSearchField } from '../components/OrderSearchField';
 import { useOrders } from '../hooks';
 import type { OrderListItem } from '../types';
 
@@ -20,7 +20,7 @@ export default function OrdersPage() {
     'placedTo',
   ] as const;
   const list = useListParams(filterKeys);
-  const [customerFilterKey, setCustomerFilterKey] = useState(0);
+  const [searchKey, setSearchKey] = useState(0);
   const { data, isLoading, isFetching, error, refetch } = useOrders({
     q: list.q,
     page: list.page,
@@ -40,7 +40,7 @@ export default function OrdersPage() {
 
   const clearFilters = () => {
     list.clearFilters();
-    setCustomerFilterKey((k) => k + 1);
+    setSearchKey((k) => k + 1);
   };
 
   const columns: Column<OrderListItem>[] = [
@@ -76,20 +76,19 @@ export default function OrdersPage() {
             ) : undefined
           }
         >
-          <SearchBox value={list.q} onChange={list.setQ} placeholder="Tìm mã đơn, tên khách..." />
+          <OrderSearchField
+            key={searchKey}
+            q={list.q}
+            customerId={list.filters.customerId ? Number(list.filters.customerId) : null}
+            onQChange={list.setQ}
+            onCustomerChange={(id) => list.setFilter('customerId', id == null ? '' : String(id))}
+            placeholder="Tìm mã đơn, tên, SĐT, mã khách…"
+          />
           <FilterSelect label="Trạng thái" value={list.filters.state} onChange={(v) => list.setFilter('state', v)}>{enumOptions(orderStateMeta)}</FilterSelect>
           <FilterSelect label="Loại đơn" value={list.filters.orderType} onChange={(v) => list.setFilter('orderType', v)}>{enumOptions(orderTypeLabels)}</FilterSelect>
           <FilterSelect label="Thanh toán" value={list.filters.paymentStatus} onChange={(v) => list.setFilter('paymentStatus', v)}>{enumOptions(paymentStatusMeta)}</FilterSelect>
           <FilterSelect label="Kênh" value={list.filters.channel} onChange={(v) => list.setFilter('channel', v)}>{enumOptions(saleChannelLabels)}</FilterSelect>
           <FilterSelect label="Giữ hàng" value={list.filters.allocationStatus} onChange={(v) => list.setFilter('allocationStatus', v)}>{enumOptions(allocationStatusMeta)}</FilterSelect>
-          <div className="w-full sm:w-[260px]">
-            <CustomerSearchField
-              key={customerFilterKey}
-              value={list.filters.customerId ? Number(list.filters.customerId) : null}
-              onChange={(id) => list.setFilter('customerId', id == null ? '' : String(id))}
-              placeholder="Khách hàng: tìm SĐT, tên, mã…"
-            />
-          </div>
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto" role="group" aria-label="Ngày đặt">
             <span className="text-small text-ink-muted">Ngày đặt</span>
             <label className="flex items-center gap-1.5 text-small text-ink-muted">
