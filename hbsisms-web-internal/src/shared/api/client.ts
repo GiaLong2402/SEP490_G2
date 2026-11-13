@@ -67,6 +67,19 @@ export function createHttpTransport(baseUrl: string): Transport {
   };
 }
 
+/** Gắn dần: prefix trong `VITE_API_HTTP_PATHS` → HTTP; còn lại → mock. */
+export function createHybridTransport(
+  http: Transport,
+  mock: Transport,
+  prefixes: string[],
+  matches: (path: string, prefixes: string[]) => boolean,
+): Transport {
+  return async <T>(method: Method, path: string, options: RequestOptions) => {
+    if (matches(path, prefixes)) return http<T>(method, path, options);
+    return mock<T>(method, path, options);
+  };
+}
+
 let transport: Transport | null = null;
 let onUnauthorized: () => void = () => {};
 

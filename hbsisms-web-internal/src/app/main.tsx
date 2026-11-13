@@ -3,8 +3,9 @@ import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router-dom';
 import { AuthProvider } from '@/features/auth';
-import { ApiError, configureApi, createHttpTransport } from '@/shared/api/client';
-import { API_BASE_URL, isMockMode } from '@/shared/api/config';
+import { ApiError, configureApi, createHybridTransport, createHttpTransport } from '@/shared/api/client';
+import { API_BASE_URL, HTTP_PATH_PREFIXES, isHybridMode, isMockMode } from '@/shared/api/config';
+import { pathMatchesHttpPrefix } from '@/shared/api/httpPaths';
 import { ToastProvider } from '@/shared/ui';
 import { router } from './routes';
 import './index.css';
@@ -22,7 +23,17 @@ const queryClient: QueryClient = new QueryClient({
 });
 
 async function bootstrap() {
-  if (isMockMode) {
+  if (isHybridMode) {
+    const { mockTransport } = await import('./mockServer');
+    configureApi(
+      createHybridTransport(
+        createHttpTransport(API_BASE_URL),
+        mockTransport,
+        HTTP_PATH_PREFIXES,
+        pathMatchesHttpPrefix,
+      ),
+    );
+  } else if (isMockMode) {
     const { mockTransport } = await import('./mockServer');
     configureApi(mockTransport);
   } else {
