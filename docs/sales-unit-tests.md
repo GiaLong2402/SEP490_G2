@@ -2,6 +2,75 @@
 
 File bàn giao test unit phần Sales. Doanh giữ lifecycle đơn (`SalesOrderServiceTest`, …). Cường cover FEFO hold, SalesRequest, hoàn tất quầy, hold-expire — **file class riêng**, không sửa file Doanh.
 
+**Nhánh gợi ý:** `feature/api-sales-create-order-rules` (Doanh) / `feature/api-sales-cuong-tests` (Cường).
+
+---
+
+## Map tiêu chí tracking (task 9) → unit
+
+| Tiêu chí | Cover bởi |
+|----------|-----------|
+| Đủ hàng | `SalesOrderServiceTest.create_persistsAndConfirmsWhenWithinLimit` + `OrderAllocationServiceTest.holdForOrder_fefoHoldsAvailableQtyAndSetsOutstanding` |
+| Thiếu hàng | `SalesOrderStockGuardTest.create_rejectsWhenRequestedQtyExceedsAvailable` + `OrderAllocationServiceTest.holdForOrder_disallowOutstanding_whenShort_throws409` |
+| Yêu cầu bị từ chối | `SalesRequestServiceTest.reject_requiresReasonAndSetsRejected` / `reject_blankReasonFails` |
+| 2 đơn tranh lô cuối | `OrderAllocationServiceTest.twoOrders_onlyOneWinsLastTray` |
+| Hủy trả hàng giữ | `SalesOrderServiceTest.cancel_releasesHold` + `OrderAllocationServiceTest.releaseForOrder_releasesNetHeld` |
+| Hoàn tất chỉ trừ kho 1 lần | `CounterFulfillmentServiceTest.completeAtCounter_secondCallIsIdempotent` + `OrderAllocationServiceTest.issueOutHeldForOrder_isIdempotent` |
+
+---
+
+## Phần Doanh (Orders lifecycle) — đã làm
+
+**Lệnh chạy**
+
+```powershell
+cd hbsisms-api
+.\mvnw.cmd test "-Dtest=SalesOrderServiceTest,SalesOrderStockGuardTest,QuoteServiceTest"
+```
+
+Kết quả gần nhất (2026-11-13): **BUILD SUCCESS** — SalesOrderService **15** + StockGuard **1** + Quote **5** (chạy cùng suite sales unit).
+
+Không đụng các file Cường (tránh conflict git):
+
+- `OrderAllocationServiceTest`
+- `SalesRequestServiceTest`
+- `CounterFulfillmentServiceTest`
+- `HoldExpireServiceTest`
+
+### SalesOrderServiceTest
+
+File: `hbsisms-api/src/test/java/com/hbsisms/feature/sales/SalesOrderServiceTest.java`
+
+| Test method | Hành vi | Kết quả |
+|-------------|---------|---------|
+| `create_persistsAndConfirmsWhenWithinLimit` | đủ hàng → CONFIRMED + hold | pass |
+| `create_lockedCustomer_returns409` | KH khóa → 409 | pass |
+| `create_rejectsCreditNet` | không bán nợ | pass |
+| `create_walkIn_withoutCustomerId` | vãng lai → find-or-create B2C | pass |
+| `createFromRequest_allowsOutstandingHold` | từ YC khả thi → allow outstanding | pass |
+| `transition_invalidTarget_returns409` | chuyển sai → 409 | pass |
+| `transition_preparingWhenUnpaid_returns409` | chưa Paid → 409 | pass |
+| `transition_preparingWhenDebt_returns409` | DEBT → 409 | pass |
+| `transition_preparingWhenNotFullyAllocated_returns409` | chưa FULL → 409 | pass |
+| `transition_preparingWhenPaidAndFull_succeeds` | Paid + FULL → PREPARING | pass |
+| `cancel_releasesHold` | hủy → release hold | pass |
+| `cancel_paidOrder_marksRefundPending` | hủy đã trả → REFUND_PENDING | pass |
+| `cancel_blankReason_returns400` | thiếu lý do → 400 | pass |
+| `receipt_unpaid_returns409` | biên lai chưa Paid → 409 | pass |
+| `receipt_paid_returnsSnapshotAndAuditsReprint` | Paid → snapshot + audit | pass |
+
+### SalesOrderStockGuardTest
+
+File: `hbsisms-api/src/test/java/com/hbsisms/feature/sales/SalesOrderStockGuardTest.java`
+
+| Test method | Hành vi | Kết quả |
+|-------------|---------|---------|
+| `create_rejectsWhenRequestedQtyExceedsAvailable` | thiếu hàng → 409, không save | pass |
+
+---
+
+## Báo cáo Cường (Sales tạo đơn) — đã làm
+
 **Lệnh chạy phần Cường**
 
 ```powershell
@@ -10,22 +79,6 @@ cd hbsisms-api
 ```
 
 Kết quả gần nhất (2026-11-12): **BUILD SUCCESS** — OrderAllocation **9** + SalesRequest **8** + CounterFulfillment **3** + HoldExpire **2** = **22 tests, 0 failures**.
-
-Nhánh gợi ý: `feature/api-sales-cuong-tests`.
-
----
-
-## Phần Doanh (Orders lifecycle) — tham chiếu
-
-Không đụng các file sau (tránh conflict git):
-
-- `SalesOrderServiceTest`
-- `SalesOrderStockGuardTest`
-- `QuoteServiceTest` (nếu thuộc Doanh)
-
----
-
-## Báo cáo Cường (Sales tạo đơn) — đã làm
 
 ### OrderAllocationServiceTest
 
