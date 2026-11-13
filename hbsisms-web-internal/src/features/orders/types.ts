@@ -38,12 +38,16 @@ export interface OrderDetail extends OrderListItem {
   canCancel: boolean;
 }
 
-/** Địa chỉ nhập nhanh khi khách vãng lai chọn giao hàng — BE tạo CustomerAddress. */
+/**
+ * Địa chỉ nhập nhanh khi khách vãng lai chọn giao hàng — BE tạo CustomerAddress.
+ * Địa giới 2 cấp (sau sáp nhập 2025): xã/phường + tỉnh/thành phố. `district` deprecated.
+ */
 export interface ShipAddressInput {
   recipientName?: string | null;
   phone?: string | null;
   line1: string;
   ward?: string | null;
+  /** @deprecated Bỏ cấp huyện sau sáp nhập 2025. */
   district?: string | null;
   province?: string | null;
   distanceKm?: number | null;

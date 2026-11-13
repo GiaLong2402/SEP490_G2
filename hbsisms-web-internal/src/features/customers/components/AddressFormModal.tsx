@@ -5,6 +5,7 @@ import { Button, Checkbox, Field, Input, Modal } from '@/shared/ui';
 import { customersApi } from '../api';
 import type { AddressInput } from '../types';
 
+/** Địa giới hành chính 2 cấp (sau sáp nhập 2025): xã/phường + tỉnh/thành phố. `district` giữ trong API để tương thích dữ liệu cũ. */
 export const emptyAddress: AddressInput = {
   kind: 'shipping',
   recipientName: '',
@@ -12,7 +13,7 @@ export const emptyAddress: AddressInput = {
   line1: '',
   ward: '',
   district: '',
-  province: 'Quảng Ninh',
+  province: '',
   distanceKm: null,
   isDefault: false,
 };
@@ -24,8 +25,8 @@ export function toAddressInput(a: CustomerAddress): AddressInput {
     phone: a.phone,
     line1: a.line1,
     ward: a.ward,
-    district: a.district,
-    province: a.province ?? 'Quảng Ninh',
+    district: a.district ?? '',
+    province: a.province ?? '',
     distanceKm: a.distanceKm,
     isDefault: a.isDefault,
   };
@@ -59,7 +60,12 @@ export function AddressFormModal({
   }, [open, addressId]);
 
   const save = useAction(
-    () => (isEdit ? customersApi.updateAddress(customerId, addressId, form) : customersApi.addAddress(customerId, form)),
+    () => {
+      const payload: AddressInput = { ...form, district: '' };
+      return isEdit
+        ? customersApi.updateAddress(customerId, addressId, payload)
+        : customersApi.addAddress(customerId, payload);
+    },
     {
       success: isEdit ? 'Đã cập nhật địa chỉ' : 'Đã thêm địa chỉ',
       onDone: (saved) => {
@@ -90,13 +96,25 @@ export function AddressFormModal({
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Địa chỉ" required className="sm:col-span-2" error={line1Error}>
-          <Input value={form.line1} onChange={(e) => setForm({ ...form, line1: e.target.value })} />
+          <Input
+            value={form.line1}
+            onChange={(e) => setForm({ ...form, line1: e.target.value })}
+            placeholder="Số nhà, đường, thôn/ấp…"
+          />
         </Field>
-        <Field label="Phường/xã">
-          <Input value={form.ward ?? ''} onChange={(e) => setForm({ ...form, ward: e.target.value })} />
+        <Field label="Xã/phường">
+          <Input
+            value={form.ward ?? ''}
+            onChange={(e) => setForm({ ...form, ward: e.target.value, district: '' })}
+            placeholder="Xã / phường / đặc khu"
+          />
         </Field>
-        <Field label="Quận/huyện">
-          <Input value={form.district ?? ''} onChange={(e) => setForm({ ...form, district: e.target.value })} />
+        <Field label="Tỉnh/thành phố">
+          <Input
+            value={form.province ?? ''}
+            onChange={(e) => setForm({ ...form, province: e.target.value })}
+            placeholder="Hải Phòng"
+          />
         </Field>
         <Field label="Người nhận">
           <Input value={form.recipientName ?? ''} onChange={(e) => setForm({ ...form, recipientName: e.target.value })} />

@@ -1,10 +1,22 @@
 import { CheckCircle2, Printer } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { dateTime, money } from '@/shared/lib/format';
 import { Button, Modal } from '@/shared/ui';
 import { posPaymentLabels, type Receipt } from '../types';
 
 export function ReceiptDialog({ receipt, onClose }: { receipt: Receipt | null; onClose: () => void }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const orderPath = receipt ? `/orders/${receipt.orderId}` : '';
+
+  /** Đóng biên lai; nếu đang ở trang khác (vd. POS) thì chuyển sang chi tiết đơn. */
+  const viewOrderDetail = () => {
+    onClose();
+    if (receipt && location.pathname !== orderPath) {
+      navigate(orderPath);
+    }
+  };
+
   return (
     <Modal
       open={!!receipt}
@@ -50,7 +62,11 @@ export function ReceiptDialog({ receipt, onClose }: { receipt: Receipt | null; o
             </dl>
             <p className="mt-3 text-center text-micro text-ink-faint">Biên lai bán hàng — không phải hóa đơn điện tử</p>
           </div>
-          <p className="mt-3 text-center text-small"><Link to={`/orders/${receipt.orderId}`} className="text-primary hover:underline">Xem chi tiết đơn</Link></p>
+          <p className="mt-3 text-center text-small">
+            <button type="button" onClick={viewOrderDetail} className="text-primary hover:underline">
+              Xem chi tiết đơn
+            </button>
+          </p>
         </>
       )}
     </Modal>

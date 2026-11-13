@@ -6,7 +6,7 @@ function toItem(d: (typeof db.deliveries)[number]) {
   const order = db.orders.find((o) => o.id === d.orderId);
   const address = db.addresses.find((a) => a.id === d.addressId);
   return {
-    ...d, orderCode: order?.code ?? '—', customerName: customerName(order?.customerId) ?? 'Khách lẻ', addressText: address ? [address.line1, address.ward, address.district].filter(Boolean).join(', ') : null,
+    ...d, orderCode: order?.code ?? '—', customerName: customerName(order?.customerId) ?? 'Khách lẻ', addressText: address ? [address.line1, address.ward, address.province || address.district].filter(Boolean).join(', ') : null,
     assigneeName: userName(d.assignedTo), totalKhay: (d.items ?? []).reduce((sum, i) => sum + i.qtyKhay, 0),
   };
 }

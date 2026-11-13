@@ -47,12 +47,14 @@ export interface CustomerInput {
   note: string | null;
 }
 
+/** Địa giới 2 cấp (sau sáp nhập 2025): xã/phường + tỉnh/thành phố. */
 export interface AddressInput {
   kind: AddressKind;
   recipientName: string | null;
   phone: string | null;
   line1: string;
   ward: string | null;
+  /** @deprecated Bỏ cấp huyện sau sáp nhập 2025. */
   district: string | null;
   province: string | null;
   distanceKm: number | null;

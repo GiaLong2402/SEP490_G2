@@ -107,7 +107,7 @@ function seed(): MockDb {
 
   const addr = (id: number, customerId: number, line1: string, ward: string, km: number): T.CustomerAddress => ({
     id, customerId, kind: 'shipping', recipientName: customers[customerId - 1].contactName ?? customers[customerId - 1].name, phone: customers[customerId - 1].phone, line1, ward,
-    district: 'TP Hạ Long', province: 'Quảng Ninh', latitude: null, longitude: null, inDeliveryRadius: km <= 8, distanceKm: km, isDefault: true, createdAt: isoTime(-100),
+    district: null, province: 'Hải Phòng', latitude: null, longitude: null, inDeliveryRadius: km <= 8, distanceKm: km, isDefault: true, createdAt: isoTime(-100),
   });
   const addresses = [
     addr(1, 1, '12 Lê Thánh Tông', 'Bạch Đằng', 2.4), addr(2, 2, '45 Hạ Long', 'Bãi Cháy', 6.8), addr(3, 3, '88 Hoàng Quốc Việt', 'Hùng Thắng', 9.5),

@@ -23,6 +23,11 @@ export const staffSaleChannels: SaleChannel[] = ['phone', 'zalo', 'facebook', 'c
 export const staffSaleChannelLabels: Record<string, string> = Object.fromEntries(
   staffSaleChannels.map((c) => [c, saleChannelLabels[c]]),
 );
+/** Filter danh sách đơn: có Website, bỏ app (chưa dùng trong hệ thống). */
+export const orderListSaleChannels: SaleChannel[] = ['web', 'phone', 'zalo', 'facebook', 'counter'];
+export const orderListSaleChannelLabels: Record<string, string> = Object.fromEntries(
+  orderListSaleChannels.map((c) => [c, saleChannelLabels[c]]),
+);
 
 export type RequestStatus = 'new' | 'quoting' | 'ordered' | 'rejected' | 'closed';
 export const requestStatusMeta: Meta<RequestStatus> = {
@@ -39,6 +44,11 @@ export const quoteStatusMeta: Meta<QuoteStatus> = {
 
 export type OrderType = 'retail' | 'b2b' | 'online_b2c';
 export const orderTypeLabels: Record<OrderType, string> = { retail: 'Bán lẻ', b2b: 'B2B', online_b2c: 'Online B2C' };
+/** Loại đơn nhân viên tạo tay — ẩn online_b2c (web checkout tự gán). */
+export const staffOrderTypes: OrderType[] = ['retail', 'b2b'];
+export const staffOrderTypeLabels: Record<string, string> = Object.fromEntries(
+  staffOrderTypes.map((t) => [t, orderTypeLabels[t]]),
+);
 
 export type OrderState = 'pending' | 'confirmed' | 'preparing' | 'to_ship' | 'partial' | 'delivered' | 'completed' | 'cancelled';
 export const orderStateMeta: Meta<OrderState> = {
@@ -58,6 +68,16 @@ export const paymentStatusMeta: Meta<PaymentStatus> = {
   partial: { label: 'Thu một phần', tone: 'amber' }, debt: { label: 'Công nợ', tone: 'blue' }, diff: { label: 'Lệch tiền', tone: 'red' },
   refund_pending: { label: 'Chờ hoàn tiền', tone: 'amber' }, refunded: { label: 'Đã hoàn', tone: 'neutral' },
 };
+/**
+ * Filter danh sách đơn: bỏ `diff` (enum có sẵn nhưng BE hiện không gán).
+ * Giữ waiting/debt/refund_* vì vẫn phát sinh từ web, POS công nợ, hủy/hoàn.
+ */
+export const orderListPaymentStatuses: PaymentStatus[] = [
+  'unpaid', 'waiting', 'paid', 'partial', 'debt', 'refund_pending', 'refunded',
+];
+export const orderListPaymentStatusMeta: Record<string, { label: string; tone: Tone }> = Object.fromEntries(
+  orderListPaymentStatuses.map((s) => [s, paymentStatusMeta[s]]),
+);
 
 export type AllocationStatus = 'none' | 'incoming' | 'held' | 'full';
 export const allocationStatusMeta: Meta<AllocationStatus> = {

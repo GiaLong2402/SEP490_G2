@@ -12,7 +12,7 @@ const EMPTY = {
   line1: '',
   ward: '',
   district: '',
-  province: 'Hải Phòng',
+  province: '',
   isDefault: false,
 }
 
@@ -110,9 +110,8 @@ export default function AddressFormDialog({ open, onClose, address, forceDefault
         {field('recipientName', 'Tên người nhận', { required: true, placeholder: 'Nguyễn Văn An', autoComplete: 'name' })}
         {field('phone', 'Số điện thoại', { required: true, type: 'tel', inputMode: 'tel', placeholder: '0912 345 678', autoComplete: 'tel' })}
         {field('line1', 'Số nhà, tên đường', { required: true, full: true, placeholder: 'Số 15 Đường Hòa Bình', autoComplete: 'address-line1' })}
-        {field('ward', 'Phường / Xã', { placeholder: 'Phường Trần Phú' })}
-        {field('district', 'Quận / Huyện', { placeholder: 'Quận Hồng Bàng' })}
-        {field('province', 'Tỉnh / Thành phố', { required: true, full: true })}
+        {field('ward', 'Xã / Phường', { placeholder: 'Xã / phường / đặc khu' })}
+        {field('province', 'Tỉnh / Thành phố', { required: true, full: true, placeholder: 'Hải Phòng' })}
 
         <label className={`addr-default ${forceDefault ? 'is-locked' : ''}`}>
           <input
