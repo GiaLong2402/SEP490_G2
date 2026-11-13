@@ -1,31 +1,56 @@
 import { useState } from 'react';
 import { CheckCircle2, FileText, Plus, XCircle } from 'lucide-react';
-import { useCustomerOptions } from '@/features/customers';
+import { CustomerSearchField } from '@/features/customers';
 import { useAction } from '@/shared/api/useAction';
 import type { ID } from '@/shared/domain/entities';
 import { requestStatusMeta, saleChannelLabels, staffSaleChannelLabels, type SaleChannel } from '@/shared/domain/enums';
 import { dateTime } from '@/shared/lib/format';
-import { Button, Card, ConfirmDialog, DataTable, Field, FilterBar, FilterSelect, Input, LinkButton, Modal, PageHeader, Pagination, SearchBox, Select, StatusChip, Textarea, enumOptions, useListParams, type Column } from '@/shared/ui';
+import { Button, Card, Chip, ConfirmDialog, DataTable, Field, FilterBar, FilterSelect, Input, LinkButton, Modal, PageHeader, Pagination, SearchBox, Select, StatusChip, Textarea, enumOptions, useListParams, type Column } from '@/shared/ui';
 import { requestsApi } from '../api';
 import { useRequests } from '../hooks';
 import type { RequestListItem } from '../types';
 
+const emptyForm = {
+  walkIn: true,
+  customerId: null as number | null,
+  customerName: '',
+  contactPhone: '',
+  contactAddress: '',
+  channel: 'phone' as SaleChannel,
+  summary: '',
+};
+
 export default function RequestsPage() {
   const list = useListParams(['status', 'channel'] as const);
   const { data, isLoading, error, refetch } = useRequests({ q: list.q, page: list.page, status: list.filters.status, channel: list.filters.channel });
-  const customers = useCustomerOptions();
   const [creating, setCreating] = useState(false);
   const [touched, setTouched] = useState(false);
   const [closing, setClosing] = useState<ID | null>(null);
   const [rejecting, setRejecting] = useState<ID | null>(null);
   const [feasibility, setFeasibility] = useState<RequestListItem | null>(null);
   const [feasForm, setFeasForm] = useState({ feasible: true, fulfillableQty: '', shortageQty: '', expectedDate: '', note: '' });
-  const [form, setForm] = useState({ customerId: '', customerName: '', channel: 'phone' as SaleChannel, summary: '' });
+  const [form, setForm] = useState(emptyForm);
 
-  const create = useAction(() => requestsApi.create({ customerId: form.customerId ? Number(form.customerId) : null, customerName: form.customerName || null, channel: form.channel, summary: form.summary.trim() }), {
-    success: (r) => `Đã tạo yêu cầu ${r.code}`,
-    onDone: () => setCreating(false),
-  });
+  const walkInOk = form.customerName.trim().length > 0;
+  const systemOk = form.customerId != null;
+  const customerOk = form.walkIn ? walkInOk : systemOk;
+  const summaryOk = form.summary.trim().length > 0;
+
+  const create = useAction(
+    () =>
+      requestsApi.create({
+        customerId: form.walkIn ? null : form.customerId,
+        customerName: form.walkIn ? form.customerName.trim() || 'Khách vãng lai' : null,
+        contactPhone: form.walkIn ? form.contactPhone.trim() || null : null,
+        contactAddress: form.walkIn ? form.contactAddress.trim() || null : null,
+        channel: form.channel,
+        summary: form.summary.trim(),
+      }),
+    {
+      success: (r) => `Đã tạo yêu cầu ${r.code}`,
+      onDone: () => setCreating(false),
+    },
+  );
   const close = useAction((note: string) => requestsApi.update(closing!, { status: 'closed', note }), { success: 'Đã đóng yêu cầu', onDone: () => setClosing(null) });
   const reject = useAction((reason: string) => requestsApi.reject(rejecting!, { rejectReason: reason }), { success: 'Đã từ chối yêu cầu', onDone: () => setRejecting(null) });
   const saveFeasibility = useAction(
@@ -43,7 +68,16 @@ export default function RequestsPage() {
 
   const columns: Column<RequestListItem>[] = [
     { key: 'code', header: 'Mã', cell: (r) => <span className="num">{r.code}</span> },
-    { key: 'customer', header: 'Khách', cell: (r) => <span className="font-medium">{r.customerName ?? '—'}</span> },
+    {
+      key: 'customer',
+      header: 'Khách',
+      cell: (r) => (
+        <div className="min-w-0">
+          <div className="font-medium">{r.customerName ?? '—'}</div>
+          {r.contactPhone && <div className="text-small text-ink-muted">{r.contactPhone}</div>}
+        </div>
+      ),
+    },
     { key: 'channel', header: 'Kênh', cell: (r) => saleChannelLabels[r.channel] },
     { key: 'summary', header: 'Nội dung', cell: (r) => <span className="line-clamp-2 min-w-[200px]">{r.summary}</span> },
     {
@@ -84,7 +118,7 @@ export default function RequestsPage() {
 
   return (
     <>
-      <PageHeader title="Yêu cầu khách hàng" subtitle="Tiếp nhận từ điện thoại, Zalo, website và tại quầy" actions={<Button variant="primary" icon={<Plus size={15} />} onClick={() => { setForm({ customerId: '', customerName: '', channel: 'phone', summary: '' }); setTouched(false); setCreating(true); }}>Ghi nhận yêu cầu</Button>} />
+      <PageHeader title="Yêu cầu khách hàng" subtitle="Tiếp nhận từ điện thoại, Zalo, website và tại quầy" actions={<Button variant="primary" icon={<Plus size={15} />} onClick={() => { setForm(emptyForm); setTouched(false); setCreating(true); }}>Ghi nhận yêu cầu</Button>} />
       <Card flush>
         <FilterBar>
           <SearchBox value={list.q} onChange={list.setQ} placeholder="Tìm mã, khách, nội dung..." />
@@ -101,20 +135,75 @@ export default function RequestsPage() {
         onClose={() => setCreating(false)}
         onSubmit={() => {
           setTouched(true);
-          if (form.summary.trim()) create.mutate();
+          if (customerOk && summaryOk) create.mutate();
         }}
         footer={<><Button onClick={() => setCreating(false)}>Hủy bỏ</Button><Button type="submit" variant="primary" loading={create.isPending}>Lưu</Button></>}
       >
         <div className="space-y-3">
-          <Field label="Khách hàng">
-            <Select value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}>
-              <option value="">Khách vãng lai</option>
-              {customers.data?.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
+          <div className="flex flex-wrap gap-2">
+            <Chip tone={form.walkIn ? 'blue' : 'neutral'}>
+              <button
+                type="button"
+                className="bg-transparent"
+                onClick={() => setForm({ ...form, walkIn: true, customerId: null })}
+              >
+                Khách vãng lai
+              </button>
+            </Chip>
+            <Chip tone={!form.walkIn ? 'blue' : 'neutral'}>
+              <button
+                type="button"
+                className="bg-transparent"
+                onClick={() => setForm({ ...form, walkIn: false, customerName: '', contactPhone: '', contactAddress: '' })}
+              >
+                Khách trên hệ thống
+              </button>
+            </Chip>
+          </div>
+
+          {form.walkIn ? (
+            <>
+              <Field label="Tên khách" required error={touched && !walkInOk ? 'Nhập tên khách vãng lai' : undefined}>
+                <Input
+                  value={form.customerName}
+                  onChange={(e) => setForm({ ...form, customerName: e.target.value })}
+                  placeholder="VD: Anh Minh"
+                />
+              </Field>
+              <Field label="Số ĐT">
+                <Input
+                  value={form.contactPhone}
+                  onChange={(e) => setForm({ ...form, contactPhone: e.target.value })}
+                  placeholder="09…"
+                  inputMode="tel"
+                />
+              </Field>
+              <Field label="Địa chỉ">
+                <Input
+                  value={form.contactAddress}
+                  onChange={(e) => setForm({ ...form, contactAddress: e.target.value })}
+                  placeholder="Số nhà, đường, phường/xã…"
+                />
+              </Field>
+            </>
+          ) : (
+            <Field label="Tìm khách hàng" required error={touched && !systemOk ? 'Chọn khách trên hệ thống' : undefined}>
+              <CustomerSearchField
+                value={form.customerId}
+                onChange={(customerId) => setForm({ ...form, customerId })}
+                placeholder="Tìm theo SĐT, tên hoặc mã KH…"
+              />
+            </Field>
+          )}
+
+          <Field label="Kênh" required>
+            <Select value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value as SaleChannel })}>
+              {enumOptions(staffSaleChannelLabels)}
             </Select>
           </Field>
-          {!form.customerId && <Field label="Tên khách vãng lai"><Input value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} /></Field>}
-          <Field label="Kênh" required><Select value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value as SaleChannel })}>{enumOptions(staffSaleChannelLabels)}</Select></Field>
-          <Field label="Nội dung yêu cầu" required error={touched && !form.summary.trim() ? 'Vui lòng nhập nội dung' : undefined}><Textarea value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} /></Field>
+          <Field label="Nội dung yêu cầu" required error={touched && !summaryOk ? 'Vui lòng nhập nội dung' : undefined}>
+            <Textarea value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} />
+          </Field>
         </div>
       </Modal>
 

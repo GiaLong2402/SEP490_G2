@@ -98,7 +98,7 @@ class OrderAllocationServiceTest {
 
     @Test
     void holdForOrder_fefoHoldsAvailableQtyAndSetsOutstanding() {
-        when(stockLedgerRepository.findByRefTypeAndRefIdWithDetails("sales_order", 7L))
+        when(stockLedgerRepository.findByRefTypeAndRefIdForAllocation("sales_order", 7L))
                 .thenReturn(List.of());
         when(stockRepository.findFefoCandidates(eq(1L), any(LocalDate.class)))
                 .thenReturn(List.of(stockRow));
@@ -121,7 +121,7 @@ class OrderAllocationServiceTest {
 
     @Test
     void holdForOrder_disallowOutstanding_whenShort_throws409() {
-        when(stockLedgerRepository.findByRefTypeAndRefIdWithDetails("sales_order", 7L))
+        when(stockLedgerRepository.findByRefTypeAndRefIdForAllocation("sales_order", 7L))
                 .thenReturn(List.of())
                 .thenReturn(List.of(ledger(LedgerEntryType.HOLD, -5)));
         when(stockRepository.findFefoCandidates(eq(1L), any(LocalDate.class)))
@@ -143,7 +143,7 @@ class OrderAllocationServiceTest {
 
     @Test
     void holdForOrder_contentionSkipsConflictedLot() {
-        when(stockLedgerRepository.findByRefTypeAndRefIdWithDetails("sales_order", 7L))
+        when(stockLedgerRepository.findByRefTypeAndRefIdForAllocation("sales_order", 7L))
                 .thenReturn(List.of());
         when(stockRepository.findFefoCandidates(eq(1L), any(LocalDate.class)))
                 .thenReturn(List.of(stockRow));
@@ -161,7 +161,7 @@ class OrderAllocationServiceTest {
     @Test
     void twoOrders_onlyOneWinsLastTray() {
         AtomicInteger available = new AtomicInteger(1);
-        when(stockLedgerRepository.findByRefTypeAndRefIdWithDetails(eq("sales_order"), any()))
+        when(stockLedgerRepository.findByRefTypeAndRefIdForAllocation(eq("sales_order"), any()))
                 .thenReturn(List.of());
         when(stockRepository.findFefoCandidates(eq(1L), any(LocalDate.class)))
                 .thenReturn(List.of(stockRow));
@@ -193,7 +193,7 @@ class OrderAllocationServiceTest {
 
     @Test
     void releaseForOrder_releasesNetHeld() {
-        when(stockLedgerRepository.findByRefTypeAndRefIdWithDetails("sales_order", 7L))
+        when(stockLedgerRepository.findByRefTypeAndRefIdForAllocation("sales_order", 7L))
                 .thenReturn(List.of(ledger(LedgerEntryType.HOLD, -5)));
 
         SalesOrder order = order(7L, SaleChannel.WEB, PaymentStatus.UNPAID, 5);
@@ -207,7 +207,7 @@ class OrderAllocationServiceTest {
 
     @Test
     void issueOutHeldForOrder_isIdempotent() {
-        when(stockLedgerRepository.findByRefTypeAndRefIdWithDetails("sales_order", 7L))
+        when(stockLedgerRepository.findByRefTypeAndRefIdForAllocation("sales_order", 7L))
                 .thenReturn(List.of(
                         ledger(LedgerEntryType.HOLD, -5),
                         ledger(LedgerEntryType.OUT, -5)));
@@ -221,7 +221,7 @@ class OrderAllocationServiceTest {
 
     @Test
     void issueOutHeldForOrder_outsHeldLots() {
-        when(stockLedgerRepository.findByRefTypeAndRefIdWithDetails("sales_order", 7L))
+        when(stockLedgerRepository.findByRefTypeAndRefIdForAllocation("sales_order", 7L))
                 .thenReturn(List.of(ledger(LedgerEntryType.HOLD, -5)));
         when(salesOrderLineRepository.sumOutstandingByOrderId(7L)).thenReturn(0);
 
@@ -231,6 +231,51 @@ class OrderAllocationServiceTest {
         assertThat(issued).isEqualTo(5);
         assertThat(order.getAllocationStatus()).isEqualTo(AllocationStatus.FULL);
         verify(stockService).issueHeldOut(any());
+    }
+
+    @Test
+    void allocateOutstandingAfterReceipt_holdsPaidOutstanding() {
+        // Đơn 3 khay, đã hold 0, còn outstanding 3 — sau nhập đủ → FULL.
+        SalesOrder order = order(7L, SaleChannel.COUNTER, PaymentStatus.PAID, 3);
+        SalesOrderLine line = order.getLines().get(0);
+        line.setOutstandingQty(3);
+        when(salesOrderLineRepository.findOutstandingPaidLines()).thenReturn(List.of(line));
+        when(salesOrderRepository.findWithDetailsById(7L)).thenReturn(Optional.of(order));
+        when(stockRepository.findFefoCandidates(eq(1L), any(LocalDate.class))).thenReturn(List.of(stockRow));
+        when(stockRepository.findById(50L)).thenReturn(Optional.of(stockRow));
+        when(stockLedgerRepository.findByRefTypeAndRefIdForAllocation("sales_order", 7L))
+                .thenReturn(List.of(ledger(LedgerEntryType.HOLD, -3)));
+        when(salesOrderLineRepository.sumOutstandingByOrderId(7L)).thenReturn(0);
+
+        int total = service.allocateOutstandingAfterReceipt(1L);
+
+        assertThat(total).isEqualTo(3);
+        assertThat(line.getOutstandingQty()).isZero();
+        assertThat(order.getAllocationStatus()).isEqualTo(AllocationStatus.FULL);
+        verify(stockService).hold(any());
+        verify(salesOrderRepository).save(order);
+    }
+
+    @Test
+    void releaseExpiredHolds_unpaidReleases_paidSkips() {
+        SalesOrder unpaid = order(1L, SaleChannel.WEB, PaymentStatus.UNPAID, 5);
+        unpaid.setHoldExpiresAt(Instant.parse("2026-11-09T09:00:00Z"));
+        SalesOrder paid = order(2L, SaleChannel.WEB, PaymentStatus.PAID, 5);
+        paid.setHoldExpiresAt(Instant.parse("2026-11-09T09:00:00Z"));
+
+        when(salesOrderRepository.findExpiredHolds(Instant.parse("2026-11-09T10:00:00Z")))
+                .thenReturn(List.of(unpaid, paid));
+        when(salesOrderRepository.findWithDetailsById(1L)).thenReturn(Optional.of(unpaid));
+        when(stockLedgerRepository.findByRefTypeAndRefIdForAllocation("sales_order", 1L))
+                .thenReturn(List.of(ledger(LedgerEntryType.HOLD, -5)));
+        when(appConfigService.paymentHoldMinutes()).thenReturn(15);
+
+        int count = service.releaseExpiredHolds();
+
+        assertThat(count).isEqualTo(1);
+        assertThat(paid.getHoldExpiresAt()).isNull();
+        verify(stockService, times(1)).release(any());
+        verify(salesOrderRepository, never()).findWithDetailsById(2L);
     }
 
     private StockLedger ledger(LedgerEntryType type, int qtyDelta) {

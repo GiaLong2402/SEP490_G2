@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -25,6 +26,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 
 @ExtendWith(MockitoExtension.class)
@@ -58,7 +62,8 @@ class SalesRequestServiceTest {
         });
 
         var response = service.create(
-                new SalesRequestInputRequest(null, "Anh A", SaleChannel.PHONE, "Cần 10 khay tôm", null, null, null),
+                new SalesRequestInputRequest(
+                        null, "Anh A", "0912345678", "12 Nguyễn Trãi", SaleChannel.PHONE, "Cần 10 khay tôm", null, null, null),
                 9L);
 
         assertThat(response.code()).isEqualTo("YC-2026-0001");
@@ -135,6 +140,48 @@ class SalesRequestServiceTest {
                 .isInstanceOf(ApiException.class)
                 .extracting(ex -> ((ApiException) ex).getStatus())
                 .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void feasibility_notAccepted_doesNotCreateOrder() {
+        SalesRequest row = openRequest(6L);
+        when(salesRequestRepository.findWithDetailsById(6L)).thenReturn(Optional.of(row));
+
+        var result = service.recordFeasibility(
+                6L,
+                new SalesRequestFeasibilityRequest(true, 8, 2, null, "ok", false, null),
+                1L);
+
+        assertThat(result.order()).isNull();
+        assertThat(result.request().status()).isEqualTo(RequestStatus.QUOTING);
+        assertThat(result.request().feasible()).isTrue();
+        verify(salesOrderService, never()).createFromRequest(any(), any());
+    }
+
+    @Test
+    void search_filtersByStatus_returnsPage() {
+        SalesRequest row = openRequest(10L);
+        row.setStatus(RequestStatus.REJECTED);
+        when(salesRequestRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(row)));
+
+        var page = service.search(null, "rejected", null, null, null, null, 1, 20);
+
+        assertThat(page.items()).hasSize(1);
+        assertThat(page.items().get(0).status()).isEqualTo(RequestStatus.REJECTED);
+        assertThat(page.items().get(0).code()).isEqualTo("YC-2026-00010");
+    }
+
+    @Test
+    void get_returnsDetail() {
+        SalesRequest row = openRequest(11L);
+        when(salesRequestRepository.findWithDetailsById(11L)).thenReturn(Optional.of(row));
+
+        var detail = service.get(11L);
+
+        assertThat(detail.id()).isEqualTo(11L);
+        assertThat(detail.code()).isEqualTo("YC-2026-00011");
+        assertThat(detail.status()).isEqualTo(RequestStatus.NEW);
     }
 
     private SalesRequest openRequest(long id) {

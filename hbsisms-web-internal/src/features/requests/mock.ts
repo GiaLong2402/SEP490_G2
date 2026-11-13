@@ -15,7 +15,25 @@ mock('GET', '/sales-requests', ({ query }) => {
 
 mock('POST', '/sales-requests', ({ body, userId }) => {
   const customer = db.customers.find((c) => c.id === body.customerId);
-  const row = { id: nextId(db.requests), code: nextCode('YC', db.requests), customerId: body.customerId, customerName: customer?.name ?? body.customerName ?? 'Khách vãng lai', channel: body.channel, summary: body.summary, status: 'new' as const, receivedAt: new Date().toISOString(), handledBy: userId, note: null, feasible: null, fulfillableQty: null, shortageQty: null, expectedDate: null, rejectReason: null };
+  const row = {
+    id: nextId(db.requests),
+    code: nextCode('YC', db.requests),
+    customerId: body.customerId,
+    customerName: customer?.name ?? body.customerName ?? 'Khách vãng lai',
+    contactPhone: body.customerId ? null : (body.contactPhone ?? null),
+    contactAddress: body.customerId ? null : (body.contactAddress ?? null),
+    channel: body.channel,
+    summary: body.summary,
+    status: 'new' as const,
+    receivedAt: new Date().toISOString(),
+    handledBy: userId,
+    note: null,
+    feasible: null,
+    fulfillableQty: null,
+    shortageQty: null,
+    expectedDate: null,
+    rejectReason: null,
+  };
   db.requests.push(row);
   return toItem(row);
 });
