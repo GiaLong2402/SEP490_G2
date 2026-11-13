@@ -18,13 +18,14 @@ public record ShipAddressInput(
         @Size(max = 255, message = "Địa chỉ tối đa 255 ký tự")
         String line1,
 
-        @Size(max = 120, message = "Phường/xã tối đa 120 ký tự")
+        @Size(max = 120, message = "Xã/phường tối đa 120 ký tự")
         String ward,
 
+        /** Deprecated sau sáp nhập 2025 (bỏ cấp huyện); giữ field để tương thích dữ liệu cũ. */
         @Size(max = 120, message = "Quận/huyện tối đa 120 ký tự")
         String district,
 
-        @Size(max = 120, message = "Tỉnh/thành tối đa 120 ký tự")
+        @Size(max = 120, message = "Tỉnh/thành phố tối đa 120 ký tự")
         String province,
 
         @DecimalMin(value = "0", message = "Khoảng cách không được âm")

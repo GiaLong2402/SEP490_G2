@@ -178,7 +178,7 @@ export default function OrderDetailPage() {
           </Card>
           <Card title="Giao nhận">
             <InfoList items={[['Hình thức', fulfillmentLabels[order.fulfillmentMethod]], ['Khoảng cách', order.address?.distanceKm != null ? `${order.address.distanceKm} km` : null]]} />
-            {order.address && <p className="mt-2 border-t border-line pt-2 text-ink-muted">{[order.address.line1, order.address.ward, order.address.district, order.address.province].filter(Boolean).join(', ')}</p>}
+            {order.address && <p className="mt-2 border-t border-line pt-2 text-ink-muted">{[order.address.line1, order.address.ward, order.address.province || order.address.district].filter(Boolean).join(', ')}</p>}
           </Card>
           {order.note && <Card title="Ghi chú"><p className="text-ink-muted">{order.note}</p></Card>}
           <Card title="Dòng thời gian">

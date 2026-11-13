@@ -729,7 +729,7 @@ public class SalesOrderService {
             }
             String province = Strings.trimToNull(input.province());
             if (province == null) {
-                province = "Quảng Ninh";
+                province = "Hải Phòng";
             }
             AddressResponse created = customerAddressService.create(
                     customer.getId(),

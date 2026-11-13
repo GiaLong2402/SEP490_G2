@@ -123,7 +123,7 @@ export default function RequestsPage() {
         <FilterBar>
           <SearchBox value={list.q} onChange={list.setQ} placeholder="Tìm mã, khách, nội dung..." />
           <FilterSelect label="Trạng thái" value={list.filters.status} onChange={(v) => list.setFilter('status', v)}>{enumOptions(requestStatusMeta)}</FilterSelect>
-          <FilterSelect label="Kênh" value={list.filters.channel} onChange={(v) => list.setFilter('channel', v)}>{enumOptions(saleChannelLabels)}</FilterSelect>
+          <FilterSelect label="Kênh" value={list.filters.channel} onChange={(v) => list.setFilter('channel', v)}>{enumOptions(staffSaleChannelLabels)}</FilterSelect>
         </FilterBar>
         <DataTable columns={columns} rows={data?.items} rowKey={(r) => r.id} loading={isLoading} error={error} onRetry={refetch} emptyText="Không có yêu cầu phù hợp" />
         {data && <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onChange={list.setPage} />}

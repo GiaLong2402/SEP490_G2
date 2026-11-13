@@ -7,13 +7,17 @@ import { Select } from './Form';
 export function useListParams<K extends string = string>(filterKeys: readonly K[] = []) {
   const [params, setParams] = useSearchParams();
   const filters = Object.fromEntries(filterKeys.map((k) => [k, params.get(k) ?? ''])) as Record<K, string>;
-  const set = (key: string, value: string) =>
+  const apply = (entries: Array<[string, string]>) =>
     setParams(
       (prev) => {
         const next = new URLSearchParams(prev);
-        if (value) next.set(key, value);
-        else next.delete(key);
-        if (key !== 'page') next.delete('page');
+        let resetPage = false;
+        for (const [key, value] of entries) {
+          if (value) next.set(key, value);
+          else next.delete(key);
+          if (key !== 'page') resetPage = true;
+        }
+        if (resetPage) next.delete('page');
         return next;
       },
       { replace: true },
@@ -34,9 +38,11 @@ export function useListParams<K extends string = string>(filterKeys: readonly K[
     q: params.get('q') ?? '',
     page: Number(params.get('page') ?? 1),
     filters,
-    setQ: (value: string) => set('q', value),
-    setPage: (page: number) => set('page', page > 1 ? String(page) : ''),
-    setFilter: (key: K, value: string) => set(key, value),
+    setQ: (value: string) => apply([['q', value]]),
+    setPage: (page: number) => apply([['page', page > 1 ? String(page) : '']]),
+    setFilter: (key: K, value: string) => apply([[key, value]]),
+    setFilters: (patch: Partial<Record<K, string>>) =>
+      apply(Object.entries(patch) as Array<[string, string]>),
     clearFilters,
   };
 }

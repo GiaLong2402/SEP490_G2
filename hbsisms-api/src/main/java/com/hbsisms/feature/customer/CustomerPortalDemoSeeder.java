@@ -296,8 +296,8 @@ public class CustomerPortalDemoSeeder implements ApplicationRunner {
                     "Nguyễn Văn An",
                     DEMO_PHONE,
                     "45 đường Cát Bà",
+                    "Đặc khu Cát Hải",
                     null,
-                    "Cát Hải",
                     "Hải Phòng",
                     new BigDecimal("5.00"),
                     true);
@@ -306,8 +306,8 @@ public class CustomerPortalDemoSeeder implements ApplicationRunner {
                     "Nguyễn Văn An",
                     DEMO_PHONE,
                     "12 Lạch Tray",
-                    "Máy Tơ",
-                    "Ngô Quyền",
+                    "Phường Máy Tơ",
+                    null,
                     "Hải Phòng",
                     new BigDecimal("3.50"),
                     false);
@@ -332,8 +332,8 @@ public class CustomerPortalDemoSeeder implements ApplicationRunner {
                     "Nguyễn Văn An",
                     DEMO_PHONE,
                     "12 Lạch Tray",
-                    "Máy Tơ",
-                    "Ngô Quyền",
+                    "Phường Máy Tơ",
+                    null,
                     "Hải Phòng",
                     new BigDecimal("3.50"),
                     false);

@@ -1,7 +1,7 @@
 import { Plus, Trash2 } from 'lucide-react';
 import type { VariantOption } from '@/features/products';
 import { priceBasisMeta, sellUnitLabels, type SellUnit } from '@/shared/domain/enums';
-import { money, num } from '@/shared/lib/format';
+import { formatThousands, money, num, parseThousands } from '@/shared/lib/format';
 import { Button, IconButton, Input, Select, StatusChip, enumOptions } from '@/shared/ui';
 import type { PricedLine, PricingLineInput } from '../types';
 
@@ -93,12 +93,13 @@ export function LineItemsEditor({ lines, onChange, variants, priced, showStock =
                   <td className="px-2">
                     <Input
                       aria-label={`Đơn giá dòng ${index + 1}, để trống để dùng giá hệ thống`}
-                      type="number"
-                      min={0}
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
                       className="text-right"
-                      placeholder={row ? String(row.unitPrice) : ''}
-                      value={line.manualPrice}
-                      onChange={(e) => update(line.key, { manualPrice: e.target.value })}
+                      placeholder={row ? formatThousands(String(row.unitPrice)) : ''}
+                      value={formatThousands(line.manualPrice)}
+                      onChange={(e) => update(line.key, { manualPrice: parseThousands(e.target.value) })}
                     />
                   </td>
                   <td className="px-2">{row ? <StatusChip meta={priceBasisMeta} value={row.priceBasis} /> : '—'}</td>

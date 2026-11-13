@@ -17,19 +17,24 @@ interface Props {
   defaultMethod?: PaymentMethod;
 }
 
-const METHODS: PaymentMethod[] = ['cash', 'payos', 'bank_transfer', 'cod'];
+/** PayOS (cổng QR web) bản chất là CK → gộp vào bank_transfer, không hiện riêng. */
+const METHODS: PaymentMethod[] = ['cash', 'bank_transfer', 'cod'];
+
+function toStaffPaymentMethod(method: PaymentMethod): PaymentMethod {
+  return method === 'payos' ? 'bank_transfer' : METHODS.includes(method) ? method : 'bank_transfer';
+}
 
 export function PaymentFormModal({ open, onClose, customerId, customerName, order, maxAmount, defaultMethod = 'bank_transfer' }: Props) {
   const limit = order?.outstanding ?? maxAmount ?? 0;
   const [amount, setAmount] = useState('');
-  const [method, setMethod] = useState<PaymentMethod>(defaultMethod);
+  const [method, setMethod] = useState<PaymentMethod>(toStaffPaymentMethod(defaultMethod));
   const [reference, setReference] = useState('');
   const [touched, setTouched] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setAmount(String(limit));
-    setMethod(METHODS.includes(defaultMethod) ? defaultMethod : 'bank_transfer');
+    setMethod(toStaffPaymentMethod(defaultMethod));
     setReference('');
     setTouched(false);
   }, [open, limit, defaultMethod]);

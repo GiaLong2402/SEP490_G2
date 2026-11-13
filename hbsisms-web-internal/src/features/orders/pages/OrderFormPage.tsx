@@ -8,7 +8,7 @@ import { LineItemsEditor, isCompleteLine, newLine, toPricingLines, type Editable
 import { useVariantOptions } from '@/features/products';
 import { useAction } from '@/shared/api/useAction';
 import { fulfillmentLabels, paymentMethodLabels, saleChannelLabels, staffSaleChannelLabels, staffSaleChannels, type FulfillmentMethod, type PaymentMethod, type SaleChannel } from '@/shared/domain/enums';
-import { money } from '@/shared/lib/format';
+import { formatThousands, money, parseThousands } from '@/shared/lib/format';
 import { Alert, Button, Card, Chip, Field, Input, PageHeader, Select, Textarea, enumOptions } from '@/shared/ui';
 import { ordersApi } from '../api';
 import { useOrder } from '../hooks';
@@ -23,7 +23,7 @@ const emptyWalkInAddress = (): ShipAddressInput => ({
   line1: '',
   ward: '',
   district: '',
-  province: 'Quảng Ninh',
+  province: '',
   distanceKm: null,
 });
 
@@ -36,7 +36,7 @@ export default function OrderFormPage() {
   const variants = useVariantOptions();
   const [walkIn, setWalkIn] = useState(false);
   const [customerId, setCustomerId] = useState<number | null>(null);
-  const [walkInName, setWalkInName] = useState('Khách vãng lai');
+  const [walkInName, setWalkInName] = useState('');
   const [walkInPhone, setWalkInPhone] = useState('');
   const [walkInAddress, setWalkInAddress] = useState<ShipAddressInput>(emptyWalkInAddress);
   const customer = useCustomer(customerId).data;
@@ -79,7 +79,7 @@ export default function OrderFormPage() {
         line1: o.address.line1,
         ward: o.address.ward ?? '',
         district: o.address.district ?? '',
-        province: o.address.province ?? 'Quảng Ninh',
+        province: o.address.province ?? '',
         distanceKm: o.address.distanceKm,
       });
     }
@@ -135,6 +135,8 @@ export default function OrderFormPage() {
   const linesValid = lines.every(isCompleteLine);
   const needsAddress = fulfillment !== 'pickup';
   const shortage = pricing.data?.lines.some((l) => l.shortfall > 0);
+  const discountAmount = Number(discount) || 0;
+  const shippingAmount = Number(shippingFee) || 0;
   const phoneError = walkIn ? validateRequiredPhone(walkInPhone, 'Số điện thoại') : undefined;
   const customerOk = walkIn
     ? walkInName.trim().length > 0 && !phoneError
@@ -157,8 +159,8 @@ export default function OrderFormPage() {
           phone: normalizeVnPhone(walkInAddress.phone) || normalizeVnPhone(walkInPhone),
           line1: walkInAddress.line1.trim(),
           ward: walkInAddress.ward?.trim() || null,
-          district: walkInAddress.district?.trim() || null,
-          province: walkInAddress.province?.trim() || 'Quảng Ninh',
+          district: null,
+          province: walkInAddress.province?.trim() || 'Hải Phòng',
           distanceKm: walkInAddress.distanceKm ?? null,
         }
       : null,
@@ -212,7 +214,7 @@ export default function OrderFormPage() {
               {walkIn ? (
                 <>
                   <Field label="Tên khách" required error={touched && !walkInName.trim() ? 'Nhập tên khách vãng lai' : undefined} className="md:col-span-2 xl:col-span-1">
-                    <Input value={walkInName} onChange={(e) => setWalkInName(e.target.value)} placeholder="Khách vãng lai" />
+                    <Input value={walkInName} onChange={(e) => setWalkInName(e.target.value)} placeholder="Nhập tên khách" />
                   </Field>
                   <Field label="Số điện thoại" required error={touched ? phoneError : undefined}>
                     <Input value={walkInPhone} onChange={(e) => setWalkInPhone(e.target.value)} placeholder="09xxxxxxxx" inputMode="tel" />
@@ -239,14 +241,19 @@ export default function OrderFormPage() {
                       placeholder="Số nhà, đường…"
                     />
                   </Field>
-                  <Field label="Phường/xã">
-                    <Input value={walkInAddress.ward ?? ''} onChange={(e) => setWalkInAddress((a) => ({ ...a, ward: e.target.value }))} />
+                  <Field label="Xã/phường">
+                    <Input
+                      value={walkInAddress.ward ?? ''}
+                      onChange={(e) => setWalkInAddress((a) => ({ ...a, ward: e.target.value, district: '' }))}
+                      placeholder="Xã / phường / đặc khu"
+                    />
                   </Field>
-                  <Field label="Quận/huyện">
-                    <Input value={walkInAddress.district ?? ''} onChange={(e) => setWalkInAddress((a) => ({ ...a, district: e.target.value }))} />
-                  </Field>
-                  <Field label="Tỉnh/thành">
-                    <Input value={walkInAddress.province ?? ''} onChange={(e) => setWalkInAddress((a) => ({ ...a, province: e.target.value }))} />
+                  <Field label="Tỉnh/thành phố">
+                    <Input
+                      value={walkInAddress.province ?? ''}
+                      onChange={(e) => setWalkInAddress((a) => ({ ...a, province: e.target.value }))}
+                      placeholder="Hải Phòng"
+                    />
                   </Field>
                   <Field label="Người nhận">
                     <Input
@@ -303,7 +310,7 @@ export default function OrderFormPage() {
                       >
                         {!customerId && <option value="">Chọn khách trước</option>}
                         {addresses?.map((a) => (
-                          <option key={a.id} value={a.id}>{[a.line1, a.ward, a.district].filter(Boolean).join(', ')}</option>
+                          <option key={a.id} value={a.id}>{[a.line1, a.ward, a.province || a.district].filter(Boolean).join(', ')}</option>
                         ))}
                       </Select>
                       <Button type="button" icon={<Plus size={14} />} disabled={!customerId} onClick={openAddAddress}>
@@ -344,13 +351,45 @@ export default function OrderFormPage() {
                 </Select>
               </Field>
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Chiết khấu (₫)"><Input type="number" min={0} className="text-right" value={discount} onChange={(e) => setDiscount(e.target.value)} /></Field>
-                <Field label="Phí giao (₫)"><Input type="number" min={0} className="text-right" value={shippingFee} onChange={(e) => setShippingFee(e.target.value)} /></Field>
+                <Field label="Chiết khấu (₫)">
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    className="text-right"
+                    value={formatThousands(discount)}
+                    onChange={(e) => setDiscount(parseThousands(e.target.value))}
+                  />
+                </Field>
+                <Field label="Phí giao (₫)">
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    className="text-right"
+                    value={formatThousands(shippingFee)}
+                    onChange={(e) => setShippingFee(parseThousands(e.target.value))}
+                  />
+                </Field>
               </div>
               <Field label="Ghi chú"><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
               <dl className="space-y-1.5 border-t border-line pt-3">
-                <div className="flex justify-between"><dt className="text-ink-muted">Tạm tính</dt><dd className="num">{money(pricing.data?.subtotal ?? 0)}</dd></div>
-                <div className="flex justify-between text-h2"><dt>Tổng cộng</dt><dd className="tabular-nums">{money(pricing.data?.total ?? 0)}</dd></div>
+                <div className="flex justify-between">
+                  <dt className="text-ink-muted">Tạm tính</dt>
+                  <dd className="num">{money(pricing.data?.subtotal ?? 0)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink-muted">Chiết khấu</dt>
+                  <dd className="num">{money(discountAmount > 0 ? -discountAmount : 0)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink-muted">Phí giao</dt>
+                  <dd className="num">{money(shippingAmount)}</dd>
+                </div>
+                <div className="flex justify-between text-h2">
+                  <dt>Tổng cộng</dt>
+                  <dd className="tabular-nums">{money(pricing.data?.total ?? 0)}</dd>
+                </div>
               </dl>
               {shortage && <Alert tone="warning" title="Không đủ hàng khả dụng">Đơn Sales thường phải giữ đủ hàng; hệ thống sẽ từ chối nếu tồn không đủ khi xác nhận.</Alert>}
               {pricing.error && <Alert tone="danger">{pricing.error.message}</Alert>}
