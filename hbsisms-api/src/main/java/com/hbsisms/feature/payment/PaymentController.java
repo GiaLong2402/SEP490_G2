@@ -44,10 +44,11 @@ public class PaymentController {
             @RequestParam(required = false) String channel,
             @RequestParam(required = false) Long orderId,
             @RequestParam(required = false) String reconcileFlag,
+            @RequestParam(required = false) String sort,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "" + PageRequests.DEFAULT_PAGE_SIZE) int pageSize) {
         return paymentService.search(
-                q, method, direction, status, channel, orderId, reconcileFlag, page, pageSize);
+                q, method, direction, status, channel, orderId, reconcileFlag, sort, page, pageSize);
     }
 
     @PostMapping

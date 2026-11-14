@@ -32,6 +32,7 @@ import com.hbsisms.feature.payment.PaymentMethod;
 import com.hbsisms.feature.payment.PaymentRepository;
 import com.hbsisms.feature.payment.PaymentStatus;
 import com.hbsisms.feature.payment.PayTxnStatus;
+import com.hbsisms.feature.payment.payos.PayosLinkCanceller;
 import com.hbsisms.feature.catalog.ProductVariant;
 import com.hbsisms.feature.catalog.ProductVariantRepository;
 import com.hbsisms.feature.sales.dto.OrderCustomerResponse;
@@ -104,6 +105,7 @@ public class SalesOrderService {
     private final PricingService pricingService;
     private final AuditLogService auditLogService;
     private final OrderAllocationService orderAllocationService;
+    private final PayosLinkCanceller payosLinkCanceller;
     private final Clock clock;
 
     public SalesOrderService(
@@ -122,6 +124,7 @@ public class SalesOrderService {
             PricingService pricingService,
             AuditLogService auditLogService,
             OrderAllocationService orderAllocationService,
+            PayosLinkCanceller payosLinkCanceller,
             Clock clock) {
         this.salesOrderRepository = salesOrderRepository;
         this.orderEventRepository = orderEventRepository;
@@ -138,6 +141,7 @@ public class SalesOrderService {
         this.pricingService = pricingService;
         this.auditLogService = auditLogService;
         this.orderAllocationService = orderAllocationService;
+        this.payosLinkCanceller = payosLinkCanceller;
         this.clock = clock;
     }
 
@@ -593,6 +597,9 @@ public class SalesOrderService {
                         approvalTaskRepository.save(task);
                     });
         }
+
+        // Khóa QR PayOS còn chờ — khách không trả tiền được cho đơn đã hủy
+        payosLinkCanceller.cancelPendingLinks(order, "Cửa hàng hủy đơn");
 
         for (Delivery delivery : deliveryRepository.findByOrder_IdOrderByIdAsc(order.getId())) {
             if (delivery.getState() != DeliveryState.DELIVERED) {

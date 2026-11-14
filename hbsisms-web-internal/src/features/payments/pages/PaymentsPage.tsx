@@ -1,4 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowDown, ArrowUp, ChevronDown } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -37,10 +38,13 @@ type RefundTarget = {
   customerName: string | null;
   maxAmount: number;
   sourcePaymentId: number | null;
+  source: PaymentListItem | null;
+  refundedAmount: number;
 };
 
 export default function PaymentsPage() {
-  const list = useListParams(['method', 'direction', 'status', 'channel', 'reconcileFlag'] as const);
+  const list = useListParams(['method', 'direction', 'status', 'channel', 'reconcileFlag', 'sort'] as const);
+  const oldestFirst = list.filters.sort === 'asc';
   const query = {
     q: list.q,
     page: list.page,
@@ -49,9 +53,18 @@ export default function PaymentsPage() {
     status: list.filters.status,
     channel: list.filters.channel,
     reconcileFlag: list.filters.reconcileFlag,
+    sort: list.filters.sort,
   };
   const queryClient = useQueryClient();
   const [refundTarget, setRefundTarget] = useState<RefundTarget | null>(null);
+  const [openNotes, setOpenNotes] = useState<Set<number>>(() => new Set());
+  const toggleNote = (id: number) =>
+    setOpenNotes((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['payments', query],
@@ -73,6 +86,14 @@ export default function PaymentsPage() {
     }
     return map;
   }, [data?.items]);
+  const refundedByOrder = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const p of data?.items ?? []) {
+      if (!p.orderId || p.status !== 'success' || p.direction !== 'refund') continue;
+      map.set(p.orderId, (map.get(p.orderId) ?? 0) + p.amount);
+    }
+    return map;
+  }, [data?.items]);
 
   const openRefund = (p: PaymentListItem) => {
     if (!p.orderId) return;
@@ -84,11 +105,27 @@ export default function PaymentsPage() {
       customerName: p.customerName,
       maxAmount: maxAmount > 0 ? maxAmount : p.amount,
       sourcePaymentId: p.direction === 'in' ? p.id : null,
+      source: p.direction === 'in' ? p : null,
+      refundedAmount: refundedByOrder.get(p.orderId) ?? 0,
     });
   };
 
   const columns: Column<PaymentListItem>[] = [
-    { key: 'code', header: 'Mã', cell: (p) => <span className="num">{p.code}</span> },
+    {
+      key: 'code',
+      header: (
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-ink"
+          onClick={() => list.setFilter('sort', oldestFirst ? '' : 'asc')}
+          title={oldestFirst ? 'Đang xếp cũ nhất trước — bấm để xếp mới nhất trước' : 'Đang xếp mới nhất trước — bấm để xếp cũ nhất trước'}
+          aria-label={oldestFirst ? 'Mã, cũ nhất trước. Bấm để xếp mới nhất trước' : 'Mã, mới nhất trước. Bấm để xếp cũ nhất trước'}
+        >
+          Mã {oldestFirst ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
+        </button>
+      ),
+      cell: (p) => <span className="num">{p.code}</span>,
+    },
     { key: 'at', header: 'Thời gian', cell: (p) => <span className="whitespace-nowrap">{dateTime(p.paidAt)}</span> },
     { key: 'customer', header: 'Khách hàng', cell: (p) => <span className="font-medium">{p.customerName ?? '—'}</span> },
     {
@@ -144,7 +181,34 @@ export default function PaymentsPage() {
             ))}
           </Select>
           {(p.reconcileFlag ?? 'none') !== 'none' ? (
-            <StatusChip meta={paymentReconcileFlagMeta} value={p.reconcileFlag ?? 'none'} />
+            p.note ? (
+              // Bấm nhãn để xem / ẩn ghi chú (số liệu lệch tiền do PayOS báo)
+              <button
+                type="button"
+                onClick={() => toggleNote(p.id)}
+                aria-expanded={openNotes.has(p.id)}
+                title={openNotes.has(p.id) ? 'Ẩn chi tiết' : 'Xem chi tiết'}
+                className="self-start rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+              >
+                <Chip tone={paymentReconcileFlagMeta[p.reconcileFlag ?? 'none'].tone}>
+                  {paymentReconcileFlagMeta[p.reconcileFlag ?? 'none'].label}
+                  <ChevronDown
+                    size={12}
+                    className={`ml-0.5 transition-transform ${openNotes.has(p.id) ? 'rotate-180' : ''}`}
+                    aria-hidden
+                  />
+                </Chip>
+              </button>
+            ) : (
+              <span className="self-start">
+                <StatusChip meta={paymentReconcileFlagMeta} value={p.reconcileFlag ?? 'none'} />
+              </span>
+            )
+          ) : null}
+          {(p.reconcileFlag ?? 'none') !== 'none' && p.note && openNotes.has(p.id) ? (
+            <div className="max-w-[15rem] whitespace-normal rounded-md border border-line bg-thead px-2 py-1.5 text-small leading-snug text-ink">
+              {p.note}
+            </div>
           ) : null}
         </div>
       ),
@@ -214,6 +278,8 @@ export default function PaymentsPage() {
           customerName={refundTarget.customerName}
           maxAmount={refundTarget.maxAmount}
           sourcePaymentId={refundTarget.sourcePaymentId}
+          source={refundTarget.source}
+          refundedAmount={refundTarget.refundedAmount}
         />
       ) : null}
     </>

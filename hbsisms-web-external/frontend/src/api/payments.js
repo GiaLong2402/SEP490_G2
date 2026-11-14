@@ -5,7 +5,7 @@ import { fromOrderDto } from './mappers/order'
 /**
  * Thanh toán PayOS phía khách — task "Trạng thái khi khách quay về" + tạo lại link (Long).
  * Hợp đồng: API_CONTRACT.md § PayOS.
- * status: PENDING | PAID | CANCELLED | FAILED | EXPIRED
+ * status: PENDING | PAID | CANCELLED | FAILED | EXPIRED | REFUND (xem API_CONTRACT.md)
  */
 export const paymentsApi = {
   /** Trang returnUrl gọi API này — KHÔNG tin status trên URL PayOS trả về */

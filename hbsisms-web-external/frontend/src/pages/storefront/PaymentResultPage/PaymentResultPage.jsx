@@ -1,22 +1,27 @@
 import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import PageBanner from '@/components/storefront/PageBanner/PageBanner'
 import PaymentSuccessCard from '@/components/storefront/PaymentSuccessCard/PaymentSuccessCard'
 import { ClockIcon, CloseIcon, InfoIcon, RefreshIcon } from '@/components/icons/Icons'
 import { paymentsApi } from '@/api/payments'
-import { ROUTES, orderDetailPath } from '@/constants/routes'
+import { paymentPhase } from '@/constants/orderStatus'
+import { ROUTES, orderDetailPath, resumePaymentPath } from '@/constants/routes'
 import { formatPrice } from '@/utils/formatPrice'
 import './PaymentResultPage.css'
 
-// Đang chờ webhook: hỏi lại mỗi 2 giây, tối đa 5 lần rồi để khách tự bấm "Kiểm tra lại"
+// Đang chờ webhook: hỏi lại mỗi 2 giây, tối đa 5 lần rồi để khách tự bấm "Kiểm tra lại".
+// Riêng lúc QR đã đóng và đang trong 2 phút kiểm tra thì hỏi tiếp cho tới khi có kết quả.
 const RETRY_MS = 2000
 const MAX_AUTO_RETRY = 5
+
+const inCheckWindow = (order) => order?.uiStatus === 'awaiting_payment' && paymentPhase(order.holdExpiresAt) === 'checking'
 
 /**
  * Trang returnUrl / cancelUrl của PayOS: /thanh-toan/ket-qua?orderCode=...
  * KHÔNG tin status trên URL — luôn hỏi backend (GET /payments/payos/return), task của Long.
  */
 export default function PaymentResultPage() {
+  const navigate = useNavigate()
   const [params] = useSearchParams()
   const orderCode = params.get('orderCode')
 
@@ -40,7 +45,7 @@ export default function PaymentResultPage() {
             setResult(res)
             setError(null)
             setChecking(false)
-            if (res.status === 'PENDING' && tries < MAX_AUTO_RETRY) setTries((t) => t + 1)
+            if (res.status === 'PENDING' && (tries < MAX_AUTO_RETRY || inCheckWindow(res.order))) setTries((t) => t + 1)
           })
           .catch((err) => {
             if (!alive || err.name === 'AbortError') return
@@ -60,8 +65,15 @@ export default function PaymentResultPage() {
   async function payAgain() {
     setRelinking(true)
     try {
+      // orderCode trên URL return là payosOrderCode — lấy mã đơn để vào màn QR custom
       const link = await paymentsApi.recreateLink(orderCode)
-      window.location.href = link.checkoutUrl
+      const salesCode = link.order?.code
+      if (salesCode) {
+        navigate(resumePaymentPath(salesCode))
+        return
+      }
+      // Fallback: vẫn ở lại flow nếu không có mã đơn
+      navigate(`${ROUTES.ORDERS}`)
     } catch (err) {
       setError(err)
       setRelinking(false)
@@ -90,6 +102,26 @@ export default function PaymentResultPage() {
           primary={{ onClick: () => setTries((t) => t + 1), label: 'Kiểm tra lại', icon: <RefreshIcon size={18} /> }}
           secondary={{ to: ROUTES.ORDERS, label: 'Xem đơn hàng' }}
         />
+      </ResultCard>
+    )
+  } else if (status === 'PENDING' && inCheckWindow(order)) {
+    // QR đã đóng, đang chờ xác nhận tiền về trong thời gian ân hạn
+    content = (
+      <ResultCard
+        tone="accent"
+        icon={<span className="pay-result__spinner" aria-hidden="true" />}
+        title="Mã QR đã đóng, đang kiểm tra giao dịch"
+      >
+        <ul className="pay-result__cases">
+          <li>
+            <b>Nếu bạn ĐÃ chuyển khoản:</b> vui lòng chờ, hệ thống đang kiểm tra (khoảng 2 phút).{' '}
+            <b>Đừng chuyển lại lần nữa.</b>
+          </li>
+          <li>
+            <b>Nếu bạn CHƯA chuyển khoản:</b> không cần làm gì, đơn sẽ tự hủy. Bạn có thể đặt lại đơn mới.
+          </li>
+        </ul>
+        <Actions primary={null} secondary={order ? { to: orderDetailPath(order.code), label: 'Xem đơn hàng' } : null} />
       </ResultCard>
     )
   } else if (!result || status === 'PENDING') {
@@ -129,14 +161,51 @@ export default function PaymentResultPage() {
           Đơn <strong>{order?.displayCode}</strong> đã quá thời gian giữ hàng nên được hủy, hàng đã trả lại kho. Bạn có
           thể đặt lại đơn mới.
         </p>
+        <p className="pay-result__hint">
+          Nếu bạn đã chuyển khoản sau khi mã QR đóng, cửa hàng sẽ liên hệ để hoàn tiền cho bạn.
+        </p>
         <Actions
           primary={{ to: ROUTES.PRODUCTS, label: 'Tiếp tục mua sắm' }}
           secondary={order ? { to: orderDetailPath(order.code), label: 'Xem đơn hàng' } : null}
         />
       </ResultCard>
     )
+  } else if (status === 'REFUND') {
+    // Tiền về muộn nhưng đơn đã hủy (hết hàng / đơn bị hủy trước đó) → cửa hàng hoàn tiền
+    content = (
+      <ResultCard tone="warning" icon={<InfoIcon size={34} />} title="Cửa hàng đã nhận tiền, sẽ hoàn lại cho bạn">
+        <p>
+          Hòa Bình đã nhận được tiền cho đơn <strong>{order?.displayCode}</strong> nhưng đơn không thể giao (đơn đã hủy
+          hoặc đã hết hàng). Cửa hàng sẽ liên hệ để hoàn tiền cho bạn. Bạn không cần làm gì thêm.
+        </p>
+        {result.amount != null && (
+          <p className="pay-result__amount">
+            <span>Số tiền sẽ hoàn</span>
+            <strong>{formatPrice(result.amount)}</strong>
+          </p>
+        )}
+        <Actions
+          primary={{ to: ROUTES.CONTACT, label: 'Liên hệ cửa hàng' }}
+          secondary={order ? { to: orderDetailPath(order.code), label: 'Xem đơn hàng' } : null}
+        />
+      </ResultCard>
+    )
+  } else if (status === 'CANCELLED' && order?.state === 'CANCELLED') {
+    // Đơn đã bị hủy (khách tự hủy hoặc cửa hàng hủy) — không thanh toán lại được
+    content = (
+      <ResultCard tone="danger" icon={<CloseIcon size={34} />} title="Đơn hàng đã bị hủy">
+        <p>
+          Đơn <strong>{order.displayCode}</strong> đã bị hủy nên mã QR không còn dùng được. Nếu bạn đã chuyển khoản, cửa
+          hàng sẽ liên hệ để hoàn tiền cho bạn.
+        </p>
+        <Actions
+          primary={{ to: ROUTES.PRODUCTS, label: 'Tiếp tục mua sắm' }}
+          secondary={{ to: orderDetailPath(order.code), label: 'Xem đơn hàng' }}
+        />
+      </ResultCard>
+    )
   } else {
-    // CANCELLED | FAILED
+    // CANCELLED (link PayOS bị hủy, đơn vẫn còn) | FAILED
     const cancelled = status === 'CANCELLED'
     content = (
       <ResultCard
@@ -158,7 +227,11 @@ export default function PaymentResultPage() {
         )}
         {error && <p className="modal-error">{error.message}</p>}
         <Actions
-          primary={{ onClick: payAgain, label: relinking ? 'Đang mở PayOS…' : 'Thanh toán lại', disabled: relinking }}
+          primary={{
+            onClick: payAgain,
+            label: relinking ? 'Đang mở mã QR…' : 'Thanh toán lại',
+            disabled: relinking,
+          }}
           secondary={order ? { to: orderDetailPath(order.code), label: 'Xem đơn hàng' } : null}
         />
       </ResultCard>

@@ -247,6 +247,21 @@ class PaymentServiceTest {
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
         verify(paymentRepository).findAll(any(Specification.class), pageableCaptor.capture());
         assertThat(pageableCaptor.getValue().getPageNumber()).isZero();
+        // Mặc định: giao dịch tạo gần nhất lên đầu
+        assertThat(pageableCaptor.getValue().getSort().getOrderFor("id").isDescending()).isTrue();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void search_sortAsc_oldestFirst() {
+        when(paymentRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.search(null, null, null, null, null, null, null, "asc", 1, 20);
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(paymentRepository).findAll(any(Specification.class), pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getSort().getOrderFor("id").isAscending()).isTrue();
     }
 
     @Test
@@ -317,6 +332,58 @@ class PaymentServiceTest {
     }
 
     @Test
+    void recordRefund_partialOverpaid_keepsPaidStatus() {
+        // Đơn 2.000đ, khách chuyển 10.000đ (giao dịch đã ghi đúng 10.000đ) → hoàn 8.000đ phần thừa → đơn vẫn PAID
+        SalesOrder order = order(40L, OrderState.PREPARING, PaymentStatus.PAID, "2000.00");
+        order.setChannel(SaleChannel.WEB);
+        Payment source = paymentRow(41L, order, PaymentReconcileFlag.OVER);
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(salesOrderRepository.findWithDetailsById(40L)).thenReturn(Optional.of(order));
+        when(paymentRepository.sumSuccessfulInByOrderId(40L)).thenReturn(new BigDecimal("10000.00"));
+        when(paymentRepository.sumSuccessfulRefundByOrderId(40L))
+                .thenReturn(ZERO)
+                .thenReturn(new BigDecimal("8000.00"));
+        when(paymentRepository.findCodesByPrefix("TT-")).thenReturn(List.of());
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
+            Payment p = inv.getArgument(0);
+            if (p.getId() == null) {
+                setId(p, ids.incrementAndGet());
+            }
+            return p;
+        });
+        when(paymentRepository.findWithDetailsById(any())).thenAnswer(inv -> {
+            Long id = inv.getArgument(0);
+            if (id.equals(41L)) {
+                return Optional.of(source);
+            }
+            Payment refund = new Payment();
+            setId(refund, id);
+            refund.setCode("TT-" + id);
+            refund.setOrder(order);
+            refund.setCustomer(customer);
+            refund.setMethod(PaymentMethod.BANK_TRANSFER);
+            refund.setDirection(PayDirection.REFUND);
+            refund.setAmount(new BigDecimal("8000.00"));
+            refund.setStatus(PayTxnStatus.SUCCESS);
+            refund.setReconcileFlag(PaymentReconcileFlag.NONE);
+            refund.setPaidAt(Instant.now(clock));
+            refund.setReceivedBy(actor);
+            return Optional.of(refund);
+        });
+
+        PaymentListItemResponse response = service.recordRefund(
+                new PaymentRefundRequest(
+                        40L, 41L, PaymentMethod.BANK_TRANSFER, new BigDecimal("8000.00"), "FT26318W9T9Z", null),
+                9L);
+
+        assertThat(response.direction()).isEqualTo(PayDirection.REFUND);
+        assertThat(response.amount()).isEqualByComparingTo("8000");
+        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.PAID);
+        assertThat(order.getState()).isEqualTo(OrderState.PREPARING); // hoàn tiền không đổi trạng thái đơn
+    }
+
+    @Test
     void recordRefund_amountAboveNet_returns409() {
         SalesOrder order = order(32L, OrderState.CONFIRMED, PaymentStatus.PAID, "100000.00");
         when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
@@ -326,7 +393,7 @@ class PaymentServiceTest {
 
         assertThatThrownBy(() -> service.recordRefund(
                         new PaymentRefundRequest(
-                                32L, null, PaymentMethod.CASH, new BigDecimal("70000.00"), null, null),
+                                32L, null, PaymentMethod.CASH, new BigDecimal("70000.00"), null, "Trả tại quầy"),
                         9L))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> {
@@ -383,6 +450,27 @@ class PaymentServiceTest {
                         9L))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void recordRefund_bankTransferWithoutReference_returns400() {
+        // Bằng chứng: hoàn chuyển khoản phải có mã giao dịch
+        assertThatThrownBy(() -> service.recordRefund(
+                        new PaymentRefundRequest(
+                                35L, null, PaymentMethod.BANK_TRANSFER, new BigDecimal("10000.00"), "  ", "ghi chú"),
+                        9L))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("mã giao dịch");
+    }
+
+    @Test
+    void recordRefund_cashWithoutNote_returns400() {
+        // Bằng chứng: hoàn tiền mặt phải ghi rõ đã trả cho ai, ở đâu
+        assertThatThrownBy(() -> service.recordRefund(
+                        new PaymentRefundRequest(35L, null, PaymentMethod.CASH, new BigDecimal("10000.00"), null, null),
+                        9L))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("tiền mặt");
     }
 
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);

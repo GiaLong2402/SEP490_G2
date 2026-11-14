@@ -93,7 +93,11 @@ function addressRoutes(method, parts, body) {
 function orderRoutes(method, parts) {
   if (parts.length === 2 && method === 'GET') return page(scenario() === 'empty' ? [] : clone(orders))
   const o = findOrder(decodeURIComponent(parts[2]))
-  if (parts.length === 3 && method === 'GET') return clone(o)
+  if (parts.length === 3 && method === 'GET') {
+    // ?mock=overpaid: đơn đã trả nhưng khách chuyển thừa (paidAmount > total)
+    if (scenario() === 'overpaid' && o.paymentStatus === 'PAID') return { ...clone(o), paidAmount: o.total + 8000 }
+    return clone(o)
+  }
   if (parts[3] === 'cancel' && method === 'POST') {
     if (!o.canCancel) throw new ApiError(409, 'Đơn này không thể hủy nữa.')
     o.state = 'CANCELLED'
@@ -152,7 +156,9 @@ function checkout(body, headers) {
   const n = 132 + orders.length
   const code = `HB${String(n).padStart(5, '0')}`
   const payosOrderCode = n * 1000
-  const expiresAt = new Date(Date.now() + 15 * 60_000).toISOString()
+  // ?mock=hold-short | hold-short-paid: giữ hàng 20 giây để thử QR đóng / đang kiểm tra / hết hạn
+  const holdMs = scenario().startsWith('hold-short') ? 20_000 : 15 * 60_000
+  const expiresAt = new Date(Date.now() + holdMs).toISOString()
   const subtotal = body.lines.reduce((s, l) => s + (l.unitPrice || 0) * l.qtyKhay, 0)
   const shippingFee = body.fulfillmentMethod === 'PICKUP' ? 0 : 20000
   const created = {
@@ -220,6 +226,18 @@ function paymentReturn(query) {
   if (mode === 'pay-cancelled') status = 'CANCELLED'
   if (mode === 'pay-failed') status = 'FAILED'
   if (mode === 'pay-expired') status = 'EXPIRED'
+  if (mode === 'pay-refund') status = 'REFUND'
+  if (mode === 'pay-order-cancelled') {
+    // Cửa hàng đã hủy đơn trong lúc khách đang ở màn QR
+    return { payosOrderCode: Number(query.orderCode), status: 'CANCELLED', amount: o.total, paidAt: null, order: { ...clone(o), state: 'CANCELLED', canCancel: false } }
+  }
+  if (mode.startsWith('hold-short')) {
+    // Giống backend: chưa có tiền thì PENDING tới hết 2 phút ân hạn rồi EXPIRED.
+    // hold-short-paid: tiền về trong lúc đang kiểm tra (khách quét QR sát giờ)
+    const pastHold = Date.now() >= new Date(o.holdExpiresAt).getTime()
+    const pastGrace = Date.now() >= new Date(o.holdExpiresAt).getTime() + 120_000
+    status = mode === 'hold-short-paid' && pastHold ? 'PAID' : pastGrace ? 'EXPIRED' : 'PENDING'
+  }
   if (o.paymentStatus === 'PAID') status = 'PAID'
 
   if (status === 'PAID' && o.paymentStatus !== 'PAID') {
@@ -243,7 +261,8 @@ function paymentReturn(query) {
 function recreateLink(orderCode) {
   const o = findByPayos(orderCode)
   if (!o) notFound('giao dịch')
-  const expiresAt = new Date(Date.now() + 15 * 60_000).toISOString()
+  const holdMs = scenario().startsWith('hold-short') ? 20_000 : 15 * 60_000
+  const expiresAt = new Date(Date.now() + holdMs).toISOString()
   o.holdExpiresAt = expiresAt
   returnPolls.delete(o.code)
   return {

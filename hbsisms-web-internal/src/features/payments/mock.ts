@@ -26,7 +26,7 @@ mock('GET', '/payments', ({ query }) => {
     .filter((p) => !query.channel || p.channel === query.channel)
     .filter((p) => !query.orderId || String(p.orderId) === String(query.orderId))
     .filter((p) => !query.reconcileFlag || p.reconcileFlag === query.reconcileFlag)
-    .sort((a, b) => b.paidAt.localeCompare(a.paidAt));
+    .sort((a, b) => (query.sort === 'asc' ? a.id - b.id : b.id - a.id));
   return paginate(rows, query);
 });
 

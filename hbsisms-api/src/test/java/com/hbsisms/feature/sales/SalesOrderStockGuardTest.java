@@ -21,6 +21,7 @@ import com.hbsisms.feature.customer.pricing.PricingService;
 import com.hbsisms.feature.customer.pricing.dto.PricedLineResponse;
 import com.hbsisms.feature.customer.pricing.dto.PricingLineInput;
 import com.hbsisms.feature.customer.pricing.dto.PricingResultResponse;
+import com.hbsisms.feature.payment.payos.PayosLinkCanceller;
 import com.hbsisms.feature.payment.CustomerDebtLedgerRepository;
 import com.hbsisms.feature.payment.PaymentMethod;
 import com.hbsisms.feature.payment.PaymentRepository;
@@ -72,6 +73,8 @@ class SalesOrderStockGuardTest {
     @Mock
     private OrderAllocationService orderAllocationService;
     @Mock
+    private PayosLinkCanceller payosLinkCanceller;
+    @Mock
     private AuditLogService auditLogService;
 
     private SalesOrderService service;
@@ -94,6 +97,7 @@ class SalesOrderStockGuardTest {
                 pricingService,
                 auditLogService,
                 orderAllocationService,
+                payosLinkCanceller,
                 Clock.fixed(Instant.parse("2026-11-11T00:00:00Z"), ZoneOffset.UTC));
     }
 

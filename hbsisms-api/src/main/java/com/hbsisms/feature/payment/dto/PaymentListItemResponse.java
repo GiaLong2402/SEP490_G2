@@ -10,7 +10,12 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Map;
 
-/** Matches FE {@code PaymentListItem}. */
+/**
+ * Matches FE {@code PaymentListItem}.
+ *
+ * <p>{@code excessAmount}: tiền khách chuyển thừa (giao dịch gắn "thừa"), để form hoàn tiền điền sẵn.
+ * {@code payerName/payerAccount/payerBank}: tài khoản người chuyển do PayOS gửi trong webhook (có thể trống).
+ */
 public record PaymentListItemResponse(
         Long id,
         String code,
@@ -32,7 +37,11 @@ public record PaymentListItemResponse(
         String receiverName,
         SaleChannel channel,
         PaymentReconcileFlag reconcileFlag,
-        boolean needsRefund) {
+        boolean needsRefund,
+        BigDecimal excessAmount,
+        String payerName,
+        String payerAccount,
+        String payerBank) {
 
     public static PaymentListItemResponse from(Payment payment) {
         var order = payment.getOrder();
@@ -61,7 +70,41 @@ public record PaymentListItemResponse(
                 receiver == null ? null : receiver.getFullName(),
                 order == null ? null : order.getChannel(),
                 flag,
-                needsRefund(payment.getRawPayload()));
+                needsRefund(payment.getRawPayload()),
+                flag == PaymentReconcileFlag.OVER ? excess(payment.getRawPayload()) : null,
+                webhookText(payment.getRawPayload(), "counterAccountName"),
+                webhookText(payment.getRawPayload(), "counterAccountNumber"),
+                webhookText(payment.getRawPayload(), "counterAccountBankName"));
+    }
+
+    private static BigDecimal excess(Map<String, Object> rawPayload) {
+        if (rawPayload == null || !(rawPayload.get("amountMismatch") instanceof Map<?, ?> m)) {
+            return null;
+        }
+        Object value = m.get("excess");
+        if (value == null) {
+            return null;
+        }
+        try {
+            return new BigDecimal(String.valueOf(value));
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    /** Đọc rawPayload.webhook.data.{field}; trống → null. */
+    private static String webhookText(Map<String, Object> rawPayload, String field) {
+        if (rawPayload == null
+                || !(rawPayload.get("webhook") instanceof Map<?, ?> webhook)
+                || !(webhook.get("data") instanceof Map<?, ?> data)) {
+            return null;
+        }
+        Object value = data.get(field);
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value).trim();
+        return text.isEmpty() || "null".equals(text) ? null : text;
     }
 
     private static boolean needsRefund(Map<String, Object> rawPayload) {

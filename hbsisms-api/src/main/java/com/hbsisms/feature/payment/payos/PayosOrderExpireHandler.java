@@ -3,6 +3,7 @@ package com.hbsisms.feature.payment.payos;
 import com.hbsisms.feature.payment.PayTxnStatus;
 import com.hbsisms.feature.payment.Payment;
 import com.hbsisms.feature.payment.PaymentMethod;
+import com.hbsisms.feature.payment.PaymentReconcileFlag;
 import com.hbsisms.feature.payment.PaymentRepository;
 import com.hbsisms.feature.payment.PaymentStatus;
 import com.hbsisms.feature.sales.OrderAllocationService;
@@ -39,6 +40,7 @@ public class PayosOrderExpireHandler {
     private final OrderEventRepository orderEventRepository;
     private final OrderAllocationService orderAllocationService;
     private final AppConfigService appConfigService;
+    private final PayosAmountMismatchRecorder mismatchRecorder;
 
     public PayosOrderExpireHandler(
             PayosProperties properties,
@@ -48,7 +50,8 @@ public class PayosOrderExpireHandler {
             SalesOrderRepository salesOrderRepository,
             OrderEventRepository orderEventRepository,
             OrderAllocationService orderAllocationService,
-            AppConfigService appConfigService) {
+            AppConfigService appConfigService,
+            PayosAmountMismatchRecorder mismatchRecorder) {
         this.properties = properties;
         this.payosClient = payosClient;
         this.paymentCompleter = paymentCompleter;
@@ -57,6 +60,7 @@ public class PayosOrderExpireHandler {
         this.orderEventRepository = orderEventRepository;
         this.orderAllocationService = orderAllocationService;
         this.appConfigService = appConfigService;
+        this.mismatchRecorder = mismatchRecorder;
     }
 
     /**
@@ -95,7 +99,15 @@ public class PayosOrderExpireHandler {
             }
             PayosPaymentInfoResult info = remote.get();
             String remoteStatus = info.status() == null ? "" : info.status().toUpperCase(Locale.ROOT);
-            if ("PAID".equals(remoteStatus) && amountMatches(primary.getAmount(), info.amount())) {
+            BigDecimal expected = primary.getAmount() == null ? BigDecimal.ZERO : primary.getAmount();
+            BigDecimal received = BigDecimal.valueOf(info.received());
+            if ("PAID".equals(remoteStatus) && received.compareTo(expected) >= 0) {
+                // Ensure completer / recorder update this order instance
+                primary.setOrder(order);
+                if (received.compareTo(expected) > 0) {
+                    // Chuyển thừa: vẫn tính đã thanh toán, ghi số tiền thực nhận + gắn "thừa"
+                    mismatchRecorder.recordOverpaid(primary, expected, received, "hold-expire", null);
+                }
                 Map<String, Object> raw = primary.getRawPayload() == null
                         ? new HashMap<>()
                         : new HashMap<>(primary.getRawPayload());
@@ -105,13 +117,18 @@ public class PayosOrderExpireHandler {
                     raw.put("paymentLinkId", info.paymentLinkId());
                 }
                 raw.put("stub", false);
-                // Ensure completer updates this order instance
-                primary.setOrder(order);
                 paymentCompleter.markPaid(primary, null, raw);
                 return true;
             }
-            String reason = "Hết hạn thanh toán (" + appConfigService.paymentHoldMinutes() + " phút)";
-            payosClient.cancelPaymentRequest(PayosCancelIds.from(primary, info), reason);
+            if ("PAID".equals(remoteStatus)) {
+                // PayOS báo đã trả nhưng thiếu tiền (webhook có thể đã lỡ) → đánh dấu "thiếu" để Chủ xử lý
+                mismatchRecorder.record(primary, received, "hold-expire", null);
+            }
+            // NOT_FOUND: link đã mất trên PayOS — hủy local, không gọi cancel
+            if (!"NOT_FOUND".equals(remoteStatus)) {
+                String reason = "Hết hạn thanh toán (" + appConfigService.paymentHoldMinutes() + " phút)";
+                payosClient.cancelPaymentRequest(PayosCancelIds.from(primary, info), reason);
+            }
         }
 
         String note = "Hết hạn thanh toán (" + appConfigService.paymentHoldMinutes() + " phút)";
@@ -125,7 +142,9 @@ public class PayosOrderExpireHandler {
         for (Payment payment : pendingPayos) {
             payment.setStatus(PayTxnStatus.CANCELLED);
             payment.setCheckoutUrl(null);
-            payment.setNote(note);
+            if (payment.getReconcileFlag() == null || payment.getReconcileFlag() == PaymentReconcileFlag.NONE) {
+                payment.setNote(note); // giữ ghi chú "lệch số tiền" nếu có
+            }
             Map<String, Object> raw = payment.getRawPayload() == null
                     ? new HashMap<>()
                     : new HashMap<>(payment.getRawPayload());
@@ -141,16 +160,5 @@ public class PayosOrderExpireHandler {
         event.setDescription(note + " — hủy đơn và giải phóng hold");
         orderEventRepository.save(event);
         return true;
-    }
-
-    private static boolean amountMatches(BigDecimal paymentAmount, int remoteAmount) {
-        if (paymentAmount == null) {
-            return false;
-        }
-        try {
-            return paymentAmount.intValueExact() == remoteAmount;
-        } catch (ArithmeticException ex) {
-            return paymentAmount.compareTo(BigDecimal.valueOf(remoteAmount)) == 0;
-        }
     }
 }

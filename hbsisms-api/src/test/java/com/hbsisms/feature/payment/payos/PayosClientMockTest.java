@@ -84,6 +84,44 @@ class PayosClientMockTest {
         assertThat(result).isPresent();
         assertThat(result.get().status()).isEqualTo("PAID");
         assertThat(result.get().amount()).isEqualTo(2000);
+        assertThat(result.get().amountPaid()).isNull();
+        assertThat(result.get().received()).isEqualTo(2000);
+        server.verify();
+    }
+
+    @Test
+    void getPaymentRequest_readsAmountPaid() {
+        // Đơn 2.000đ, khách sửa số tiền chuyển 10.000đ
+        server.expect(requestTo("https://api-merchant.payos.vn/v2/payment-requests/130058"))
+                .andRespond(withSuccess(
+                        """
+                        {"code":"00","desc":"success","data":{
+                          "orderCode":130058,"amount":2000,"amountPaid":10000,"amountRemaining":0,
+                          "status":"PAID","paymentLinkId":"plid"
+                        }}
+                        """,
+                        MediaType.APPLICATION_JSON));
+
+        var result = client.getPaymentRequest(130058L);
+
+        assertThat(result.get().amount()).isEqualTo(2000);
+        assertThat(result.get().received()).isEqualTo(10000);
+        server.verify();
+    }
+
+    @Test
+    void getPaymentRequest_sumsTransactionsWhenNoAmountPaid() {
+        server.expect(requestTo("https://api-merchant.payos.vn/v2/payment-requests/130059"))
+                .andRespond(withSuccess(
+                        """
+                        {"code":"00","desc":"success","data":{
+                          "orderCode":130059,"amount":2000,"status":"PAID",
+                          "transactions":[{"amount":6000},{"amount":4000}]
+                        }}
+                        """,
+                        MediaType.APPLICATION_JSON));
+
+        assertThat(client.getPaymentRequest(130059L).get().received()).isEqualTo(10000);
         server.verify();
     }
 
@@ -98,6 +136,24 @@ class PayosClientMockTest {
                         MediaType.APPLICATION_JSON));
 
         assertThat(client.getPaymentRequest(130001L)).isEmpty();
+        server.verify();
+    }
+
+    @Test
+    void getPaymentRequest_code101_returnsNotFound() {
+        server.expect(requestTo("https://api-merchant.payos.vn/v2/payment-requests/130048"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(
+                        """
+                        {"code":"101","desc":"Mã thanh toán không tồn tại","data":null}
+                        """,
+                        MediaType.APPLICATION_JSON));
+
+        var result = client.getPaymentRequest(130048L);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().status()).isEqualTo("NOT_FOUND");
+        assertThat(result.get().orderCode()).isEqualTo(130048L);
         server.verify();
     }
 
@@ -129,6 +185,31 @@ class PayosClientMockTest {
 
         assertThat(client.cancelPaymentRequest("42", "reason")).isFalse();
         server.verify();
+    }
+
+    @Test
+    void getPaymentRequest_httpError_returnsEmpty() {
+        // PayOS lỗi 500 → coi như "không hỏi được", để job / trang kết quả hoãn chứ không hủy đơn
+        server.expect(requestTo("https://api-merchant.payos.vn/v2/payment-requests/130001"))
+                .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators.withServerError());
+
+        assertThat(client.getPaymentRequest(130001L)).isEmpty();
+        server.verify();
+    }
+
+    @Test
+    void cancelPaymentRequest_httpError_returnsFalse() {
+        server.expect(requestTo("https://api-merchant.payos.vn/v2/payment-requests/plink/cancel"))
+                .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators.withServerError());
+
+        assertThat(client.cancelPaymentRequest("plink", "Khách hủy đơn")).isFalse();
+        server.verify();
+    }
+
+    @Test
+    void cancelPaymentRequest_blankId_skipsCall() {
+        assertThat(client.cancelPaymentRequest(" ", "x")).isFalse();
+        server.verify(); // không có request nào
     }
 
     /** Avoid Instant import noise in expect — epoch only. */
