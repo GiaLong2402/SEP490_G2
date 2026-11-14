@@ -4,6 +4,7 @@ import Breadcrumbs from '@/components/storefront/Breadcrumbs/Breadcrumbs'
 import ProductCard from '@/components/storefront/ProductCard/ProductCard'
 import { ROUTES } from '@/constants/routes'
 import { useCart } from '@/context/CartContext'
+import { useToast } from '@/context/ToastContext'
 import { ApiError } from '@/api/client'
 import { productsApi } from '@/api/products'
 import { getDefaultVariant } from '@/utils/productFilters'
@@ -94,6 +95,7 @@ export default function ProductDetailPage() {
 function ProductDetailContent({ product, related }) {
   const navigate = useNavigate()
   const { addToCart } = useCart()
+  const { showToast } = useToast()
 
   const [variantId, setVariantId] = useState(product.defaultVariantId)
   const variant = product.variants.find((v) => v.id === variantId) || getDefaultVariant(product)
@@ -101,8 +103,9 @@ function ProductDetailContent({ product, related }) {
   async function handleAddToCart(quantity) {
     try {
       await addToCart({ product, variant, quantity })
+      showToast('Sản phẩm đã được thêm vào giỏ hàng')
     } catch {
-      // lỗi hiện qua CartContext / toast sau
+      // lỗi hiện qua CartContext
     }
   }
 
