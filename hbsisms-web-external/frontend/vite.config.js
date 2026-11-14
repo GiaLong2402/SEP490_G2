@@ -13,12 +13,16 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  optimizeDeps: {
+    include: ['@goongmaps/goong-js'],
+  },
   server: {
     port: 5173,
     // Sau này gọi Spring Boot qua proxy (vd: /api -> http://localhost:8080)
     proxy: {
       '/api': {
-        target: 'http://localhost:8081',
+        // Spring Boot mặc định :8080 (xem hbsisms-api application.yml)
+        target: 'http://localhost:8080',
         changeOrigin: true,
       },
     },

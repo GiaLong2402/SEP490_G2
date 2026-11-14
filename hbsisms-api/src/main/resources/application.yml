@@ -86,3 +86,10 @@ app:
       enabled: ${EXPIRE_JOB_ENABLED:true}
       cron: ${EXPIRE_JOB_CRON:0 5 0 * * *}
       zone: ${EXPIRE_JOB_ZONE:Asia/Ho_Chi_Minh}
+  goong:
+    # Empty api-key = skip geocode; FE may still send distanceKm manually.
+    api-key: ${GOONG_API_KEY:}
+    base-url: ${GOONG_BASE_URL:https://rsapi.goong.io}
+    shop-latitude: ${SHOP_LATITUDE:20.951248}
+    shop-longitude: ${SHOP_LONGITUDE:107.080502}
+    delivery-radius-km: ${DELIVERY_RADIUS_KM:8}

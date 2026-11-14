@@ -15,6 +15,8 @@ export function fromAddressDto(dto) {
     ward: dto.ward || '',
     district: dto.district || '',
     province: dto.province || '',
+    latitude: dto.latitude == null ? null : Number(dto.latitude),
+    longitude: dto.longitude == null ? null : Number(dto.longitude),
     isDefault: Boolean(dto.isDefault),
     inDeliveryRadius: dto.inDeliveryRadius !== false,
     distanceKm: dto.distanceKm == null ? null : Number(dto.distanceKm),
@@ -29,9 +31,12 @@ export function toAddressRequest(form) {
     recipientName: form.recipientName.trim(),
     phone: form.phone.trim(),
     line1: form.line1.trim(),
-    ward: form.ward.trim(),
+    ward: (form.ward || '').trim(),
     district: '',
     province: form.province.trim(),
+    latitude: form.latitude == null || form.latitude === '' ? null : Number(form.latitude),
+    longitude: form.longitude == null || form.longitude === '' ? null : Number(form.longitude),
+    distanceKm: form.distanceKm == null || form.distanceKm === '' ? null : Number(form.distanceKm),
     isDefault: Boolean(form.isDefault),
   }
 }

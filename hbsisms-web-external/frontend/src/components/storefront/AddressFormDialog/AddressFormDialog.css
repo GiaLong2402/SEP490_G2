@@ -24,7 +24,8 @@
   color: var(--color-danger);
 }
 
-.addr-field input {
+.addr-field input,
+.addr-field select {
   height: 46px;
   padding: 0 14px;
   border: 1.5px solid var(--color-border);
@@ -36,7 +37,13 @@
   transition: border-color 0.15s ease;
 }
 
-.addr-field input:focus {
+.addr-field select:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.addr-field input:focus,
+.addr-field select:focus {
   outline: none;
   border-color: var(--color-accent);
 }
@@ -82,6 +89,24 @@
 
 .addr-default.is-locked {
   cursor: default;
+}
+
+.addr-map-block {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+}
+
+.addr-map-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.addr-map-distance {
+  font-size: 13px;
+  color: var(--color-muted);
 }
 
 .addr-form__error {

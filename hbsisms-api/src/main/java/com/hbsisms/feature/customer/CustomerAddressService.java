@@ -4,20 +4,26 @@ import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.common.text.Strings;
 import com.hbsisms.feature.customer.dto.AddressRequest;
 import com.hbsisms.feature.customer.dto.AddressResponse;
+import com.hbsisms.feature.goong.GeoDistance;
+import com.hbsisms.feature.goong.GeoPoint;
+import com.hbsisms.feature.goong.GoongGeocodeService;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Address APIs for a customer (staff {@code /customers/{id}/addresses} and B2C {@code /me/addresses}).
- * Delivery radius matches FE mock default {@code delivery_radius_km = 8} until AppConfig is available.
+ * When Goong is configured, geocodes the address and computes distance to the shop; otherwise
+ * uses {@code distanceKm} from the request (FE manual / mock).
  */
 @Service
 @Transactional(readOnly = true)
 public class CustomerAddressService {
 
-    /** Same default as FE mock {@code configInt('delivery_radius_km', 8)}. */
+    /** Fallback when {@code app.goong.delivery-radius-km} is unset. */
     static final BigDecimal DELIVERY_RADIUS_KM = BigDecimal.valueOf(8);
 
     static final String CANNOT_DELETE_DEFAULT =
@@ -25,11 +31,15 @@ public class CustomerAddressService {
 
     private final CustomerRepository customerRepository;
     private final CustomerAddressRepository addressRepository;
+    private final GoongGeocodeService goongGeocodeService;
 
     public CustomerAddressService(
-            CustomerRepository customerRepository, CustomerAddressRepository addressRepository) {
+            CustomerRepository customerRepository,
+            CustomerAddressRepository addressRepository,
+            GoongGeocodeService goongGeocodeService) {
         this.customerRepository = customerRepository;
         this.addressRepository = addressRepository;
+        this.goongGeocodeService = goongGeocodeService;
     }
 
     public List<AddressResponse> list(Long customerId) {
@@ -86,16 +96,71 @@ public class CustomerAddressService {
         address.setWard(Strings.trimToNull(request.ward()));
         address.setDistrict(Strings.trimToNull(request.district()));
         address.setProvince(Strings.trimToNull(request.province()));
-        // Map / geocoding chưa có — giữ null như FE mock.
+        address.setDefaultAddress(defaultAddress);
+        resolveLocation(address, request.latitude(), request.longitude(), request.distanceKm());
+    }
+
+    /**
+     * Prefer map pin (lat/lng) → haversine. Else Goong forward-geocode. Else manual
+     * {@code distanceKm}.
+     */
+    private void resolveLocation(
+            CustomerAddress address,
+            BigDecimal requestLat,
+            BigDecimal requestLng,
+            BigDecimal requestedDistanceKm) {
+        BigDecimal radius = goongGeocodeService.deliveryRadiusKm() != null
+                ? goongGeocodeService.deliveryRadiusKm()
+                : DELIVERY_RADIUS_KM;
+
+        if (requestLat != null && requestLng != null) {
+            GeoPoint dest = new GeoPoint(requestLat, requestLng);
+            BigDecimal km = GeoDistance.kmBetween(goongGeocodeService.shopLocation(), dest);
+            address.setLatitude(dest.latitude());
+            address.setLongitude(dest.longitude());
+            address.setDistanceKm(km);
+            address.setInDeliveryRadius(isInDeliveryRadius(km, radius));
+            return;
+        }
+
+        if (goongGeocodeService.enabled()) {
+            String query = buildGeocodeQuery(address);
+            var point = goongGeocodeService.geocode(query);
+            if (point.isPresent()) {
+                GeoPoint dest = point.get();
+                BigDecimal km = GeoDistance.kmBetween(goongGeocodeService.shopLocation(), dest);
+                address.setLatitude(dest.latitude());
+                address.setLongitude(dest.longitude());
+                address.setDistanceKm(km);
+                address.setInDeliveryRadius(isInDeliveryRadius(km, radius));
+                return;
+            }
+        }
+
         address.setLatitude(null);
         address.setLongitude(null);
-        address.setDistanceKm(request.distanceKm());
-        address.setInDeliveryRadius(isInDeliveryRadius(request.distanceKm()));
-        address.setDefaultAddress(defaultAddress);
+        address.setDistanceKm(requestedDistanceKm);
+        address.setInDeliveryRadius(isInDeliveryRadius(requestedDistanceKm, radius));
+    }
+
+    static String buildGeocodeQuery(CustomerAddress address) {
+        return Stream.of(
+                        address.getLine1(),
+                        address.getWard(),
+                        address.getDistrict(),
+                        address.getProvince())
+                .filter(s -> s != null && !s.isBlank())
+                .map(String::trim)
+                .collect(Collectors.joining(", "));
     }
 
     static boolean isInDeliveryRadius(BigDecimal distanceKm) {
-        return distanceKm != null && distanceKm.compareTo(DELIVERY_RADIUS_KM) <= 0;
+        return isInDeliveryRadius(distanceKm, DELIVERY_RADIUS_KM);
+    }
+
+    static boolean isInDeliveryRadius(BigDecimal distanceKm, BigDecimal radiusKm) {
+        BigDecimal radius = radiusKm != null ? radiusKm : DELIVERY_RADIUS_KM;
+        return distanceKm != null && distanceKm.compareTo(radius) <= 0;
     }
 
     private Customer requireCustomer(Long customerId) {

@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.feature.customer.dto.AddressRequest;
 import com.hbsisms.feature.customer.dto.AddressResponse;
+import com.hbsisms.feature.goong.GoongGeocodeService;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -29,13 +30,19 @@ class CustomerAddressServiceTest {
     private CustomerRepository customerRepository;
     @Mock
     private CustomerAddressRepository addressRepository;
+    @Mock
+    private GoongGeocodeService goongGeocodeService;
 
     private CustomerAddressService service;
     private Customer customer;
 
     @BeforeEach
     void setUp() {
-        service = new CustomerAddressService(customerRepository, addressRepository);
+        org.mockito.Mockito.lenient().when(goongGeocodeService.enabled()).thenReturn(false);
+        org.mockito.Mockito.lenient()
+                .when(goongGeocodeService.deliveryRadiusKm())
+                .thenReturn(BigDecimal.valueOf(8));
+        service = new CustomerAddressService(customerRepository, addressRepository, goongGeocodeService);
         customer = new Customer();
         ReflectionTestUtils.setField(customer, "id", 10L);
         customer.setCode("KH-B001");
@@ -92,6 +99,7 @@ class CustomerAddressServiceTest {
     @Test
     void create_doesNotClearDefaultWhenNotDefault() {
         when(customerRepository.findById(10L)).thenReturn(Optional.of(customer));
+        when(addressRepository.countByCustomerId(10L)).thenReturn(1L);
         when(addressRepository.save(any(CustomerAddress.class))).thenAnswer(inv -> {
             CustomerAddress a = inv.getArgument(0);
             ReflectionTestUtils.setField(a, "id", 6L);
@@ -117,7 +125,7 @@ class CustomerAddressServiceTest {
         });
 
         AddressRequest req = new AddressRequest(
-                null, "An", "0901", "  12 Lạch Tray  ", "Máy Chai", "Ngô Quyền", "Hải Phòng", null, false);
+                null, "An", "0901", "  12 Lạch Tray  ", "Máy Chai", "Ngô Quyền", "Hải Phòng", null, null, null, false);
 
         service.create(10L, req);
 
@@ -254,6 +262,8 @@ class CustomerAddressServiceTest {
                 "  ",
                 null,
                 "Hải Phòng",
+                null,
+                null,
                 new BigDecimal("0"),
                 false);
 
@@ -272,7 +282,7 @@ class CustomerAddressServiceTest {
     }
 
     @Test
-    void update_canUnsetDefaultWithoutClearingOthers() {
+    void update_keepsDefaultWhenRequestDoesNotMarkAnotherDefault() {
         when(customerRepository.findById(10L)).thenReturn(Optional.of(customer));
         CustomerAddress existing = address(3L, "Cũ", true);
         when(addressRepository.findByIdAndCustomerId(3L, 10L)).thenReturn(Optional.of(existing));
@@ -281,7 +291,8 @@ class CustomerAddressServiceTest {
         service.update(10L, 3L, request(false, new BigDecimal("4")));
 
         verify(addressRepository, never()).clearDefaultForCustomer(any());
-        assertThat(existing.isDefaultAddress()).isFalse();
+        // isDefault=false alone cannot unset the only/current default.
+        assertThat(existing.isDefaultAddress()).isTrue();
         assertThat(existing.isInDeliveryRadius()).isTrue();
     }
 
@@ -294,6 +305,8 @@ class CustomerAddressServiceTest {
                 "Máy Chai",
                 "Ngô Quyền",
                 "Hải Phòng",
+                null,
+                null,
                 distanceKm,
                 isDefault);
     }

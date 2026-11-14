@@ -1,0 +1,26 @@
+.goong-map-picker__canvas {
+  height: 220px;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+}
+
+/* Ẩn logo / attribution Goong–Mapbox trên map picker */
+.goong-map-picker .mapboxgl-ctrl-logo,
+.goong-map-picker .mapboxgl-ctrl-attrib,
+.goong-map-picker .goongjs-ctrl-logo,
+.goong-map-picker .goongjs-ctrl-attrib,
+.goong-map-picker a.mapboxgl-ctrl-logo {
+  display: none !important;
+}
+
+.goong-map-fallback {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  font-size: 0.85rem;
+}

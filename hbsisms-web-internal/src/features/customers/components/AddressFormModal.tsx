@@ -1,6 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAction } from '@/shared/api/useAction';
+import { geoApi } from '@/shared/api/geo';
 import type { CustomerAddress, ID } from '@/shared/domain/entities';
+import { AdminUnitFields } from '@/shared/geo/AdminUnitFields';
+import { applyReverseAddress } from '@/shared/geo/applyReverseAddress';
+import { GoongMapPicker } from '@/shared/maps/GoongMapPicker';
+import type { LngLat } from '@/shared/maps/goong';
 import { Button, Checkbox, Field, Input, Modal } from '@/shared/ui';
 import { customersApi } from '../api';
 import type { AddressInput } from '../types';
@@ -11,9 +16,11 @@ export const emptyAddress: AddressInput = {
   recipientName: '',
   phone: '',
   line1: '',
-  ward: '',
-  district: '',
-  province: '',
+  ward: null,
+  district: null,
+  province: null,
+  latitude: null,
+  longitude: null,
   distanceKm: null,
   isDefault: false,
 };
@@ -25,12 +32,16 @@ export function toAddressInput(a: CustomerAddress): AddressInput {
     phone: a.phone,
     line1: a.line1,
     ward: a.ward,
-    district: a.district ?? '',
-    province: a.province ?? '',
+    district: null,
+    province: a.province,
+    latitude: a.latitude,
+    longitude: a.longitude,
     distanceKm: a.distanceKm,
     isDefault: a.isDefault,
   };
 }
+
+const FALLBACK_SHOP: LngLat = { lat: 21.012728, lng: 105.525905 };
 
 export function AddressFormModal({
   open,
@@ -49,15 +60,34 @@ export function AddressFormModal({
 }) {
   const [form, setForm] = useState<AddressInput>(emptyAddress);
   const [touched, setTouched] = useState(false);
+  const [shop, setShop] = useState<LngLat>(FALLBACK_SHOP);
+  const [locating, setLocating] = useState(false);
+  const [applyingMap, setApplyingMap] = useState(false);
+  const [locateError, setLocateError] = useState<string | null>(null);
   const isEdit = addressId != null;
+  const hasPin = form.latitude != null && form.longitude != null;
 
   useEffect(() => {
     if (!open) return;
     setTouched(false);
+    setLocateError(null);
     setForm(initial ?? emptyAddress);
-    // Chỉ reset khi mở modal / đổi bản ghi — tránh reset khi parent tạo object mới mỗi render.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
   }, [open, addressId]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    geoApi
+      .shop()
+      .then((s) => {
+        if (!cancelled) setShop({ lat: Number(s.latitude), lng: Number(s.longitude) });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const save = useAction(
     () => {
@@ -76,6 +106,65 @@ export function AddressFormModal({
   );
 
   const line1Error = touched && !form.line1.trim() ? 'Vui lòng nhập địa chỉ' : undefined;
+  const provinceError = touched && !form.province?.trim() ? 'Chọn tỉnh/thành' : undefined;
+
+  const addressQuery = useMemo(
+    () => [form.line1, form.ward, form.province].filter((p) => p && String(p).trim()).join(', '),
+    [form.line1, form.ward, form.province],
+  );
+
+  async function locateFromAddress() {
+    if (!form.line1.trim()) {
+      setLocateError('Nhập số nhà / đường (ô Địa chỉ) trước khi định vị');
+      return;
+    }
+    if (!form.province?.trim()) {
+      setLocateError('Chọn tỉnh/thành trước khi định vị');
+      return;
+    }
+    setLocating(true);
+    setLocateError(null);
+    try {
+      const hit = await geoApi.geocode(addressQuery);
+      setForm((prev) => ({
+        ...prev,
+        latitude: Number(hit.latitude),
+        longitude: Number(hit.longitude),
+        distanceKm: Number(hit.distanceKm),
+      }));
+    } catch (err) {
+      setLocateError(err instanceof Error ? err.message : 'Không định vị được địa chỉ');
+    } finally {
+      setLocating(false);
+    }
+  }
+
+  async function applyAddressFromMap() {
+    if (form.latitude == null || form.longitude == null) {
+      setLocateError('Chọn vị trí trên bản đồ trước');
+      return;
+    }
+    setApplyingMap(true);
+    setLocateError(null);
+    try {
+      const hit = await geoApi.reverse(form.latitude, form.longitude);
+      const next = applyReverseAddress(hit);
+      setForm((prev) => ({
+        ...prev,
+        line1: next.line1 ?? prev.line1,
+        ward: next.ward,
+        district: null,
+        province: next.province,
+        latitude: next.latitude,
+        longitude: next.longitude,
+        distanceKm: next.distanceKm,
+      }));
+    } catch (err) {
+      setLocateError(err instanceof Error ? err.message : 'Không đọc được địa chỉ từ bản đồ');
+    } finally {
+      setApplyingMap(false);
+    }
+  }
 
   return (
     <Modal
@@ -84,7 +173,7 @@ export function AddressFormModal({
       onClose={onClose}
       onSubmit={() => {
         setTouched(true);
-        if (!form.line1.trim()) return;
+        if (!form.line1.trim() || !form.province?.trim()) return;
         save.mutate();
       }}
       footer={(
@@ -102,36 +191,59 @@ export function AddressFormModal({
             placeholder="Số nhà, đường, thôn/ấp…"
           />
         </Field>
-        <Field label="Xã/phường">
-          <Input
-            value={form.ward ?? ''}
-            onChange={(e) => setForm({ ...form, ward: e.target.value, district: '' })}
-            placeholder="Xã / phường / đặc khu"
-          />
-        </Field>
-        <Field label="Tỉnh/thành phố">
-          <Input
-            value={form.province ?? ''}
-            onChange={(e) => setForm({ ...form, province: e.target.value })}
-            placeholder="Hải Phòng"
-          />
-        </Field>
+
+        <AdminUnitFields
+          province={form.province}
+          ward={form.ward}
+          onChange={(next) => setForm((prev) => ({ ...prev, ...next, district: null }))}
+        />
+        {provinceError && <p className="sm:col-span-2 text-small text-red-fg">{provinceError}</p>}
+
         <Field label="Người nhận">
           <Input value={form.recipientName ?? ''} onChange={(e) => setForm({ ...form, recipientName: e.target.value })} />
         </Field>
         <Field label="SĐT người nhận">
           <Input value={form.phone ?? ''} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
         </Field>
-        <Field label="Khoảng cách từ kho (km)" hint="Backend sẽ tự tính khi tích hợp bản đồ">
-          <Input
-            type="number"
-            min={0}
-            step="0.1"
-            value={form.distanceKm ?? ''}
-            onChange={(e) => setForm({ ...form, distanceKm: e.target.value === '' ? null : Number(e.target.value) })}
+
+        <div className="sm:col-span-2 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" onClick={locateFromAddress} loading={locating}>
+              Định vị từ địa chỉ
+            </Button>
+            <Button
+              type="button"
+              onClick={applyAddressFromMap}
+              loading={applyingMap}
+              disabled={!hasPin}
+            >
+              Dùng địa chỉ từ bản đồ
+            </Button>
+            {form.distanceKm != null && (
+              <span className="text-small text-ink-muted">
+                ~{form.distanceKm} km
+                {form.distanceKm <= 8 ? ' · trong bán kính' : ' · ngoài bán kính'}
+              </span>
+            )}
+          </div>
+          {locateError && <p className="text-small text-red-600">{locateError}</p>}
+          <GoongMapPicker
+            open={open}
+            latitude={form.latitude}
+            longitude={form.longitude}
+            fallbackCenter={shop}
+            onChange={(pos) =>
+              setForm((prev) => ({
+                ...prev,
+                latitude: pos.lat,
+                longitude: pos.lng,
+                distanceKm: null,
+              }))
+            }
           />
-        </Field>
-        <div className="self-end pb-2">
+        </div>
+
+        <div className="self-end pb-2 sm:col-span-2">
           <Checkbox
             label="Đặt làm mặc định"
             checked={form.isDefault}
