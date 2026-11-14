@@ -12,8 +12,10 @@ import com.hbsisms.feature.catalog.CustomerPriceRepository;
 import com.hbsisms.feature.customer.dto.AddressResponse;
 import com.hbsisms.feature.customer.dto.CustomerDetailResponse;
 import com.hbsisms.feature.customer.dto.CustomerListItemResponse;
+import com.hbsisms.feature.customer.dto.CustomerOrderRowResponse;
 import com.hbsisms.feature.customer.dto.CustomerPriceRowResponse;
 import com.hbsisms.feature.customer.dto.CustomerRequest;
+import com.hbsisms.feature.sales.SalesOrderRepository;
 import java.math.BigDecimal;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -30,6 +32,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class CustomerService {
 
     private static final Sort LIST_SORT = Sort.by(Sort.Direction.ASC, "name");
+    private static final Sort RECENT_ORDERS_SORT = Sort.by(Sort.Direction.DESC, "placedAt", "id");
+    private static final int RECENT_ORDERS_LIMIT = 10;
     private static final Pattern VN_PHONE = Pattern.compile("^0\\d{9}$");
     private static final Pattern TAX_CODE = Pattern.compile("^\\d{10,13}$");
 
@@ -37,16 +41,19 @@ public class CustomerService {
     private final CustomerAddressRepository addressRepository;
     private final CustomerPriceRepository customerPriceRepository;
     private final ApprovalTaskRepository approvalTaskRepository;
+    private final SalesOrderRepository salesOrderRepository;
 
     public CustomerService(
             CustomerRepository customerRepository,
             CustomerAddressRepository addressRepository,
             CustomerPriceRepository customerPriceRepository,
-            ApprovalTaskRepository approvalTaskRepository) {
+            ApprovalTaskRepository approvalTaskRepository,
+            SalesOrderRepository salesOrderRepository) {
         this.customerRepository = customerRepository;
         this.addressRepository = addressRepository;
         this.customerPriceRepository = customerPriceRepository;
         this.approvalTaskRepository = approvalTaskRepository;
+        this.salesOrderRepository = salesOrderRepository;
     }
 
     public PageResponse<CustomerListItemResponse> search(
@@ -125,7 +132,12 @@ public class CustomerService {
                             decision == null ? null : decision.status());
                 })
                 .toList();
-        return CustomerDetailResponse.from(customer, addresses, prices);
+        List<CustomerOrderRowResponse> recentOrders = salesOrderRepository
+                .findByCustomer_IdOrderByPlacedAtDescIdDesc(
+                        id, PageRequests.of(1, RECENT_ORDERS_LIMIT, RECENT_ORDERS_SORT))
+                .map(CustomerOrderRowResponse::from)
+                .getContent();
+        return CustomerDetailResponse.from(customer, addresses, prices, recentOrders);
     }
 
     private Customer requireCustomer(Long id) {

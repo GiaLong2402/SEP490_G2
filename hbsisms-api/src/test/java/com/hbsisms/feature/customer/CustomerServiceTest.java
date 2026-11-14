@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -14,7 +15,11 @@ import com.hbsisms.feature.catalog.CustomerPriceRepository;
 import com.hbsisms.feature.customer.dto.CustomerDetailResponse;
 import com.hbsisms.feature.customer.dto.CustomerListItemResponse;
 import com.hbsisms.feature.customer.dto.CustomerRequest;
+import com.hbsisms.feature.sales.OrderState;
+import com.hbsisms.feature.sales.SalesOrder;
+import com.hbsisms.feature.sales.SalesOrderRepository;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,13 +45,22 @@ class CustomerServiceTest {
     private CustomerPriceRepository customerPriceRepository;
     @Mock
     private ApprovalTaskRepository approvalTaskRepository;
+    @Mock
+    private SalesOrderRepository salesOrderRepository;
 
     private CustomerService customerService;
 
     @BeforeEach
     void setUp() {
         customerService = new CustomerService(
-                customerRepository, addressRepository, customerPriceRepository, approvalTaskRepository);
+                customerRepository,
+                addressRepository,
+                customerPriceRepository,
+                approvalTaskRepository,
+                salesOrderRepository);
+        lenient()
+                .when(salesOrderRepository.findByCustomer_IdOrderByPlacedAtDescIdDesc(any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
     }
 
     @Test
@@ -87,6 +101,32 @@ class CustomerServiceTest {
         assertThat(detail.addresses()).isEmpty();
         assertThat(detail.prices()).isEmpty();
         assertThat(detail.recentOrders()).isEmpty();
+    }
+
+    @Test
+    void getDetailReturnsRecentOrders() {
+        Customer customer = sample("KH-007", CustomerType.B2C, "Gia Long");
+        ReflectionTestUtils.setField(customer, "id", 117L);
+        when(customerRepository.findWithAccountById(117L)).thenReturn(Optional.of(customer));
+        when(addressRepository.findByCustomerIdOrderByDefaultAddressDescIdAsc(117L)).thenReturn(List.of());
+        when(customerPriceRepository.findByCustomerIdOrderByIdAsc(117L)).thenReturn(List.of());
+
+        SalesOrder order = new SalesOrder();
+        ReflectionTestUtils.setField(order, "id", 55L);
+        order.setCode("SO-2026-0055");
+        order.setPlacedAt(Instant.parse("2026-11-14T10:00:00Z"));
+        order.setTotal(new BigDecimal("250000"));
+        order.setState(OrderState.CONFIRMED);
+        when(salesOrderRepository.findByCustomer_IdOrderByPlacedAtDescIdDesc(eq(117L), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(order)));
+
+        CustomerDetailResponse detail = customerService.getDetail(117L);
+
+        assertThat(detail.recentOrders()).hasSize(1);
+        assertThat(detail.recentOrders().get(0).id()).isEqualTo(55L);
+        assertThat(detail.recentOrders().get(0).code()).isEqualTo("SO-2026-0055");
+        assertThat(detail.recentOrders().get(0).total()).isEqualByComparingTo("250000");
+        assertThat(detail.recentOrders().get(0).state()).isEqualTo(OrderState.CONFIRMED);
     }
 
     @Test
