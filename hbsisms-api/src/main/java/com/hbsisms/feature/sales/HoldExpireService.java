@@ -2,6 +2,7 @@ package com.hbsisms.feature.sales;
 
 import com.hbsisms.feature.payment.payos.PayosOrderExpireHandler;
 import com.hbsisms.feature.sales.dto.HoldExpireJobResponse;
+import com.hbsisms.feature.system.AppConfigService;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -19,20 +20,24 @@ public class HoldExpireService {
 
     private final SalesOrderRepository salesOrderRepository;
     private final PayosOrderExpireHandler payosOrderExpireHandler;
+    private final AppConfigService appConfigService;
     private final Clock clock;
 
     public HoldExpireService(
             SalesOrderRepository salesOrderRepository,
             PayosOrderExpireHandler payosOrderExpireHandler,
+            AppConfigService appConfigService,
             Clock clock) {
         this.salesOrderRepository = salesOrderRepository;
         this.payosOrderExpireHandler = payosOrderExpireHandler;
+        this.appConfigService = appConfigService;
         this.clock = clock;
     }
 
     public HoldExpireJobResponse run() {
-        Instant now = Instant.now(clock);
-        List<SalesOrder> expired = salesOrderRepository.findExpiredHolds(now);
+        // Chỉ xử lý đơn đã quá giờ giữ hàng + thời gian ân hạn (link PayOS còn nhận tiền trong lúc ân hạn).
+        Instant cutoff = Instant.now(clock).minusSeconds(appConfigService.paymentGraceMinutes() * 60L);
+        List<SalesOrder> expired = salesOrderRepository.findExpiredHolds(cutoff);
         int processed = 0;
         for (SalesOrder header : expired) {
             SalesOrder detailed = salesOrderRepository

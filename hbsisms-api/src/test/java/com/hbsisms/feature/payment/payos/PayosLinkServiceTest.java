@@ -21,6 +21,7 @@ import com.hbsisms.feature.sales.SalesOrder;
 import com.hbsisms.feature.sales.SalesOrderService;
 import com.hbsisms.feature.sales.dto.OrderDetailResponse;
 import com.hbsisms.feature.user.AppUser;
+import com.hbsisms.feature.system.AppConfigService;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -46,6 +47,8 @@ class PayosLinkServiceTest {
     private PaymentRepository paymentRepository;
     @Mock
     private SalesOrderService salesOrderService;
+    @Mock
+    private AppConfigService appConfigService;
 
     private PayosProperties properties;
     private PayosLinkService service;
@@ -65,15 +68,18 @@ class PayosLinkServiceTest {
                 payosClient,
                 paymentRepository,
                 salesOrderService,
+                appConfigService,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test
     void createForCheckout_callsPayosOnceAndPersistsPending() {
+        // Link PayOS hết hạn = giờ giữ hàng + 2 phút ân hạn
+        when(appConfigService.paymentGraceMinutes()).thenReturn(2);
         SalesOrder order = orderWithTotal("SO-2026-0001", new BigDecimal("150000"));
         Customer customer = new Customer();
         when(paymentRepository.maxPayosOrderCode()).thenReturn(130000L);
-        when(payosClient.createPaymentRequest(eq(130001L), eq(150000), anyString(), eq(HOLD_EXPIRES.getEpochSecond())))
+        when(payosClient.createPaymentRequest(eq(130001L), eq(150000), anyString(), eq(HOLD_EXPIRES.plusSeconds(120).getEpochSecond())))
                 .thenReturn(new PayosPaymentLinkResult(
                         130001L,
                         150000,
@@ -91,7 +97,7 @@ class PayosLinkServiceTest {
         assertThat(saved.getPayosOrderCode()).isEqualTo(130001L);
         assertThat(saved.getRawPayload()).containsEntry("qrCode", "000201QR");
         // SO-2026-0001 → SO20260001 (10) → first 9 = SO2026000
-        verify(payosClient).createPaymentRequest(130001L, 150000, "SO2026000", HOLD_EXPIRES.getEpochSecond());
+        verify(payosClient).createPaymentRequest(130001L, 150000, "SO2026000", HOLD_EXPIRES.plusSeconds(120).getEpochSecond());
     }
 
     @Test
@@ -128,6 +134,7 @@ class PayosLinkServiceTest {
                 payosClient,
                 paymentRepository,
                 salesOrderService,
+                appConfigService,
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
         assertThatThrownBy(() ->
@@ -135,6 +142,48 @@ class PayosLinkServiceTest {
                 .isInstanceOf(ApiException.class)
                 .extracting(ex -> ((ApiException) ex).getStatus())
                 .isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    @Test
+    void createForCheckout_invalidAmount_rejectedWithoutCallingPayos() {
+        // Tổng tiền 0 / âm / lẻ đồng / không có → 400, không gọi PayOS
+        for (BigDecimal total : new BigDecimal[] {BigDecimal.ZERO, new BigDecimal("-1"), new BigDecimal("1000.5"), null}) {
+            assertThatThrownBy(() -> service.createForCheckout(orderWithTotal("SO-1", total), new Customer(), HOLD_EXPIRES))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(ex -> ((ApiException) ex).getStatus())
+                    .isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+        verify(payosClient, never()).createPaymentRequest(anyLong(), anyInt(), anyString(), anyLong());
+    }
+
+    @Test
+    void getActiveLink_notPendingOrNoUrlOrForeign_rejected() {
+        // Payment đã thanh toán / hủy → 409
+        Payment paid = pendingOwnedPayment(42L, 9L, HOLD_EXPIRES, "https://pay.payos.vn/web/x");
+        paid.setStatus(PayTxnStatus.SUCCESS);
+        when(paymentRepository.findWithOrderCustomerByPayosOrderCode(42L)).thenReturn(Optional.of(paid));
+        assertStatus(() -> service.getActiveLink(42L, 7L), HttpStatus.CONFLICT);
+
+        // Link đã bị khóa (mất checkoutUrl) → 409
+        Payment noUrl = pendingOwnedPayment(43L, 9L, HOLD_EXPIRES, null);
+        when(paymentRepository.findWithOrderCustomerByPayosOrderCode(43L)).thenReturn(Optional.of(noUrl));
+        assertStatus(() -> service.getActiveLink(43L, 7L), HttpStatus.CONFLICT);
+
+        // Khách khác → 404 (không lộ đơn của người khác)
+        Payment foreign = pendingOwnedPayment(44L, 9L, HOLD_EXPIRES, "https://pay.payos.vn/web/y");
+        when(paymentRepository.findWithOrderCustomerByPayosOrderCode(44L)).thenReturn(Optional.of(foreign));
+        assertStatus(() -> service.getActiveLink(44L, 99L), HttpStatus.NOT_FOUND);
+
+        // Không tìm thấy mã → 404
+        when(paymentRepository.findWithOrderCustomerByPayosOrderCode(45L)).thenReturn(Optional.empty());
+        assertStatus(() -> service.getActiveLink(45L, 7L), HttpStatus.NOT_FOUND);
+    }
+
+    private static void assertStatus(org.assertj.core.api.ThrowableAssert.ThrowingCallable call, HttpStatus status) {
+        assertThatThrownBy(call)
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(status);
     }
 
     @Test

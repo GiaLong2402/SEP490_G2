@@ -12,6 +12,7 @@ import com.hbsisms.feature.payment.payos.dto.PayosLinkResponse;
 import com.hbsisms.feature.sales.SalesOrder;
 import com.hbsisms.feature.sales.SalesOrderService;
 import com.hbsisms.feature.storefront.dto.CheckoutPaymentResponse;
+import com.hbsisms.feature.system.AppConfigService;
 import java.time.Clock;
 import java.time.Instant;
 import org.springframework.http.HttpStatus;
@@ -26,6 +27,7 @@ public class PayosLinkService {
     private final PayosClient payosClient;
     private final PaymentRepository paymentRepository;
     private final SalesOrderService salesOrderService;
+    private final AppConfigService appConfigService;
     private final Clock clock;
 
     public PayosLinkService(
@@ -33,11 +35,13 @@ public class PayosLinkService {
             PayosClient payosClient,
             PaymentRepository paymentRepository,
             SalesOrderService salesOrderService,
+            AppConfigService appConfigService,
             Clock clock) {
         this.properties = properties;
         this.payosClient = payosClient;
         this.paymentRepository = paymentRepository;
         this.salesOrderService = salesOrderService;
+        this.appConfigService = appConfigService;
         this.clock = clock;
     }
 
@@ -59,7 +63,11 @@ public class PayosLinkService {
 
         long orderCode = paymentRepository.maxPayosOrderCode() + 1;
         String description = shortDescription(order.getCode());
-        long expiredAtEpoch = holdExpires.getEpochSecond();
+        // Link PayOS sống thêm thời gian ân hạn: khách quét QR sát giờ vẫn kịp chuyển khoản.
+        // Khách vẫn chỉ thấy đếm ngược tới holdExpires (web che QR khi còn 10 giây).
+        long expiredAtEpoch = holdExpires
+                .plusSeconds(appConfigService.paymentGraceMinutes() * 60L)
+                .getEpochSecond();
 
         PayosPaymentLinkResult link =
                 payosClient.createPaymentRequest(orderCode, amount, description, expiredAtEpoch);

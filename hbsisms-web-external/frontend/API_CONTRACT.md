@@ -188,15 +188,34 @@ File FE: `src/api/payments.js`. Dùng ở màn quét QR (bước 4) và trang k�
 | GET | `/payments/payos/return?orderCode={payosOrderCode}` | `{ payosOrderCode, status, amount, paidAt, order: OrderDetailResponse }` |
 | POST | `/payments/payos/{payosOrderCode}/link` | `{ payosOrderCode, amount, checkoutUrl, qrCode, expiresAt, order }` |
 
-- `status`: `PENDING` | `PAID` | `CANCELLED` | `FAILED` | `EXPIRED`.
+- `status`:
+  - `PAID` — đã thanh toán, đơn còn hiệu lực.
+  - `PENDING` — chưa có tiền, còn trong giờ giữ hàng hoặc 2 phút ân hạn → FE hỏi tiếp.
+  - `EXPIRED` — hết giờ + ân hạn mà chưa có tiền, hoặc job đã hủy đơn vì hết hạn (event `expired`).
+  - `CANCELLED` — đơn bị khách / cửa hàng hủy (`order.state = CANCELLED`), hoặc link bị hủy trên PayOS khi đơn còn.
+  - `REFUND` — đã nhận tiền nhưng đơn đã hủy (tiền về muộn) → cửa hàng hoàn tiền.
+  - `FAILED` — giao dịch lỗi.
 - **returnUrl / cancelUrl** gửi PayOS = `https://<web-external>/thanh-toan/ket-qua` (PayOS tự gắn `?code=&id=&cancel=&status=&orderCode=`).
-  Trang này **không tin `status` trên URL** — chỉ đọc `orderCode` rồi gọi API trên; payment còn `PENDING` thì backend hỏi lại PayOS để đối soát.
-- FE hỏi lại: trang kết quả mỗi 2 giây (tối đa 5 lần, sau đó có nút "Kiểm tra lại"); màn quét QR mỗi 5 giây (khách quét bằng app ngân hàng) → khác `PENDING` thì chuyển sang trang kết quả.
-- "Thanh toán lại" (khi `CANCELLED`/`FAILED`, đơn còn giữ hàng) gọi `POST …/link`: link cũ còn hạn → trả link cũ (đúng mô tả task).
+  Trang này **không tin `status` trên URL** — chỉ đọc `orderCode` rồi gọi API trên; payment còn `PENDING` thì backend **luôn hỏi PayOS trước** khi kết luận.
+- **Mốc thời gian QR** (giờ giữ hàng `payment_hold_minutes` = 15, ân hạn `payment_grace_minutes` = 2; FE: `constants/orderStatus.js`):
+  - còn 1 phút: màn QR nhắc sắp hết giờ;
+  - còn 10 giây: **che QR** (không vẽ mã, ẩn nội dung chuyển khoản, ẩn nút hủy), hiện "Mã QR đã đóng, đang kiểm tra giao dịch" với hai trường hợp đã / chưa chuyển khoản; thẻ đơn hiện "Đang kiểm tra thanh toán" (vẫn ở chip Chờ thanh toán);
+  - link PayOS hết hạn ở giờ giữ hàng **+ 2 phút**; job chỉ hủy đơn sau mốc này (vẫn hỏi PayOS trước) → khách quét QR sát giờ vẫn kịp trả;
+  - FE coi là hết hạn sau giờ giữ hàng + 3 phút (2 phút ân hạn + 1 nhịp job).
+- FE hỏi lại: màn QR mỗi 5 giây (mỗi 3 giây khi QR đã đóng) → khác `PENDING` thì sang trang kết quả; trang kết quả mỗi 2 giây (tối đa 5 lần, hoặc tới khi hết thời gian kiểm tra).
+- "Thanh toán lại" (khi `CANCELLED`/`FAILED` mà đơn còn) gọi `POST …/link`: link cũ còn hạn → trả link cũ.
 - `qrCode`: FE vẽ QR thật bằng `qrcode.react` trong `PaymentStep.jsx` (chuỗi VietQR/EMV hoặc URL ảnh từ PayOS).
-- Đồng hồ đếm ngược dùng `expiresAt` (= `holdExpiresAt`), không cố định 15 phút.
-- **Job hết hạn (#37):** mỗi phút quét đơn quá `holdExpiresAt` → hỏi PayOS; đã `PAID` thì ghi nhận; chưa trả thì hủy link, nhả hold, hủy đơn (`CANCELLED`). Sau job, poll return thường thấy `CANCELLED` (không kẹt `EXPIRED` local). Ops: `POST /sales/hold-expire`.
-- **Webhook muộn (#35):** payment đã `CANCELLED` nhưng PayOS báo đã trả → ghi PAID, mở lại đơn `PENDING`, thử giữ hàng; đủ → event `late_paid_reheld`; thiếu → `rawPayload.needsRefund` + event `needs_refund` (Chủ xử lý #40). Không tự xuất giao.
+- Đồng hồ đếm ngược dùng `expiresAt` (= `holdExpiresAt`, mốc 15 phút khách thấy), không cố định 15 phút.
+- **Job hết hạn (#37):** mỗi phút quét đơn quá `holdExpiresAt` + ân hạn → hỏi PayOS; đã `PAID` thì ghi nhận; chưa trả thì hủy link, nhả hold, hủy đơn, ghi event `expired`. Ops: `POST /sales/hold-expire`.
+- **Cửa hàng hủy đơn (#38):** `POST /orders/{id}/cancel` khóa luôn link PayOS còn chờ (giống khách tự hủy).
+- **Tiền về muộn (#35):** payment đã hủy (hoặc đơn đã hủy) mà PayOS báo đã trả → ghi nhận tiền, không bao giờ tự giao:
+  - đơn hủy vì **hết hạn** → thử giữ lại đủ hàng; đủ → đơn chạy tiếp (event `late_paid_reheld`); thiếu → nhả phần giữ dở, đơn vẫn hủy;
+  - đơn bị **khách / cửa hàng hủy** → không cứu đơn;
+  - trường hợp phải hoàn: đơn `REFUND_PENDING`, payment `rawPayload.needsRefund`, event `needs_refund`, thông báo cho Chủ (bảng `notification`); Chủ hoàn qua "Ghi nhận hoàn tiền" (#40). Khách thấy "Đã hủy" + "cửa hàng sẽ liên hệ hoàn tiền".
+- **Lệch số tiền (#34):** khách có thể sửa số tiền trong app ngân hàng. Backend so tiền thực nhận (webhook `amount`; khi hỏi PayOS thì `amountPaid`, không có thì cộng `transactions[].amount`) với tiền đơn:
+  - **thừa** → vẫn tính đã thanh toán; payment ghi đúng tiền thực nhận, `reconcileFlag=OVER`, ghi chú "thừa Xđ, cần hoàn lại", báo Chủ. Webhook tới sau khi đã xác nhận vẫn được soi lại (và lưu vào `rawPayload.webhook` làm bằng chứng);
+  - **thiếu** → không tính đã thanh toán, `reconcileFlag=SHORT`, báo Chủ.
+  - Chi tiết đơn: `paidAmount > total` → khách thấy "Bạn đã chuyển …, nhiều hơn tiền đơn …, cửa hàng sẽ liên hệ hoàn lại phần thừa" (tự ẩn khi đã hoàn).
 - **Ghi nhận hoàn (#40):** nội bộ `POST /payments/refund` — tạo phiếu `direction=refund` (TM/CK), clear `needsRefund`, cập nhật `paymentStatus` đơn (`refunded` khi net=0). Không gọi PayOS refund API; không tự hủy đơn.
 
 ---

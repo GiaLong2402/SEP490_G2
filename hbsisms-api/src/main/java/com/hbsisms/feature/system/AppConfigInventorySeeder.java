@@ -34,6 +34,14 @@ public class AppConfigInventorySeeder implements ApplicationRunner {
                 AppConfigService.PAYMENT_HOLD_MINUTES,
                 String.valueOf(AppConfigService.DEFAULT_PAYMENT_HOLD_MINUTES),
                 "Phút giữ hàng đơn online chưa thanh toán");
+        ensure(
+                AppConfigService.SHIPPING_FEE_DELIVERY,
+                String.valueOf(AppConfigService.DEFAULT_SHIPPING_FEE_DELIVERY),
+                "Phí giao tận nơi đơn online (VND)");
+        ensure(
+                AppConfigService.PAYMENT_GRACE_MINUTES,
+                String.valueOf(AppConfigService.DEFAULT_PAYMENT_GRACE_MINUTES),
+                "Phút ân hạn sau giờ giữ hàng để nhận giao dịch đang xử lý");
     }
 
     private void ensure(String key, String value, String description) {

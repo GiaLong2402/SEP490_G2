@@ -11,6 +11,7 @@ import ContactPage from '@/pages/storefront/ContactPage/ContactPage'
 import CartPage from '@/pages/storefront/CartPage/CartPage'
 import CheckoutPage from '@/pages/storefront/CheckoutPage/CheckoutPage'
 import PaymentResultPage from '@/pages/storefront/PaymentResultPage/PaymentResultPage'
+import ResumePaymentPage from '@/pages/storefront/ResumePaymentPage/ResumePaymentPage'
 import RequestDetailPage from '@/pages/storefront/RequestDetailPage/RequestDetailPage'
 import LoginPage from '@/pages/storefront/LoginPage/LoginPage'
 import AccountPage from '@/pages/storefront/AccountPage/AccountPage'
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="gio-hang" element={<CartPage />} />
           <Route path="thanh-toan" element={<CheckoutPage />} />
           <Route path="thanh-toan/ket-qua" element={<PaymentResultPage />} />
+          <Route path="thanh-toan/don/:code" element={<ResumePaymentPage />} />
           <Route path="tai-khoan" element={<AccountPage />} />
           <Route path="tai-khoan/so-dia-chi" element={<AddressBookPage />} />
           <Route path="don-hang" element={<OrdersPage />} />

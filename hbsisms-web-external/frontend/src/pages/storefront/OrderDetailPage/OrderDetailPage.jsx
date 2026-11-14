@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import AccountShell from '@/components/storefront/AccountShell/AccountShell'
 import CancelOrderDialog from '@/components/storefront/CancelOrderDialog/CancelOrderDialog'
@@ -10,7 +10,6 @@ import {
   ClipboardIcon,
   ClockIcon,
   CloseIcon,
-  ExternalLinkIcon,
   HeadsetIcon,
   HistoryIcon,
   MapPinIcon,
@@ -23,14 +22,27 @@ import {
 } from '@/components/icons/Icons'
 import payosLogo from '@/assets/payment/payos.svg'
 import { ordersApi } from '@/api/orders'
-import { ORDER_STATUS } from '@/constants/orderStatus'
-import { ROUTES, orderReceiptPath } from '@/constants/routes'
+import {
+  ORDER_STATUS,
+  PAYMENT_CHECKING_STATUS,
+  isRefundOrder,
+  liveOrderStatus,
+  nextPaymentPhaseAt,
+} from '@/constants/orderStatus'
+import { ROUTES, orderReceiptPath, resumePaymentPath } from '@/constants/routes'
 import { useAsync } from '@/hooks/useAsync'
 import { formatDateTime, formatSchedule } from '@/utils/date'
 import { formatPrice } from '@/utils/formatPrice'
 
 /** Bước hiện tại trên hành trình theo trạng thái hiển thị */
-const JOURNEY_STEP = { awaiting_payment: 0, preparing: 2, shipping: 3, completed: 4, cancelled: -1 }
+const JOURNEY_STEP = {
+  awaiting_payment: 0,
+  preparing: 2,
+  shipping: 3,
+  completed: 4,
+  cancelled: -1,
+  expired: -1,
+}
 
 const HEADLINE = {
   awaiting_payment: 'Đơn hàng đang chờ bạn thanh toán',
@@ -38,6 +50,7 @@ const HEADLINE = {
   shipping: 'Đơn hàng đang trên đường đến bạn',
   completed: 'Đơn hàng đã hoàn tất',
   cancelled: 'Đơn hàng đã bị hủy',
+  expired: 'Đơn đã hết hạn thanh toán',
 }
 
 function journeySteps(isDelivery) {
@@ -82,12 +95,42 @@ export default function OrderDetailPage() {
 
 function OrderDetail({ order, onChanged }) {
   const [cancelOpen, setCancelOpen] = useState(false)
-  const status = ORDER_STATUS[order.uiStatus]
-  const step = JOURNEY_STEP[order.uiStatus]
+  const [now, setNow] = useState(() => Date.now())
+  // Đơn chờ thanh toán: QR đóng → "Đang kiểm tra thanh toán" → hết hạn, tự đổi khi trang đang mở
+  const { uiStatus, checking } = liveOrderStatus(order, now)
+  const refund = isRefundOrder(order)
+  const status = checking ? PAYMENT_CHECKING_STATUS : ORDER_STATUS[uiStatus]
+  const step = JOURNEY_STEP[uiStatus]
   const steps = journeySteps(order.isDelivery)
   const stepTimes = [order.placedAt, order.payment?.paidAt]
   const schedule = formatSchedule(order.schedule)
-  const awaitingPayment = order.uiStatus === 'awaiting_payment'
+  const awaitingPayment = uiStatus === 'awaiting_payment' && !checking
+  const canCancel = order.canCancel && !checking
+
+  const nextChange = uiStatus === 'awaiting_payment' ? nextPaymentPhaseAt(order.holdExpiresAt, now) : null
+  useEffect(() => {
+    if (!nextChange) return undefined
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.min(nextChange - Date.now() + 300, 2 ** 31 - 1))
+    return () => window.clearTimeout(timer)
+  }, [nextChange])
+
+  // Đang kiểm tra: hỏi lại đơn mỗi 5 giây để thấy ngay khi tiền về hoặc đơn bị hủy
+  useEffect(() => {
+    if (!checking) return undefined
+    const ac = new AbortController()
+    const id = window.setInterval(() => {
+      ordersApi
+        .getMine(order.code, ac.signal)
+        .then((fresh) => {
+          if (fresh.uiStatus !== 'awaiting_payment') onChanged(fresh)
+        })
+        .catch(() => {})
+    }, 5000)
+    return () => {
+      window.clearInterval(id)
+      ac.abort()
+    }
+  }, [checking, order.code, onChanged])
 
   return (
     <div className="od">
@@ -106,13 +149,15 @@ function OrderDetail({ order, onChanged }) {
             <span className="order-status order-status--success">
               <CheckIcon size={16} /> Đã thanh toán
             </span>
-          ) : (
-            order.uiStatus !== 'cancelled' && (
-              <span className="order-status order-status--warning">
-                <ClockIcon size={16} /> Chưa thanh toán
-              </span>
-            )
-          )}
+          ) : refund ? (
+            <span className="order-status order-status--warning">
+              <ClockIcon size={16} /> {order.paymentStatus === 'REFUNDED' ? 'Đã hoàn tiền' : 'Chờ hoàn tiền'}
+            </span>
+          ) : uiStatus === 'awaiting_payment' ? (
+            <span className="order-status order-status--warning">
+              <ClockIcon size={16} /> Chưa thanh toán
+            </span>
+          ) : null}
         </div>
       </section>
 
@@ -126,8 +171,15 @@ function OrderDetail({ order, onChanged }) {
             <status.Icon size={24} />
           </span>
           <div>
-            <strong>{HEADLINE[order.uiStatus]}</strong>
-            {schedule && order.uiStatus !== 'cancelled' && (
+            <strong>
+              {checking
+                ? 'Đang kiểm tra thanh toán'
+                : refund
+                  ? 'Đơn đã hủy, cửa hàng sẽ hoàn tiền cho bạn'
+                  : HEADLINE[uiStatus]}
+            </strong>
+            {checking && <span>Nếu bạn đã chuyển khoản, vui lòng chờ. Đừng chuyển lại lần nữa.</span>}
+            {schedule && !checking && uiStatus !== 'cancelled' && uiStatus !== 'expired' && (
               <span>
                 {order.isDelivery ? 'Dự kiến giao' : 'Hẹn lấy hàng'}: {schedule}
               </span>
@@ -245,10 +297,25 @@ function OrderDetail({ order, onChanged }) {
             </span>
             <div>
               <strong>
-                {order.isPaid ? 'Đã thanh toán' : order.uiStatus === 'cancelled' ? 'Không thanh toán' : 'Chưa thanh toán'}
+                {order.isPaid
+                  ? 'Đã thanh toán'
+                  : refund
+                    ? order.paymentStatus === 'REFUNDED'
+                      ? 'Đã hoàn tiền'
+                      : 'Đã nhận tiền, chờ hoàn tiền'
+                    : uiStatus === 'cancelled'
+                      ? 'Không thanh toán'
+                      : 'Chưa thanh toán'}
               </strong>
               <span>Chuyển khoản qua PayOS</span>
               {order.payment?.paidAt && <span>{formatDateTime(order.payment.paidAt)}</span>}
+              {/* Khách sửa số tiền chuyển nhiều hơn tiền đơn — tự ẩn khi cửa hàng đã hoàn phần thừa */}
+              {order.isPaid && order.paidAmount > order.total && (
+                <span className="od-pay__over">
+                  Bạn đã chuyển {formatPrice(order.paidAmount)}, thừa {formatPrice(order.paidAmount - order.total)}{' '}
+                  so với tiền đơn. Cửa hàng sẽ liên hệ để hoàn lại phần thừa.
+                </span>
+              )}
             </div>
             <img src={payosLogo} alt="PayOS" className="od-pay__logo" />
           </div>
@@ -283,15 +350,21 @@ function OrderDetail({ order, onChanged }) {
         <div className="od-help__text">
           <strong>{awaitingPayment ? 'Hoàn tất thanh toán để cửa hàng chuẩn bị hàng' : 'Cần hỗ trợ với đơn hàng?'}</strong>
           <span>
-            {order.canCancel
-              ? 'Bạn có thể hủy đơn khi chưa thanh toán.'
-              : order.uiStatus === 'cancelled'
-                ? 'Đơn đã hủy. Liên hệ cửa hàng nếu bạn cần hỗ trợ thêm.'
-                : 'Đơn đã thanh toán không tự hủy được — liên hệ cửa hàng nếu cần đổi hoặc hủy.'}
+            {checking
+              ? 'Hệ thống đang kiểm tra giao dịch (khoảng 2 phút). Nếu bạn chưa chuyển khoản, đơn sẽ tự hủy.'
+              : refund
+                ? 'Cửa hàng đã nhận tiền nhưng đơn không thể giao. Cửa hàng sẽ liên hệ để hoàn tiền cho bạn.'
+                : canCancel
+                  ? 'Bạn có thể hủy đơn khi chưa thanh toán.'
+                  : uiStatus === 'cancelled' || uiStatus === 'expired'
+                    ? uiStatus === 'expired'
+                      ? 'Đơn hết hạn thanh toán, hàng đã trả kho. Bạn có thể đặt lại đơn mới.'
+                      : 'Đơn đã hủy. Liên hệ cửa hàng nếu bạn cần hỗ trợ thêm.'
+                    : 'Đơn đã thanh toán không tự hủy được — liên hệ cửa hàng nếu cần đổi hoặc hủy.'}
           </span>
         </div>
         <div className="od-help__actions">
-          {order.canCancel && (
+          {canCancel && (
             <button type="button" className="od-cancel" onClick={() => setCancelOpen(true)}>
               <CloseIcon size={18} /> Hủy đơn
             </button>
@@ -301,10 +374,10 @@ function OrderDetail({ order, onChanged }) {
               <ClipboardIcon size={18} /> Xem biên lai
             </Link>
           )}
-          {awaitingPayment && order.payment?.checkoutUrl ? (
-            <a href={order.payment.checkoutUrl} className="btn btn--primary btn--pill">
-              Thanh toán ngay <ExternalLinkIcon size={18} />
-            </a>
+          {awaitingPayment && order.payment?.payosOrderCode ? (
+            <Link to={resumePaymentPath(order.code)} className="btn btn--primary btn--pill">
+              Thanh toán ngay
+            </Link>
           ) : (
             <Link to={ROUTES.CONTACT} className="btn btn--primary btn--pill">
               <HeadsetIcon size={18} /> Liên hệ cửa hàng

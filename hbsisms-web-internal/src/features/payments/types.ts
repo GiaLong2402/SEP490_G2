@@ -8,6 +8,12 @@ export interface PaymentListItem extends Payment {
   channel: SaleChannel | null;
   reconcileFlag: PaymentReconcileFlag;
   needsRefund: boolean;
+  /** Tiền khách chuyển thừa (giao dịch gắn "thừa"); null nếu không thừa. */
+  excessAmount?: number | null;
+  /** Tài khoản người chuyển do PayOS gửi kèm (có thể trống). */
+  payerName?: string | null;
+  payerAccount?: string | null;
+  payerBank?: string | null;
 }
 
 export interface PaymentInput {

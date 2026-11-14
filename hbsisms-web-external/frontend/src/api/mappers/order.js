@@ -30,7 +30,12 @@ export function fromOrderDto(dto) {
     placedAt: dto.placedAt || dto.createdAt || null,
     state,
     paymentStatus,
-    uiStatus: orderUiStatus(state, paymentStatus),
+    uiStatus: orderUiStatus(
+      state,
+      paymentStatus,
+      dto.holdExpiresAt || null,
+      (dto.events || []).some((e) => String(e.eventType || '').toLowerCase() === 'expired'),
+    ),
     isPaid: paymentStatus === 'PAID',
     canCancel: Boolean(dto.canCancel),
     isDelivery,

@@ -90,7 +90,7 @@ public class PayosClient {
                     .header(PayosConfig.HEADER_API_KEY, properties.apiKey())
                     .retrieve()
                     .body(String.class);
-            return parseGetResponse(raw);
+            return parseGetResponse(raw, orderCode);
         } catch (RestClientResponseException ex) {
             log.warn("PayOS GET payment-request HTTP {} for orderCode={}", ex.getStatusCode().value(), orderCode);
             return Optional.empty();
@@ -136,10 +136,15 @@ public class PayosClient {
         }
     }
 
-    private Optional<PayosPaymentInfoResult> parseGetResponse(String raw) {
+    private Optional<PayosPaymentInfoResult> parseGetResponse(String raw, long orderCode) {
         try {
             JsonNode root = objectMapper.readTree(raw == null ? "{}" : raw);
             String code = text(root, "code");
+            // 101 = mã không tồn tại trên kênh hiện tại (sandbox đã xóa / key khác) — không phải lỗi mạng
+            if ("101".equals(code)) {
+                log.info("PayOS GET payment-request not found orderCode={} desc={}", orderCode, text(root, "desc"));
+                return Optional.of(new PayosPaymentInfoResult(orderCode, 0, "NOT_FOUND", null));
+            }
             if (!"00".equals(code)) {
                 log.warn("PayOS GET payment-request code={} desc={}", code, text(root, "desc"));
                 return Optional.empty();
@@ -153,10 +158,11 @@ public class PayosClient {
                 return Optional.empty();
             }
             return Optional.of(new PayosPaymentInfoResult(
-                    data.path("orderCode").asLong(),
+                    data.path("orderCode").asLong(orderCode),
                     data.path("amount").asInt(),
                     status.trim().toUpperCase(Locale.ROOT),
-                    text(data, "paymentLinkId")));
+                    text(data, "paymentLinkId"),
+                    readAmountPaid(data)));
         } catch (Exception ex) {
             log.warn("PayOS GET payment-request unreadable: {}", ex.getMessage());
             return Optional.empty();
@@ -210,6 +216,23 @@ public class PayosClient {
         if (!properties.enabled()) {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "PayOS chưa cấu hình");
         }
+    }
+
+    /** Số tiền khách thực chuyển: "amountPaid"; không có thì cộng "transactions[].amount"; không có cả hai → null. */
+    static Integer readAmountPaid(JsonNode data) {
+        JsonNode paid = data.get("amountPaid");
+        if (paid != null && paid.isNumber()) {
+            return paid.asInt();
+        }
+        JsonNode txns = data.get("transactions");
+        if (txns != null && txns.isArray() && !txns.isEmpty()) {
+            int sum = 0;
+            for (JsonNode t : txns) {
+                sum += t.path("amount").asInt();
+            }
+            return sum;
+        }
+        return null;
     }
 
     private static String text(JsonNode node, String field) {

@@ -1,6 +1,7 @@
 package com.hbsisms.feature.user;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -29,6 +30,9 @@ public interface UserRepository extends JpaRepository<AppUser, Long>, JpaSpecifi
     Optional<AppUser> findWithRoleByPhone(String phone);
 
     Optional<AppUser> findByEmployeeCode(String employeeCode);
+
+    /** Tài khoản đang hoạt động theo mã vai trò (vd. {@code owner}) — dùng để gửi thông báo. */
+    List<AppUser> findByRole_CodeAndActiveTrue(String roleCode);
 
     @Override
     @EntityGraph(attributePaths = "role")

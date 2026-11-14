@@ -182,8 +182,12 @@ public class CheckoutService {
         order.setState(OrderState.PENDING);
         order.setSubtotal(subtotal);
         order.setDiscountTotal(ZERO);
-        order.setShippingFee(ZERO);
-        order.setTotal(subtotal);
+        // Giao tận nơi: cộng phí giao (app_config shipping_fee_delivery); nhận tại cửa hàng: 0
+        BigDecimal shippingFee = request.fulfillmentMethod() == FulfillmentMethod.SHOP_DELIVERY
+                ? BigDecimal.valueOf(appConfigService.shippingFeeDelivery())
+                : ZERO;
+        order.setShippingFee(shippingFee);
+        order.setTotal(subtotal.add(shippingFee));
         order.setOverLimit(false);
         order.setOverLimitAmount(ZERO);
         order.setPlacedBy(placedBy);

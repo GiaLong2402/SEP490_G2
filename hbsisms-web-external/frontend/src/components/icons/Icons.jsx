@@ -188,6 +188,15 @@ export function InfoIcon({ size = 18, className }) {
   )
 }
 
+export function HelpIcon({ size = 18, className }) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.6M12 17h.01" />
+    </svg>
+  )
+}
+
 export function PackageIcon({ size = 22, className }) {
   return (
     <svg {...baseProps(size, className)}>

@@ -31,40 +31,64 @@
   background: var(--color-action);
 }
 
-/* Bộ lọc nhanh theo trạng thái */
+/* Bộ lọc: desktop một hàng chip; mobile dùng select (không wrap / không cuộn ngang) */
 .orders-filter {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
   margin-bottom: 14px;
+}
+
+.orders-filter__chips {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.orders-filter__select {
+  display: none;
+  width: 100%;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-white);
+  color: var(--color-brand);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .orders-filter__chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 38px;
-  padding: 0 8px 0 16px;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 6px 0 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);
   background: var(--color-white);
   color: var(--color-brand);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .orders-filter__chip span {
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
   border-radius: var(--radius-pill);
   background: #edf2f5;
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  line-height: 22px;
+  line-height: 20px;
   text-align: center;
 }
 
@@ -83,6 +107,16 @@
   color: var(--color-white);
 }
 
+@media (max-width: 1100px) {
+  .orders-filter__chips {
+    display: none;
+  }
+
+  .orders-filter__select {
+    display: block;
+  }
+}
+
 /* Ô tìm + chọn thời gian */
 .orders-toolbar {
   display: grid;
@@ -91,8 +125,7 @@
   margin-bottom: 18px;
 }
 
-.orders-search,
-.orders-time {
+.orders-search {
   position: relative;
   display: flex;
   align-items: center;
@@ -106,13 +139,11 @@
   transition: border-color 0.15s ease;
 }
 
-.orders-search:focus-within,
-.orders-time:focus-within {
+.orders-search:focus-within {
   border-color: var(--color-accent);
 }
 
-.orders-search input,
-.orders-time select {
+.orders-search input {
   flex: 1;
   min-width: 0;
   height: 100%;
@@ -124,16 +155,100 @@
   font-size: 15px;
 }
 
-.orders-time select {
-  appearance: none;
-  padding-right: 24px;
+/* Bộ lọc thời gian (TimeFilter) */
+.orders-time {
+  position: relative;
+}
+
+.orders-time__trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-white);
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
   cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.orders-time__trigger span {
+  flex: 1;
+  color: var(--color-text);
+}
+
+.orders-time__trigger:hover,
+.orders-time__trigger.is-open {
+  border-color: var(--color-accent);
+}
+
+/* Đang lọc theo khoảng thời gian → tô nhẹ để khách biết danh sách đang bị thu hẹp */
+.orders-time__trigger.is-set {
+  border-color: var(--color-accent);
+  background: #eefafd;
+  color: #0b8ea2;
+}
+
+.orders-time__trigger.is-set span {
+  color: #0b8ea2;
+  font-weight: 700;
 }
 
 .orders-time__chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.orders-time__trigger.is-open .orders-time__chevron {
+  transform: rotate(180deg);
+}
+
+.orders-time__menu {
   position: absolute;
-  right: 12px;
-  pointer-events: none;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  z-index: 20;
+  margin: 0;
+  padding: 6px;
+  border: 1px solid #cfe3ec;
+  border-radius: 12px;
+  background: var(--color-white);
+  box-shadow: 0 14px 32px rgba(7, 54, 83, 0.14);
+  list-style: none;
+}
+
+.orders-time__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-brand);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.orders-time__option:hover {
+  background: #f0fafd;
+}
+
+.orders-time__option.is-active {
+  background: #e0f6fa;
+  color: #0b8ea2;
+  font-weight: 700;
 }
 
 .orders-empty {
@@ -168,30 +283,44 @@
 }
 
 .order-card__head {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 6px 16px;
+  column-gap: 12px;
   padding: 12px 20px;
   background: var(--color-surface);
   border-bottom: 1px solid #dcecf3;
 }
 
-.order-card__head > strong {
+.order-card__head-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px 16px;
+  min-width: 0;
+}
+
+.order-card__head > strong,
+.order-card__head-main > strong {
   color: var(--color-brand);
   font-size: 16px;
   font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .order-card__date {
+  flex-shrink: 0;
   padding-left: 16px;
   border-left: 1px solid #c9dfe8;
   color: var(--color-muted);
   font-size: 14px;
+  white-space: nowrap;
 }
 
 .order-card__head .order-status {
-  margin-left: auto;
+  justify-self: end;
 }
 
 /* Cần thanh toán: đầu thẻ phớt cam + viền cam */

@@ -1,42 +1,48 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import AccountShell from '@/components/storefront/AccountShell/AccountShell'
 import Pagination from '@/components/storefront/Pagination/Pagination'
 import LoadState from '@/components/ui/LoadState'
 import {
-  CalendarIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   ClipboardIcon,
-  ExternalLinkIcon,
   InfoIcon,
   PackageIcon,
   SearchIcon,
 } from '@/components/icons/Icons'
 import { ordersApi } from '@/api/orders'
 import { salesRequestsApi } from '@/api/salesRequests'
-import { ORDER_FILTERS, ORDER_STATUS, REQUEST_FILTERS, REQUEST_STATUS, needsCustomerAction } from '@/constants/orderStatus'
-import { ROUTES, orderDetailPath, requestDetailPath } from '@/constants/routes'
+import {
+  ORDER_FILTERS,
+  ORDER_STATUS,
+  PAYMENT_CHECKING_STATUS,
+  REQUEST_FILTERS,
+  REQUEST_STATUS,
+  isRefundOrder,
+  liveOrderStatus,
+  needsCustomerAction,
+  nextPaymentPhaseAt,
+} from '@/constants/orderStatus'
+import { ROUTES, orderDetailPath, requestDetailPath, resumePaymentPath } from '@/constants/routes'
 import { useAsync } from '@/hooks/useAsync'
 import { formatDate, formatDateTime, formatSchedule } from '@/utils/date'
 import { formatPrice } from '@/utils/formatPrice'
+import TimeFilter from './TimeFilter'
+import { withinRange } from './timeRange'
 import './OrdersPage.css'
 
 const PAGE_SIZE = 4
 
-const TIME_OPTIONS = [
-  { value: 'all', label: 'Mọi thời gian' },
-  { value: '30', label: '30 ngày qua' },
-  { value: '90', label: '3 tháng qua' },
-]
-
-function withinDays(iso, days, now) {
-  if (days === 'all' || !iso) return true
-  return (now - new Date(iso)) / 86400000 <= Number(days)
-}
 
 /** Dòng nhắn ở chân thẻ đơn */
 function orderMessage(order) {
+  if (order.checking) return 'Nếu bạn đã chuyển khoản, vui lòng chờ. Đừng chuyển lại lần nữa.'
+  if (isRefundOrder(order)) {
+    return order.paymentStatus === 'REFUNDED'
+      ? 'Cửa hàng đã hoàn tiền cho bạn'
+      : 'Cửa hàng đã nhận tiền nhưng đơn không thể giao, sẽ liên hệ hoàn tiền cho bạn'
+  }
   switch (order.uiStatus) {
     case 'awaiting_payment':
       return order.holdExpiresAt
@@ -48,6 +54,8 @@ function orderMessage(order) {
       return order.isDelivery ? 'Đơn hàng đang trên đường giao đến bạn' : 'Hàng đã sẵn sàng, mời bạn đến lấy'
     case 'completed':
       return order.isDelivery ? 'Đã giao hàng thành công' : 'Bạn đã nhận hàng'
+    case 'expired':
+      return 'Hết thời gian thanh toán, hàng đã trả lại kho'
     default:
       return 'Đơn hàng đã hủy'
   }
@@ -74,7 +82,20 @@ function StatusChip({ meta }) {
 export default function OrdersPage() {
   const ordersQuery = useAsync((signal) => ordersApi.listMine(signal), [])
   const requestsQuery = useAsync((signal) => salesRequestsApi.listMine(signal), [])
-  const [now] = useState(() => Date.now())
+  const [now, setNow] = useState(() => Date.now())
+
+  // Trang đang mở mà đơn chờ thanh toán tới mốc đổi giai đoạn (QR đóng → đang kiểm tra → hết hạn)
+  // thì tự cập nhật thẻ đơn, không cần tải lại
+  const nextChange = (ordersQuery.data || [])
+    .filter((o) => o.uiStatus === 'awaiting_payment')
+    .map((o) => nextPaymentPhaseAt(o.holdExpiresAt, now))
+    .filter(Boolean)
+    .sort((a, b) => a - b)[0]
+  useEffect(() => {
+    if (!nextChange) return undefined
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.min(nextChange - Date.now() + 300, 2 ** 31 - 1))
+    return () => window.clearTimeout(timer)
+  }, [nextChange])
 
   const [tab, setTab] = useState('orders')
   const [filter, setFilter] = useState('all')
@@ -89,7 +110,10 @@ export default function OrdersPage() {
       id: 'orders',
       label: 'Đơn hàng',
       Icon: PackageIcon,
-      list: (ordersQuery.data || []).map((o) => ({ ...o, status: o.uiStatus, date: o.placedAt })),
+      list: (ordersQuery.data || []).map((o) => {
+        const live = liveOrderStatus(o, now)
+        return { ...o, ...live, status: live.uiStatus, date: o.placedAt }
+      }),
       filters: ORDER_FILTERS,
       meta: ORDER_STATUS,
       q: ordersQuery,
@@ -109,7 +133,7 @@ export default function OrdersPage() {
   const keyword = query.trim().toLowerCase()
   const matched = current.list.filter(
     (item) =>
-      withinDays(item.date, time, now) &&
+      withinRange(item.date, time, now) &&
       (keyword === '' ||
         item.code.toLowerCase().includes(keyword) ||
         (isOrders
@@ -161,24 +185,45 @@ export default function OrdersPage() {
         </div>
 
         <div className="orders-filter" role="group" aria-label="Lọc theo trạng thái">
-          {['all', ...current.filters].map((key) => {
-            const count = key === 'all' ? matched.length : matched.filter((i) => i.status === key).length
-            return (
-              <button
-                key={key}
-                type="button"
-                aria-pressed={filter === key}
-                className={`orders-filter__chip ${filter === key ? 'is-active' : ''}`}
-                onClick={() => {
-                  setFilter(key)
-                  setPage(1)
-                }}
-              >
-                {key === 'all' ? 'Tất cả' : current.meta[key].label}
-                <span>{count}</span>
-              </button>
-            )
-          })}
+          <div className="orders-filter__chips">
+            {['all', ...current.filters].map((key) => {
+              const count = key === 'all' ? matched.length : matched.filter((i) => i.status === key).length
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  aria-pressed={filter === key}
+                  className={`orders-filter__chip ${filter === key ? 'is-active' : ''}`}
+                  onClick={() => {
+                    setFilter(key)
+                    setPage(1)
+                  }}
+                >
+                  {key === 'all' ? 'Tất cả' : current.meta[key].label}
+                  <span>{count}</span>
+                </button>
+              )
+            })}
+          </div>
+          <select
+            className="orders-filter__select"
+            aria-label="Lọc theo trạng thái"
+            value={filter}
+            onChange={(e) => {
+              setFilter(e.target.value)
+              setPage(1)
+            }}
+          >
+            {['all', ...current.filters].map((key) => {
+              const count = key === 'all' ? matched.length : matched.filter((i) => i.status === key).length
+              const label = key === 'all' ? 'Tất cả' : current.meta[key].label
+              return (
+                <option key={key} value={key}>
+                  {label} ({count})
+                </option>
+              )
+            })}
+          </select>
         </div>
 
         <div className="orders-toolbar">
@@ -194,24 +239,13 @@ export default function OrdersPage() {
               placeholder={isOrders ? 'Tìm theo mã đơn hoặc tên sản phẩm' : 'Tìm theo mã yêu cầu hoặc nội dung'}
             />
           </label>
-          <label className="orders-time">
-            <CalendarIcon size={18} />
-            <select
-              value={time}
-              onChange={(e) => {
-                setTime(e.target.value)
-                setPage(1)
-              }}
-              aria-label="Thời gian"
-            >
-              {TIME_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            <ChevronDownIcon size={18} className="orders-time__chevron" />
-          </label>
+          <TimeFilter
+            value={time}
+            onChange={(v) => {
+              setTime(v)
+              setPage(1)
+            }}
+          />
         </div>
 
         <LoadState
@@ -257,13 +291,16 @@ export default function OrdersPage() {
 }
 
 function OrderCard({ order }) {
-  const meta = ORDER_STATUS[order.uiStatus]
-  const awaiting = order.uiStatus === 'awaiting_payment'
+  const meta = order.checking ? PAYMENT_CHECKING_STATUS : ORDER_STATUS[order.uiStatus]
+  // QR đã đóng thì không cho bấm Thanh toán nữa
+  const awaiting = order.uiStatus === 'awaiting_payment' && !order.checking
   return (
     <li className={`order-card ${awaiting ? 'is-action' : ''}`}>
       <div className="order-card__head">
-        <strong>Mã đơn: {order.displayCode}</strong>
-        <span className="order-card__date">Ngày đặt: {formatDate(order.placedAt)}</span>
+        <div className="order-card__head-main">
+          <strong>Mã đơn: {order.displayCode}</strong>
+          <span className="order-card__date">Ngày đặt: {formatDate(order.placedAt)}</span>
+        </div>
         <StatusChip meta={meta} />
       </div>
 
@@ -293,10 +330,10 @@ function OrderCard({ order }) {
           <Link to={orderDetailPath(order.code)} className="order-btn">
             Xem chi tiết
           </Link>
-          {awaiting && order.payment?.checkoutUrl && (
-            <a href={order.payment.checkoutUrl} className="order-btn order-btn--primary">
-              Thanh toán <ExternalLinkIcon size={16} />
-            </a>
+          {awaiting && order.payment?.payosOrderCode && (
+            <Link to={resumePaymentPath(order.code)} className="order-btn order-btn--primary">
+              Thanh toán
+            </Link>
           )}
           {order.uiStatus === 'shipping' && (
             <Link to={orderDetailPath(order.code)} className="order-btn order-btn--primary">
@@ -315,11 +352,13 @@ function RequestCard({ req, open, onToggle }) {
   return (
     <li className={`order-card ${ordered ? 'is-action' : ''}`}>
       <div className="order-card__head">
-        <strong>Mã yêu cầu: {req.code}</strong>
-        <span className="order-card__date">
-          Ngày gửi: {formatDate(req.receivedAt)}
-          {req.neededDate && <> · Cần nhận: {formatDate(req.neededDate)}</>}
-        </span>
+        <div className="order-card__head-main">
+          <strong>Mã yêu cầu: {req.code}</strong>
+          <span className="order-card__date">
+            Ngày gửi: {formatDate(req.receivedAt)}
+            {req.neededDate && <> · Cần nhận: {formatDate(req.neededDate)}</>}
+          </span>
+        </div>
         <StatusChip meta={meta} />
       </div>
 

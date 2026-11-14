@@ -9,6 +9,8 @@ export interface PaymentQuery extends ListQuery {
   channel?: string;
   orderId?: number | string;
   reconcileFlag?: string;
+  /** "asc" = cũ nhất trước; bỏ trống = mới nhất trước */
+  sort?: string;
 }
 
 export const paymentsApi = {

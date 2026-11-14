@@ -12,6 +12,8 @@ export const ROUTES = {
   CART: '/gio-hang',
   CHECKOUT: '/thanh-toan',
   PAYMENT_RESULT: '/thanh-toan/ket-qua',
+  /** Tiếp tục thanh toán đơn đã tạo — màn QR custom */
+  RESUME_PAYMENT: '/thanh-toan/don/:code',
   ACCOUNT: '/tai-khoan',
   ADDRESSES: '/tai-khoan/so-dia-chi',
   ORDERS: '/don-hang',
@@ -19,7 +21,6 @@ export const ROUTES = {
   ORDER_RECEIPT: '/don-hang/:code/bien-lai',
   REQUEST_DETAIL: '/yeu-cau/:code',
   DISPLAY_SETTINGS: '/cai-dat-hien-thi',
-
 
   // Chung
   NOT_FOUND: '*',
@@ -33,6 +34,11 @@ export function productDetailPath(slug) {
 /** URL chi tiết đơn: "HB00123" hoặc "#HB00123" -> /don-hang/HB00123 */
 export function orderDetailPath(code) {
   return `/don-hang/${encodeURIComponent(code.replace('#', ''))}`
+}
+
+/** URL tiếp tục thanh toán (QR custom): /thanh-toan/don/HB00123 */
+export function resumePaymentPath(code) {
+  return `/thanh-toan/don/${encodeURIComponent(String(code).replace('#', ''))}`
 }
 
 /** URL biên lai của đơn */

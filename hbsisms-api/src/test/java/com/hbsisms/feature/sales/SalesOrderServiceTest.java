@@ -24,6 +24,7 @@ import com.hbsisms.feature.customer.pricing.dto.PricedLineResponse;
 import com.hbsisms.feature.customer.pricing.dto.PricingLineInput;
 import com.hbsisms.feature.customer.pricing.dto.PricingRequest;
 import com.hbsisms.feature.customer.pricing.dto.PricingResultResponse;
+import com.hbsisms.feature.payment.payos.PayosLinkCanceller;
 import com.hbsisms.feature.payment.CustomerDebtLedgerRepository;
 import com.hbsisms.feature.payment.PaymentMethod;
 import com.hbsisms.feature.payment.PaymentRepository;
@@ -79,6 +80,8 @@ class SalesOrderServiceTest {
     private AuditLogService auditLogService;
     @Mock
     private OrderAllocationService orderAllocationService;
+    @Mock
+    private PayosLinkCanceller payosLinkCanceller;
 
     private SalesOrderService service;
     private final Clock clock = Clock.fixed(Instant.parse("2026-11-09T10:00:00Z"), ZoneOffset.UTC);
@@ -106,6 +109,7 @@ class SalesOrderServiceTest {
                 pricingService,
                 auditLogService,
                 orderAllocationService,
+                payosLinkCanceller,
                 clock);
 
         retailCustomer = new Customer();
@@ -386,6 +390,8 @@ class SalesOrderServiceTest {
         assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.UNPAID);
         verify(orderAllocationService).releaseForOrder(eq(order), eq(9L), any());
         verify(auditLogService).record(eq(9L), eq("cancel"), eq("sales_order"), eq(11L), any());
+        // Khóa QR PayOS còn chờ khi cửa hàng hủy đơn
+        verify(payosLinkCanceller).cancelPendingLinks(order, "Cửa hàng hủy đơn");
     }
 
     @Test

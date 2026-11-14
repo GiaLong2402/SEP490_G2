@@ -6,9 +6,8 @@ import {
   CalendarIcon,
   ClockIcon,
   CloseIcon,
-  CopyIcon,
-  ExternalLinkIcon,
   HeadsetIcon,
+  HelpIcon,
   PackageIcon,
   QrIcon,
   ShieldIcon,
@@ -17,6 +16,7 @@ import {
 } from '@/components/icons/Icons'
 import CancelOrderDialog from '@/components/storefront/CancelOrderDialog/CancelOrderDialog'
 import { paymentsApi } from '@/api/payments'
+import { PAYMENT_GRACE_SECONDS, paymentPhase } from '@/constants/orderStatus'
 import { ROUTES, orderDetailPath } from '@/constants/routes'
 import { formatSchedule } from '@/utils/date'
 import { formatPrice } from '@/utils/formatPrice'
@@ -24,15 +24,15 @@ import payosLogo from '@/assets/payment/payos.svg'
 
 // Thời gian giữ hàng mặc định (app_config payment_hold_minutes = 15) — chỉ dùng vẽ thanh tiến độ
 const HOLD_SECONDS = 15 * 60
-// Hỏi lại trạng thái thanh toán mỗi 5 giây (khách quét QR bằng app ngân hàng, không quay về returnUrl)
+// Hỏi lại trạng thái thanh toán (khách quét QR bằng app ngân hàng, không quay về returnUrl):
+// mỗi 5 giây khi còn QR, mỗi 3 giây khi QR đã đóng và đang chờ xác nhận tiền về
 const POLL_MS = 5000
-
-const secondsUntil = (iso) => (iso ? Math.max(0, Math.round((new Date(iso) - Date.now()) / 1000)) : HOLD_SECONDS)
+const CHECK_POLL_MS = 3000
 
 /** PayOS trả chuỗi VietQR/EMV hoặc URL ảnh QR. */
 function PaymentQr({ value }) {
   if (!value) {
-    return <p className="pay-qr__missing">Chưa có mã QR — mở trang PayOS bên dưới.</p>
+    return <p className="pay-qr__missing">Chưa có mã QR. Vui lòng tải lại trang hoặc liên hệ cửa hàng.</p>
   }
   if (/^(https?:|data:image)/i.test(value)) {
     return <img src={value} alt="Mã QR thanh toán PayOS" className="pay-qr__code pay-qr__code--img" />
@@ -61,40 +61,42 @@ function formatClock(sec) {
  */
 export default function PaymentStep({ order, payment }) {
   const navigate = useNavigate()
-  const [left, setLeft] = useState(() => secondsUntil(payment.expiresAt))
-  const [copied, setCopied] = useState(false)
+  const [now, setNow] = useState(() => Date.now())
   const [cancelOpen, setCancelOpen] = useState(false)
-  const expired = left === 0
-  const transferNote = order.code
+  const [tipOpen, setTipOpen] = useState(false)
+  const holdAt = payment.expiresAt ? new Date(payment.expiresAt).getTime() : now + HOLD_SECONDS * 1000
+  const left = Math.max(0, Math.round((holdAt - now) / 1000))
+  // open → closing (còn ≤ 1 phút) → checking (còn 10 giây: che QR, chờ tiền về ~2 phút) → lapsed
+  const phase = paymentPhase(payment.expiresAt, now)
+  const qrClosed = phase === 'checking' || phase === 'lapsed'
+  const lapsed = phase === 'lapsed'
+  // Đếm hết 2 phút ân hạn (khớp "khoảng 2 phút" trong thông báo)
+  const checkLeft = Math.max(0, Math.round((holdAt + PAYMENT_GRACE_SECONDS * 1000 - now) / 1000))
   const resultUrl = `${ROUTES.PAYMENT_RESULT}?orderCode=${payment.payosOrderCode}`
 
-  // Đếm ngược theo hạn server trả về
+  // Đồng hồ chạy tới hết thời gian kiểm tra
   useEffect(() => {
-    if (expired) return undefined
-    const id = window.setInterval(() => setLeft(secondsUntil(payment.expiresAt)), 1000)
+    if (lapsed) return undefined
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(id)
-  }, [expired, payment.expiresAt])
+  }, [lapsed])
 
-  // Hỏi lại trạng thái: đã trả → sang trang kết quả
+  // Hỏi lại trạng thái: có kết quả (đã trả / hết hạn / đơn bị hủy) → sang trang kết quả
   useEffect(() => {
-    if (expired) return undefined
-    const id = window.setInterval(() => {
-      paymentsApi
-        .getReturnStatus(payment.payosOrderCode)
-        .then((res) => {
-          if (res.status !== 'PENDING') navigate(resultUrl)
-        })
-        .catch(() => {})
-    }, POLL_MS)
+    if (lapsed) return undefined
+    const id = window.setInterval(
+      () => {
+        paymentsApi
+          .getReturnStatus(payment.payosOrderCode)
+          .then((res) => {
+            if (res.status !== 'PENDING') navigate(resultUrl)
+          })
+          .catch(() => {})
+      },
+      qrClosed ? CHECK_POLL_MS : POLL_MS,
+    )
     return () => window.clearInterval(id)
-  }, [expired, payment.payosOrderCode, navigate, resultUrl])
-
-  function copyNote() {
-    navigator.clipboard?.writeText(transferNote).then(() => {
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1800)
-    })
-  }
+  }, [lapsed, qrClosed, payment.payosOrderCode, navigate, resultUrl])
 
   return (
     <div className="pay">
@@ -117,35 +119,66 @@ export default function PaymentStep({ order, payment }) {
             <strong>{formatPrice(payment.amount ?? order.total)}</strong>
           </p>
 
-          <div className={`pay-qr ${expired ? 'is-expired' : ''}`}>
-            <PaymentQr value={payment.qrCode} />
-            {expired && <span className="pay-qr__overlay">Mã đã hết hạn</span>}
+          <div className={`pay-qr ${qrClosed ? 'is-expired' : ''}`}>
+            {/* QR đóng thì không vẽ mã nữa — khách không quét được */}
+            {qrClosed ? <span className="pay-qr__blank" aria-hidden="true" /> : <PaymentQr value={payment.qrCode} />}
+            {qrClosed && <span className="pay-qr__overlay">Mã QR đã đóng</span>}
           </div>
 
-          <div className="pay-note">
-            <span>
-              Nội dung chuyển khoản: <strong>{transferNote}</strong>
-            </span>
-            <button type="button" onClick={copyNote} aria-label="Sao chép nội dung chuyển khoản">
-              <CopyIcon size={18} />
-              {copied ? 'Đã sao chép' : 'Sao chép'}
-            </button>
-          </div>
-
-          {expired || !payment.checkoutUrl ? (
-            <span className="cart-summary__pay pay-open is-disabled" aria-disabled="true">
-              Mở trang thanh toán PayOS
-              <ExternalLinkIcon size={20} />
-            </span>
-          ) : (
-            <a href={payment.checkoutUrl} className="cart-summary__pay pay-open">
-              Mở trang thanh toán PayOS
-              <ExternalLinkIcon size={20} />
-            </a>
+          {!qrClosed && (
+            // PayOS chỉ nhận ra giao dịch khi khách quét QR (nội dung có mã riêng của PayOS, số tiền đúng).
+            // Không hiện nội dung để sao chép: chuyển tay sẽ thiếu mã → hệ thống không biết khách đã trả.
+            <p className="pay-note">
+              <strong>Vui lòng quét mã QR và giữ nguyên số tiền, nội dung chuyển khoản.</strong>
+              {/* Rê chuột (máy tính) hoặc chạm (điện thoại) vào dấu hỏi để xem giải thích */}
+              <span className={`pay-note__help ${tipOpen ? 'is-open' : ''}`}>
+                <button
+                  type="button"
+                  aria-label="Vì sao cần giữ nguyên?"
+                  aria-describedby="pay-note-tip"
+                  aria-expanded={tipOpen}
+                  onClick={() => setTipOpen((v) => !v)}
+                  onBlur={() => setTipOpen(false)}
+                >
+                  <HelpIcon size={18} />
+                </button>
+                <span id="pay-note-tip" role="tooltip" className="pay-note__tip">
+                  Nếu tự nhập số tài khoản để chuyển, hệ thống sẽ không nhận được thanh toán. Nếu lỡ chuyển sai số tiền,
+                  cửa hàng sẽ liên hệ để xử lý.
+                </span>
+              </span>
+            </p>
           )}
 
-          {expired ? (
-            <p className="pay-status is-expired">Hết thời gian thanh toán. Đơn sẽ được hủy và hàng trả lại kho.</p>
+          {lapsed ? (
+            <div className="pay-closed is-expired" role="status">
+              <strong>Đơn đã hết hạn thanh toán</strong>
+              <p>Hàng đã trả lại kho. Nếu bạn đã chuyển khoản, cửa hàng sẽ liên hệ để hoàn tiền cho bạn.</p>
+              <div className="pay-closed__actions">
+                <Link to={ROUTES.PRODUCTS} className="btn btn--primary btn--pill">
+                  Đặt đơn mới
+                </Link>
+                <Link to={ROUTES.HOME} className="btn btn--ghost btn--pill">
+                  Về trang chủ
+                </Link>
+              </div>
+            </div>
+          ) : qrClosed ? (
+            <div className="pay-closed" role="status">
+              <strong>
+                <span className="pay-status__spinner" aria-hidden="true" />
+                Mã QR đã đóng, đang kiểm tra giao dịch
+              </strong>
+              <ul>
+                <li>
+                  <b>Nếu bạn ĐÃ chuyển khoản:</b> vui lòng chờ, hệ thống đang kiểm tra (khoảng 2 phút).{' '}
+                  <b>Đừng chuyển lại lần nữa.</b>
+                </li>
+                <li>
+                  <b>Nếu bạn CHƯA chuyển khoản:</b> không cần làm gì, đơn sẽ tự hủy. Bạn có thể đặt lại đơn mới.
+                </li>
+              </ul>
+            </div>
           ) : (
             <div className="pay-status" role="status">
               <strong>
@@ -155,21 +188,33 @@ export default function PaymentStep({ order, payment }) {
               <span>Trang tự cập nhật khi giao dịch thành công.</span>
             </div>
           )}
+          {phase === 'closing' && (
+            <p className="pay-warn" role="alert">
+              <ClockIcon size={18} />
+              Còn dưới 1 phút. Nếu chưa kịp chuyển khoản, bạn có thể đặt lại đơn sau.
+            </p>
+          )}
 
         </section>
 
         {/* ===== Phải: thời gian + đơn hàng + hỗ trợ ===== */}
         <aside className="pay-side">
-          <div className={`pay-timer ${expired ? 'is-expired' : ''}`}>
+          <div className={`pay-timer ${lapsed ? 'is-expired' : qrClosed || phase === 'closing' ? 'is-closing' : ''}`}>
             <ClockIcon size={26} />
             <div>
-              <span>Thời gian thanh toán còn lại</span>
-              <strong>{formatClock(left)}</strong>
+              <span>{qrClosed && !lapsed ? 'Đang kiểm tra giao dịch' : 'Thời gian thanh toán còn lại'}</span>
+              <strong>{qrClosed && !lapsed ? formatClock(checkLeft) : formatClock(left)}</strong>
             </div>
             <div className="pay-timer__bar" aria-hidden="true">
-              <span style={{ width: `${Math.min(100, (left / HOLD_SECONDS) * 100)}%` }} />
+              <span style={{ width: `${qrClosed ? 0 : Math.min(100, (left / HOLD_SECONDS) * 100)}%` }} />
             </div>
-            <p>{expired ? 'Hàng đã được trả lại kho.' : 'Hòa Bình đang giữ hàng cho bạn.'}</p>
+            <p>
+              {lapsed
+                ? 'Hàng đã được trả lại kho.'
+                : qrClosed
+                  ? 'Hàng vẫn được giữ trong lúc kiểm tra.'
+                  : 'Hòa Bình đang giữ hàng cho bạn.'}
+            </p>
           </div>
 
           <div className="checkout-card pay-order">
@@ -177,20 +222,25 @@ export default function PaymentStep({ order, payment }) {
               <h2>Thông tin đơn hàng</h2>
               <span className="pay-order__code">{order.displayCode}</span>
             </div>
-            <dl>
-              <div>
-                <dt>{order.isDelivery ? <TruckIcon size={18} /> : <StoreIcon size={18} />} Nhận hàng</dt>
+            <dl className="pay-order__rows">
+              <div className="pay-order__row">
+                <dt>
+                  {order.isDelivery ? <TruckIcon size={18} /> : <StoreIcon size={18} />}
+                  <span>Nhận hàng</span>
+                </dt>
                 <dd>{order.isDelivery ? 'Giao tận nơi' : 'Tại cửa hàng'}</dd>
               </div>
-              <div>
+              <div className="pay-order__row">
                 <dt>
-                  <CalendarIcon size={18} /> Ngày giờ nhận
+                  <CalendarIcon size={18} />
+                  <span>Ngày giờ nhận</span>
                 </dt>
                 <dd>{formatSchedule(order.schedule)}</dd>
               </div>
-              <div>
+              <div className="pay-order__row">
                 <dt>
-                  <PackageIcon size={18} /> Sản phẩm
+                  <PackageIcon size={18} />
+                  <span>Sản phẩm</span>
                 </dt>
                 <dd>
                   {order.lines.length} loại · {order.lines.reduce((sum, l) => sum + l.qty, 0)} khay
@@ -201,7 +251,8 @@ export default function PaymentStep({ order, payment }) {
               <span>Tổng thanh toán</span>
               <strong>{formatPrice(order.total)}</strong>
             </p>
-            {expired ? (
+            {/* QR đã đóng: không cho hủy (khách có thể vừa chuyển tiền) */}
+            {qrClosed ? (
               <Link to={orderDetailPath(order.code)} className="pay-cancel">
                 Xem đơn hàng
               </Link>

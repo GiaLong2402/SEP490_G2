@@ -1,0 +1,8 @@
+/* Ẩn logo / attribution Goong–Mapbox trên map picker */
+.mapboxgl-ctrl-logo,
+.mapboxgl-ctrl-attrib,
+.goongjs-ctrl-logo,
+.goongjs-ctrl-attrib,
+a.mapboxgl-ctrl-logo {
+  display: none !important;
+}
