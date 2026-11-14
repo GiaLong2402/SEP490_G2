@@ -34,7 +34,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class PaymentService {
 
-    private static final Sort LIST_SORT = Sort.by(Sort.Direction.DESC, "paidAt");
+    /** Mặc định giao dịch tạo gần nhất lên đầu (theo id) — không phụ thuộc giờ thanh toán (đơn hủy không có). */
+    private static final Sort LIST_SORT_NEWEST = Sort.by(Sort.Direction.DESC, "id");
+    private static final Sort LIST_SORT_OLDEST = Sort.by(Sort.Direction.ASC, "id");
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
 
     private final PaymentRepository paymentRepository;
@@ -76,6 +78,25 @@ public class PaymentService {
             String reconcileFlag,
             int page,
             int pageSize) {
+        return search(q, method, direction, status, channel, orderId, reconcileFlag, null, page, pageSize);
+    }
+
+    /** @param sort "asc" = cũ nhất trước; còn lại (mặc định) = mới nhất trước */
+    @Transactional(readOnly = true)
+    public PageResponse<PaymentListItemResponse> search(
+            String q,
+            String method,
+            String direction,
+            String status,
+            String channel,
+            Long orderId,
+            String reconcileFlag,
+            String sort,
+            int page,
+            int pageSize) {
+        Sort listSort = "asc".equalsIgnoreCase(sort == null ? "" : sort.trim())
+                ? LIST_SORT_OLDEST
+                : LIST_SORT_NEWEST;
         return PageResponse.from(paymentRepository
                 .findAll(
                         PaymentSpecifications.search(
@@ -86,7 +107,7 @@ public class PaymentService {
                                 parseChannel(channel),
                                 orderId,
                                 parseReconcileFlagOptional(reconcileFlag)),
-                        PageRequests.of(page, pageSize, LIST_SORT))
+                        PageRequests.of(page, pageSize, listSort))
                 .map(PaymentListItemResponse::from));
     }
 
@@ -199,6 +220,13 @@ public class PaymentService {
         }
         if (request.method() != PaymentMethod.CASH && request.method() != PaymentMethod.BANK_TRANSFER) {
             throw ApiException.badRequest("Phương thức hoàn chỉ hỗ trợ tiền mặt hoặc chuyển khoản");
+        }
+        // Bằng chứng hoàn tiền (Excel #40): chuyển khoản → mã giao dịch; tiền mặt → ghi rõ đã trả cho ai, ở đâu
+        if (request.method() == PaymentMethod.BANK_TRANSFER && Strings.trimToNull(request.reference()) == null) {
+            throw ApiException.badRequest("Nhập mã giao dịch chuyển khoản hoàn tiền làm bằng chứng");
+        }
+        if (request.method() == PaymentMethod.CASH && Strings.trimToNull(request.note()) == null) {
+            throw ApiException.badRequest("Hoàn tiền mặt: ghi rõ đã trả cho ai, ở đâu để làm bằng chứng");
         }
 
         AppUser actor = actorId == null

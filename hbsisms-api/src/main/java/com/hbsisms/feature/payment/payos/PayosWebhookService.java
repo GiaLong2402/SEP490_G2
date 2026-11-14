@@ -6,6 +6,7 @@ import com.hbsisms.feature.payment.Payment;
 import com.hbsisms.feature.payment.PaymentRepository;
 import com.hbsisms.feature.payment.payos.dto.PayosWebhookAck;
 import com.hbsisms.feature.payment.payos.dto.PayosWebhookEnvelope;
+import com.hbsisms.feature.sales.OrderState;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
@@ -25,16 +26,19 @@ public class PayosWebhookService {
     private final PaymentRepository paymentRepository;
     private final PayosPaymentCompleter paymentCompleter;
     private final PayosLatePaymentHandler latePaymentHandler;
+    private final PayosAmountMismatchRecorder mismatchRecorder;
 
     public PayosWebhookService(
             PayosProperties properties,
             PaymentRepository paymentRepository,
             PayosPaymentCompleter paymentCompleter,
-            PayosLatePaymentHandler latePaymentHandler) {
+            PayosLatePaymentHandler latePaymentHandler,
+            PayosAmountMismatchRecorder mismatchRecorder) {
         this.properties = properties;
         this.paymentRepository = paymentRepository;
         this.paymentCompleter = paymentCompleter;
         this.latePaymentHandler = latePaymentHandler;
+        this.mismatchRecorder = mismatchRecorder;
     }
 
     /**
@@ -63,28 +67,51 @@ public class PayosWebhookService {
             return PayosWebhookAck.ok();
         }
 
-        if (payment.getStatus() == PayTxnStatus.SUCCESS) {
-            return PayosWebhookAck.ok();
-        }
-
         if (!isPaymentSuccess(envelope)) {
             log.info("PayOS webhook non-success code for orderCode={} — skip PAID", orderCode);
             return PayosWebhookAck.ok();
         }
 
         Integer webhookAmount = readInt(envelope.data().get("amount"));
-        if (webhookAmount == null || !amountMatches(payment.getAmount(), webhookAmount)) {
-            log.warn(
-                    "PayOS webhook amount mismatch orderCode={} expected={} got={}",
-                    orderCode,
-                    payment.getAmount(),
-                    webhookAmount);
+        if (webhookAmount == null) {
+            log.warn("PayOS webhook missing amount orderCode={} — ack without update", orderCode);
             return PayosWebhookAck.ok();
+        }
+        BigDecimal received = BigDecimal.valueOf(webhookAmount);
+        BigDecimal expected = payment.getAmount() == null ? BigDecimal.ZERO : payment.getAmount();
+
+        if (payment.getStatus() == PayTxnStatus.SUCCESS) {
+            // Đã xác nhận trước (web hỏi PayOS nhanh hơn webhook): vẫn soi số tiền thực nhận, lưu tin làm bằng chứng
+            Object ref = envelope.data().get("reference");
+            if ((payment.getReference() == null || payment.getReference().isBlank()) && ref != null) {
+                payment.setReference(String.valueOf(ref)); // mã giao dịch ngân hàng của lần khách chuyển
+            }
+            if (received.compareTo(expected) > 0) {
+                mismatchRecorder.recordOverpaid(
+                        payment, expected, received, "webhook", Map.of("webhook", webhookRaw(envelope)));
+            } else if (payment.getRawPayload() == null || !payment.getRawPayload().containsKey("webhook")) {
+                payment.setRawPayload(mergeRawPayload(payment.getRawPayload(), envelope));
+                paymentRepository.save(payment);
+            }
+            return PayosWebhookAck.ok();
+        }
+
+        if (received.compareTo(expected) < 0) {
+            // Chuyển thiếu: không tính là đã thanh toán; đánh dấu "thiếu" để Chủ đối soát
+            mismatchRecorder.record(
+                    payment, received, "webhook", Map.of("mismatchWebhook", new HashMap<>(envelope.data())));
+            return PayosWebhookAck.ok();
+        }
+        if (received.compareTo(expected) > 0) {
+            // Chuyển thừa: vẫn tính đã thanh toán; ghi số tiền thực nhận + gắn "thừa" để hoàn phần dư
+            mismatchRecorder.recordOverpaid(payment, expected, received, "webhook", null);
         }
 
         Map<String, Object> paidRaw = mergeRawPayload(payment.getRawPayload(), envelope);
 
-        if (payment.getStatus() == PayTxnStatus.CANCELLED) {
+        // Payment đã hủy, hoặc đơn đã hủy mà link còn PENDING (dữ liệu cũ) → xử lý tiền về muộn
+        boolean orderCancelled = payment.getOrder() != null && payment.getOrder().getState() == OrderState.CANCELLED;
+        if (payment.getStatus() == PayTxnStatus.CANCELLED || orderCancelled) {
             latePaymentHandler.handleLatePaid(payment, envelope, paidRaw);
             return PayosWebhookAck.ok();
         }
@@ -109,26 +136,19 @@ public class PayosWebhookService {
         return true;
     }
 
-    private static boolean amountMatches(BigDecimal paymentAmount, int webhookAmount) {
-        if (paymentAmount == null) {
-            return false;
-        }
-        try {
-            return paymentAmount.intValueExact() == webhookAmount;
-        } catch (ArithmeticException ex) {
-            return paymentAmount.compareTo(BigDecimal.valueOf(webhookAmount)) == 0;
-        }
-    }
-
-    private static Map<String, Object> mergeRawPayload(Map<String, Object> existing, PayosWebhookEnvelope envelope) {
-        Map<String, Object> merged = existing == null ? new HashMap<>() : new HashMap<>(existing);
+    private static Map<String, Object> webhookRaw(PayosWebhookEnvelope envelope) {
         Map<String, Object> webhook = new HashMap<>();
         webhook.put("code", envelope.code() == null ? "" : envelope.code());
         webhook.put("desc", envelope.desc() == null ? "" : envelope.desc());
         webhook.put("success", envelope.success() != null && envelope.success());
         webhook.put("data", new HashMap<>(envelope.data()));
         webhook.put("signature", envelope.signature() == null ? "" : envelope.signature());
-        merged.put("webhook", webhook);
+        return webhook;
+    }
+
+    private static Map<String, Object> mergeRawPayload(Map<String, Object> existing, PayosWebhookEnvelope envelope) {
+        Map<String, Object> merged = existing == null ? new HashMap<>() : new HashMap<>(existing);
+        merged.put("webhook", webhookRaw(envelope));
         Object qr = envelope.data().get("qrCode");
         if (qr != null) {
             merged.put("qrCode", qr);
