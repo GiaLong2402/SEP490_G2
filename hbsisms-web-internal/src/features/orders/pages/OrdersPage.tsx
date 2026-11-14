@@ -1,7 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { allocationStatusMeta, orderStateMeta, orderTypeLabels, paymentStatusMeta, saleChannelLabels } from '@/shared/domain/enums';
+import {
+  allocationStatusMeta,
+  orderListPaymentStatusMeta,
+  orderListSaleChannelLabels,
+  orderStateMeta,
+  orderTypeLabels,
+  paymentStatusMeta,
+  saleChannelLabels,
+} from '@/shared/domain/enums';
 import { dateTime, money } from '@/shared/lib/format';
 import { Button, Card, DataTable, FilterBar, FilterSelect, Input, LinkButton, PageHeader, Pagination, StatusChip, enumOptions, useListParams, type Column } from '@/shared/ui';
 import { OrderSearchField } from '../components/OrderSearchField';
@@ -21,6 +29,15 @@ export default function OrdersPage() {
   ] as const;
   const list = useListParams(filterKeys);
   const [searchKey, setSearchKey] = useState(0);
+
+  // Link/URL lệch khoảng ngày → bỏ "Đến" để tránh lọc trống sai.
+  useEffect(() => {
+    const { placedFrom, placedTo } = list.filters;
+    if (placedFrom && placedTo && placedFrom > placedTo) {
+      list.setFilter('placedTo', '');
+    }
+  }, [list.filters.placedFrom, list.filters.placedTo]);
+
   const { data, isLoading, isFetching, error, refetch } = useOrders({
     q: list.q,
     page: list.page,
@@ -86,8 +103,8 @@ export default function OrdersPage() {
           />
           <FilterSelect label="Trạng thái" value={list.filters.state} onChange={(v) => list.setFilter('state', v)}>{enumOptions(orderStateMeta)}</FilterSelect>
           <FilterSelect label="Loại đơn" value={list.filters.orderType} onChange={(v) => list.setFilter('orderType', v)}>{enumOptions(orderTypeLabels)}</FilterSelect>
-          <FilterSelect label="Thanh toán" value={list.filters.paymentStatus} onChange={(v) => list.setFilter('paymentStatus', v)}>{enumOptions(paymentStatusMeta)}</FilterSelect>
-          <FilterSelect label="Kênh" value={list.filters.channel} onChange={(v) => list.setFilter('channel', v)}>{enumOptions(saleChannelLabels)}</FilterSelect>
+          <FilterSelect label="Thanh toán" value={list.filters.paymentStatus} onChange={(v) => list.setFilter('paymentStatus', v)}>{enumOptions(orderListPaymentStatusMeta)}</FilterSelect>
+          <FilterSelect label="Kênh" value={list.filters.channel} onChange={(v) => list.setFilter('channel', v)}>{enumOptions(orderListSaleChannelLabels)}</FilterSelect>
           <FilterSelect label="Giữ hàng" value={list.filters.allocationStatus} onChange={(v) => list.setFilter('allocationStatus', v)}>{enumOptions(allocationStatusMeta)}</FilterSelect>
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto" role="group" aria-label="Ngày đặt">
             <span className="text-small text-ink-muted">Ngày đặt</span>
@@ -98,7 +115,15 @@ export default function OrdersPage() {
                 type="date"
                 className="w-[150px]"
                 value={list.filters.placedFrom}
-                onChange={(e) => list.setFilter('placedFrom', e.target.value)}
+                max={list.filters.placedTo || undefined}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value && list.filters.placedTo && value > list.filters.placedTo) {
+                    list.setFilters({ placedFrom: value, placedTo: '' });
+                  } else {
+                    list.setFilter('placedFrom', value);
+                  }
+                }}
               />
             </label>
             <label className="flex items-center gap-1.5 text-small text-ink-muted">
@@ -108,7 +133,15 @@ export default function OrdersPage() {
                 type="date"
                 className="w-[150px]"
                 value={list.filters.placedTo}
-                onChange={(e) => list.setFilter('placedTo', e.target.value)}
+                min={list.filters.placedFrom || undefined}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value && list.filters.placedFrom && value < list.filters.placedFrom) {
+                    list.setFilters({ placedTo: value, placedFrom: '' });
+                  } else {
+                    list.setFilter('placedTo', value);
+                  }
+                }}
               />
             </label>
           </div>

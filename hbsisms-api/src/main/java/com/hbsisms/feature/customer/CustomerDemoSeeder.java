@@ -58,15 +58,15 @@ public class CustomerDemoSeeder implements ApplicationRunner {
                 "B2B sạch hạn mức");
         saveB2c("KH-003", "Lê Văn Cường", "0977000111", "Khách ngừng — demo chip Ngừng", false);
 
-        // Địa chỉ cho B2B Biển Đông — tab Địa chỉ trên detail không trống
+        // Địa chỉ cho B2B Biển Đông — tab Địa chỉ trên detail không trống (2 cấp: xã/phường + tỉnh/TP)
         saveAddress(
                 bienDong,
                 AddressKind.SHIPPING,
                 "Nguyễn Thị Hoa",
                 "0933111222",
                 "12 Lạch Tray",
-                "Máy Tơ",
-                "Ngô Quyền",
+                "Phường Máy Tơ",
+                null,
                 "Hải Phòng",
                 new BigDecimal("3.50"),
                 true);
@@ -76,8 +76,8 @@ public class CustomerDemoSeeder implements ApplicationRunner {
                 "Kế toán Biển Đông",
                 "0933111223",
                 "12 Lạch Tray",
-                "Máy Tơ",
-                "Ngô Quyền",
+                "Phường Máy Tơ",
+                null,
                 "Hải Phòng",
                 new BigDecimal("3.50"),
                 false);
@@ -89,8 +89,8 @@ public class CustomerDemoSeeder implements ApplicationRunner {
                 "Nguyễn Văn An",
                 "0912345678",
                 "45 đường Cát Bà",
+                "Đặc khu Cát Hải",
                 null,
-                "Cát Hải",
                 "Hải Phòng",
                 new BigDecimal("5.00"),
                 true);
@@ -100,8 +100,8 @@ public class CustomerDemoSeeder implements ApplicationRunner {
                 "Nguyễn Văn An",
                 "0912345678",
                 "12 Lạch Tray",
-                "Máy Tơ",
-                "Ngô Quyền",
+                "Phường Máy Tơ",
+                null,
                 "Hải Phòng",
                 new BigDecimal("3.50"),
                 false);

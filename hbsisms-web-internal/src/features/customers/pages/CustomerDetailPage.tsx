@@ -162,7 +162,7 @@ export default function CustomerDetailPage() {
                       <MapPin size={15} className="mt-0.5 shrink-0 text-ink-faint" aria-hidden />
                       <div className="min-w-0 flex-1">
                         <div className="font-medium">{a.line1}</div>
-                        <div className="text-ink-muted">{[a.ward, a.district, a.province].filter(Boolean).join(', ')}</div>
+                        <div className="text-ink-muted">{[a.ward, a.province || a.district].filter(Boolean).join(', ')}</div>
                         <div className="mt-0.5 text-small text-ink-faint">{a.recipientName} · {a.phone}</div>
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {a.isDefault && <Chip tone="blue">Mặc định</Chip>}

@@ -22,7 +22,7 @@ export function fromAddressDto(dto) {
   }
 }
 
-/** Form địa chỉ → AddressRequest (body POST/PUT) */
+/** Form địa chỉ → AddressRequest (body POST/PUT). district bỏ sau sáp nhập 2025. */
 export function toAddressRequest(form) {
   return {
     kind: 'SHIPPING',
@@ -30,7 +30,7 @@ export function toAddressRequest(form) {
     phone: form.phone.trim(),
     line1: form.line1.trim(),
     ward: form.ward.trim(),
-    district: form.district.trim(),
+    district: '',
     province: form.province.trim(),
     isDefault: Boolean(form.isDefault),
   }

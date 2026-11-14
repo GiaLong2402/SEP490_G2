@@ -12,7 +12,6 @@ export default function CompleteProfileForm({ phone, submitting, onComplete }) {
   const emailId = useId()
   const streetId = useId()
   const wardId = useId()
-  const districtId = useId()
   const provinceId = useId()
   const defaultId = useId()
 
@@ -20,7 +19,6 @@ export default function CompleteProfileForm({ phone, submitting, onComplete }) {
   const [email, setEmail] = useState('')
   const [street, setStreet] = useState('')
   const [ward, setWard] = useState('')
-  const [district, setDistrict] = useState('')
   const [province, setProvince] = useState('')
   const [isDefaultAddress, setIsDefaultAddress] = useState(true)
   const [error, setError] = useState('')
@@ -33,7 +31,7 @@ export default function CompleteProfileForm({ phone, submitting, onComplete }) {
       setError('Vui lòng nhập họ và tên.')
       return
     }
-    if (!street.trim() || !ward.trim() || !district.trim() || !province.trim()) {
+    if (!street.trim() || !ward.trim() || !province.trim()) {
       setError('Vui lòng nhập đủ địa chỉ nhận hàng.')
       return
     }
@@ -46,7 +44,7 @@ export default function CompleteProfileForm({ phone, submitting, onComplete }) {
         address: {
           street: street.trim(),
           ward: ward.trim(),
-          district: district.trim(),
+          district: '',
           province: province.trim(),
           isDefault: isDefaultAddress,
         },
@@ -138,13 +136,13 @@ export default function CompleteProfileForm({ phone, submitting, onComplete }) {
         <div className="auth-profile__row">
           <div className="auth-field">
             <label className="auth-profile__label" htmlFor={wardId}>
-              Phường / Xã
+              Xã / Phường
             </label>
             <input
               id={wardId}
               className="auth-profile__input"
               type="text"
-              placeholder="Phường Trần Phú"
+              placeholder="Xã / phường / đặc khu"
               value={ward}
               onChange={(e) => {
                 setWard(e.target.value)
@@ -153,38 +151,21 @@ export default function CompleteProfileForm({ phone, submitting, onComplete }) {
             />
           </div>
           <div className="auth-field">
-            <label className="auth-profile__label" htmlFor={districtId}>
-              Thành phố / Huyện
+            <label className="auth-profile__label" htmlFor={provinceId}>
+              Tỉnh / Thành phố
             </label>
             <input
-              id={districtId}
+              id={provinceId}
               className="auth-profile__input"
               type="text"
-              placeholder="TP. Móng Cái"
-              value={district}
+              placeholder="Hải Phòng"
+              value={province}
               onChange={(e) => {
-                setDistrict(e.target.value)
+                setProvince(e.target.value)
                 setError('')
               }}
             />
           </div>
-        </div>
-
-        <div className="auth-field">
-          <label className="auth-profile__label" htmlFor={provinceId}>
-            Tỉnh / Thành phố
-          </label>
-          <input
-            id={provinceId}
-            className="auth-profile__input"
-            type="text"
-            placeholder="Quảng Ninh"
-            value={province}
-            onChange={(e) => {
-              setProvince(e.target.value)
-              setError('')
-            }}
-          />
         </div>
 
         <label className="auth-keep auth-profile__default" htmlFor={defaultId}>
