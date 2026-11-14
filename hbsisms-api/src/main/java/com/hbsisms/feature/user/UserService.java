@@ -46,15 +46,10 @@ public class UserService {
 
     @Transactional
     public UserResponse createStaff(UserRequest request) {
-        if (Strings.trimToNull(request.password()) == null) {
-            throw ApiException.badRequest("Mật khẩu là bắt buộc khi tạo tài khoản");
-        }
-        if (PasswordPolicy.exceedsMaxBytes(request.password())) {
-            throw ApiException.badRequest("Mật khẩu quá dài (tối đa " + PasswordPolicy.MAX_BYTES + " byte)");
-        }
+        String password = requirePassword(request.password(), true);
         AppUser user = new AppUser();
         user.setUserType(UserType.STAFF);
-        user.setPasswordHash(passwordEncoder.encode(request.password()));
+        user.setPasswordHash(passwordEncoder.encode(password));
         applyProfile(user, request, null);
         return UserResponse.from(userRepository.save(user));
     }
@@ -69,11 +64,36 @@ public class UserService {
             throw ApiException.conflict("Không thể tự khóa hoặc đổi vai trò của chính mình");
         }
         applyProfile(user, request, id);
+        String newPassword = requirePassword(request.password(), false);
+        boolean passwordReset = newPassword != null;
+        if (passwordReset) {
+            user.setPasswordHash(passwordEncoder.encode(newPassword));
+        }
         AppUser saved = userRepository.saveAndFlush(user);
-        if (deactivating) {
+        if (deactivating || passwordReset) {
             userRepository.incrementTokenVersion(id);
         }
         return UserResponse.from(saved);
+    }
+
+    /**
+     * @param required true = create (must have password); false = update (blank = keep current).
+     * @return normalized password, or {@code null} when optional and blank
+     */
+    static String requirePassword(String raw, boolean required) {
+        String password = Strings.trimToNull(raw);
+        if (password == null) {
+            if (required) {
+                throw ApiException.badRequest("Mật khẩu là bắt buộc khi tạo tài khoản");
+            }
+            return null;
+        }
+        if (!PasswordPolicy.isAcceptable(password)) {
+            throw ApiException.badRequest(
+                    "Mật khẩu phải từ " + PasswordPolicy.MIN_LENGTH + " ký tự và tối đa "
+                            + PasswordPolicy.MAX_BYTES + " byte");
+        }
+        return password;
     }
 
     private void applyProfile(AppUser user, UserRequest request, Long currentId) {
