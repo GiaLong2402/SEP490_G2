@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { CheckCircle2, FileText, Plus, XCircle } from 'lucide-react';
 import { CustomerSearchField } from '@/features/customers';
 import { useAction } from '@/shared/api/useAction';
-import type { ID } from '@/shared/domain/entities';
 import { requestStatusMeta, saleChannelLabels, staffSaleChannelLabels, type SaleChannel } from '@/shared/domain/enums';
 import { dateTime } from '@/shared/lib/format';
 import { Button, Card, Chip, ConfirmDialog, DataTable, Field, FilterBar, FilterSelect, Input, LinkButton, Modal, PageHeader, Pagination, SearchBox, Select, StatusChip, Textarea, enumOptions, useListParams, type Column } from '@/shared/ui';
@@ -25,8 +24,8 @@ export default function RequestsPage() {
   const { data, isLoading, error, refetch } = useRequests({ q: list.q, page: list.page, status: list.filters.status, channel: list.filters.channel });
   const [creating, setCreating] = useState(false);
   const [touched, setTouched] = useState(false);
-  const [closing, setClosing] = useState<ID | null>(null);
-  const [rejecting, setRejecting] = useState<ID | null>(null);
+  const [rejecting, setRejecting] = useState<RequestListItem | null>(null);
+  const [viewingReject, setViewingReject] = useState<RequestListItem | null>(null);
   const [feasibility, setFeasibility] = useState<RequestListItem | null>(null);
   const [feasForm, setFeasForm] = useState({ feasible: true, fulfillableQty: '', shortageQty: '', expectedDate: '', note: '' });
   const [form, setForm] = useState(emptyForm);
@@ -51,8 +50,10 @@ export default function RequestsPage() {
       onDone: () => setCreating(false),
     },
   );
-  const close = useAction((note: string) => requestsApi.update(closing!, { status: 'closed', note }), { success: 'Đã đóng yêu cầu', onDone: () => setClosing(null) });
-  const reject = useAction((reason: string) => requestsApi.reject(rejecting!, { rejectReason: reason }), { success: 'Đã từ chối yêu cầu', onDone: () => setRejecting(null) });
+  const reject = useAction((reason: string) => requestsApi.reject(rejecting!.id, { rejectReason: reason }), {
+    success: (r) => `Đã từ chối ${r.code}`,
+    onDone: () => setRejecting(null),
+  });
   const saveFeasibility = useAction(
     () =>
       requestsApi.feasibility(feasibility!.id, {
@@ -63,7 +64,7 @@ export default function RequestsPage() {
         note: feasForm.note || null,
         customerAccepted: false,
       }),
-    { success: 'Đã ghi kết quả khả thi', onDone: () => setFeasibility(null) },
+    { success: 'Đã ghi khả năng đáp ứng', onDone: () => setFeasibility(null) },
   );
 
   const columns: Column<RequestListItem>[] = [
@@ -82,10 +83,14 @@ export default function RequestsPage() {
     { key: 'summary', header: 'Nội dung', cell: (r) => <span className="line-clamp-2 min-w-[200px]">{r.summary}</span> },
     {
       key: 'feasible',
-      header: 'Khả thi',
+      header: 'Đáp ứng',
       hideOnMobile: true,
       cell: (r) =>
-        r.feasible == null ? <span className="text-ink-faint">Chưa đánh giá</span> : r.feasible ? (
+        r.status === 'rejected' ? (
+          <span className="text-red-700">Không đáp ứng</span>
+        ) : r.feasible == null ? (
+          <span className="text-ink-faint">Chưa đánh giá</span>
+        ) : r.feasible ? (
           <span className="text-green-700">Có{r.fulfillableQty != null ? ` · ${r.fulfillableQty} khay` : ''}</span>
         ) : (
           <span className="text-red-700">Không</span>
@@ -93,7 +98,18 @@ export default function RequestsPage() {
     },
     { key: 'at', header: 'Tiếp nhận', hideOnMobile: true, cell: (r) => <span className="whitespace-nowrap">{dateTime(r.receivedAt)}</span> },
     { key: 'handler', header: 'Phụ trách', hideOnMobile: true, cell: (r) => r.handlerName ?? <span className="text-ink-faint">Chưa có</span> },
-    { key: 'status', header: 'Trạng thái', cell: (r) => <StatusChip meta={requestStatusMeta} value={r.status} /> },
+    {
+      key: 'status',
+      header: 'Trạng thái',
+      cell: (r) => (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <StatusChip meta={requestStatusMeta} value={r.status} />
+          {r.status === 'rejected' && r.rejectReason && (
+            <Button variant="ghost" onClick={() => setViewingReject(r)}>Xem lý do</Button>
+          )}
+        </div>
+      ),
+    },
     {
       key: 'actions', header: '', align: 'right',
       cell: (r) => (r.status === 'new' || r.status === 'quoting') && (
@@ -107,10 +123,9 @@ export default function RequestsPage() {
               expectedDate: r.expectedDate ?? '',
               note: r.note ?? '',
             });
-          }}>Khả thi</Button>
+          }}>Khả năng đáp ứng</Button>
           {r.customerId && <LinkButton to={`/quotes/new?requestId=${r.id}&customerId=${r.customerId}`} icon={<FileText size={14} />}>Báo giá</LinkButton>}
-          <Button variant="ghost" icon={<XCircle size={14} />} onClick={() => setRejecting(r.id)}>Từ chối</Button>
-          <Button variant="ghost" onClick={() => setClosing(r.id)}>Đóng</Button>
+          <Button variant="ghost" icon={<XCircle size={14} />} onClick={() => setRejecting(r)}>Từ chối</Button>
         </div>
       ),
     },
@@ -215,7 +230,7 @@ export default function RequestsPage() {
         footer={<><Button onClick={() => setFeasibility(null)}>Hủy</Button><Button type="submit" variant="primary" loading={saveFeasibility.isPending}>Lưu kết quả</Button></>}
       >
         <div className="space-y-3">
-          <Field label="Khả thi" required>
+          <Field label="Đáp ứng được?" required>
             <Select value={feasForm.feasible ? 'yes' : 'no'} onChange={(e) => setFeasForm({ ...feasForm, feasible: e.target.value === 'yes' })}>
               <option value="yes">Có</option>
               <option value="no">Không</option>
@@ -225,12 +240,32 @@ export default function RequestsPage() {
           <Field label="SL thiếu (khay)"><Input type="number" min={0} value={feasForm.shortageQty} onChange={(e) => setFeasForm({ ...feasForm, shortageQty: e.target.value })} /></Field>
           <Field label="Ngày dự kiến"><Input type="date" value={feasForm.expectedDate} onChange={(e) => setFeasForm({ ...feasForm, expectedDate: e.target.value })} /></Field>
           <Field label="Ghi chú"><Textarea value={feasForm.note} onChange={(e) => setFeasForm({ ...feasForm, note: e.target.value })} /></Field>
-          <p className="text-sm text-ink-muted">Khi khách đồng ý và tạo đơn, dùng luồng tạo đơn (orders) kèm request đã khả thi — Sales tự chốt, không cần Chủ duyệt.</p>
+          <p className="text-sm text-ink-muted">Khi khách đồng ý và tạo đơn, dùng luồng tạo đơn kèm yêu cầu đã đánh giá đáp ứng — Sales tự chốt, không cần Chủ duyệt.</p>
         </div>
       </Modal>
 
-      <ConfirmDialog open={closing !== null} title="Đóng yêu cầu" withNote noteLabel="Lý do đóng" confirmLabel="Đóng yêu cầu" loading={close.isPending} onConfirm={(note) => close.mutate(note)} onClose={() => setClosing(null)} />
-      <ConfirmDialog open={rejecting !== null} title="Từ chối yêu cầu" withNote noteLabel="Lý do từ chối" noteRequired confirmLabel="Từ chối" loading={reject.isPending} onConfirm={(note) => reject.mutate(note)} onClose={() => setRejecting(null)} />
+      <ConfirmDialog
+        open={rejecting !== null}
+        danger
+        title={rejecting ? `Từ chối yêu cầu ${rejecting.code}?` : 'Từ chối yêu cầu'}
+        message="Yêu cầu sẽ chuyển sang trạng thái Từ chối và không thể báo giá / đánh giá đáp ứng tiếp. Lý do bắt buộc để đối chiếu sau này."
+        withNote
+        noteLabel="Lý do từ chối"
+        noteRequired
+        confirmLabel="Từ chối"
+        loading={reject.isPending}
+        onConfirm={(note) => reject.mutate(note)}
+        onClose={() => setRejecting(null)}
+      />
+
+      <Modal
+        open={viewingReject !== null}
+        title={viewingReject ? `Lý do từ chối · ${viewingReject.code}` : 'Lý do từ chối'}
+        onClose={() => setViewingReject(null)}
+        footer={<Button variant="primary" onClick={() => setViewingReject(null)}>Đóng</Button>}
+      >
+        <p className="whitespace-pre-wrap text-body text-ink">{viewingReject?.rejectReason?.trim() || '—'}</p>
+      </Modal>
     </>
   );
 }
