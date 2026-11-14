@@ -65,6 +65,10 @@ mock('PATCH', '/deliveries/:id', ({ params, body, userId }) => {
   if ('assignedTo' in body) row.assignedTo = body.assignedTo;
   if (body.note) row.note = body.note;
   if (body.state) {
+    const order = db.orders.find((o) => o.id === row.orderId);
+    if (order && order.state !== 'to_ship' && order.state !== 'partial') {
+      fail(409, 'Chỉ được bắt đầu/cập nhật giao khi đơn ở trạng thái Chờ giao hoặc Giao một phần');
+    }
     row.state = body.state;
     if (body.state === 'delivered') {
       row.deliveredAt = new Date().toISOString();
