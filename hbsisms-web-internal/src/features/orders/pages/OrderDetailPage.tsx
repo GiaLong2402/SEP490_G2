@@ -73,7 +73,7 @@ export default function OrderDetailPage() {
     { key: 'who', header: 'Người giao', cell: (d) => d.assigneeName ?? d.carrier ?? fulfillmentLabels[d.fulfillmentMethod] },
     { key: 'qty', header: 'Khay', align: 'right', cell: (d) => <span className="num">{num((d.items ?? []).reduce((s, i) => s + i.qtyKhay, 0))}</span> },
     { key: 'state', header: 'Trạng thái', cell: (d) => <StatusChip meta={deliveryStateMeta} value={d.state} /> },
-    { key: 'actions', header: '', align: 'right', cell: (d) => <DeliveryStateActions delivery={d} /> },
+    { key: 'actions', header: '', align: 'right', cell: (d) => <DeliveryStateActions delivery={d} orderState={order.state} /> },
   ];
 
   return (

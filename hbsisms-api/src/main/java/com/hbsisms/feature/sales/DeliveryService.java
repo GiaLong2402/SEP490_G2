@@ -110,8 +110,15 @@ public class DeliveryService {
             throw ApiException.conflict("Không thể chuyển đợt giao sang trạng thái này");
         }
 
-        delivery.setState(target);
         SalesOrder order = delivery.getOrder();
+        // Chỉ giao khi đơn đã qua xác nhận → chuẩn bị → sẵn sàng giao (hoặc đang giao dở).
+        OrderState orderState = order.getState();
+        if (orderState != OrderState.TO_SHIP && orderState != OrderState.PARTIAL) {
+            throw ApiException.conflict(
+                    "Chỉ được bắt đầu/cập nhật giao khi đơn ở trạng thái Chờ giao hoặc Giao một phần");
+        }
+
+        delivery.setState(target);
         String leg = delivery.getLegLabel() == null ? delivery.getCode() : delivery.getLegLabel();
 
         if (target == DeliveryState.GOING) {
