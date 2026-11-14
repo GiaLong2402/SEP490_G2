@@ -160,7 +160,7 @@ export default function OrderFormPage() {
           line1: walkInAddress.line1.trim(),
           ward: walkInAddress.ward?.trim() || null,
           district: null,
-          province: walkInAddress.province?.trim() || 'Hải Phòng',
+          province: walkInAddress.province?.trim() || null,
           distanceKm: walkInAddress.distanceKm ?? null,
         }
       : null,

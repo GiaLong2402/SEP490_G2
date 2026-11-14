@@ -1,6 +1,7 @@
 package com.hbsisms.feature.customer.dto;
 
 import com.hbsisms.feature.customer.AddressKind;
+import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -31,6 +32,15 @@ public record AddressRequest(
 
         @Size(max = 120, message = "Tỉnh/thành phố tối đa 120 ký tự")
         String province,
+
+        /** Optional pin from map UI; when set (with longitude), skips forward-geocode. */
+        @DecimalMin(value = "-90", message = "Vĩ độ không hợp lệ")
+        @DecimalMax(value = "90", message = "Vĩ độ không hợp lệ")
+        BigDecimal latitude,
+
+        @DecimalMin(value = "-180", message = "Kinh độ không hợp lệ")
+        @DecimalMax(value = "180", message = "Kinh độ không hợp lệ")
+        BigDecimal longitude,
 
         @DecimalMin(value = "0", message = "Khoảng cách không được âm")
         BigDecimal distanceKm,

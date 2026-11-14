@@ -53,10 +53,14 @@ export interface AddressInput {
   recipientName: string | null;
   phone: string | null;
   line1: string;
+  /** Phường/xã — chọn từ danh mục địa giới 2025. */
   ward: string | null;
-  /** @deprecated Bỏ cấp huyện sau sáp nhập 2025. */
+  /** @deprecated Bỏ cấp huyện sau sáp nhập 2025 — form mới luôn null. */
   district: string | null;
   province: string | null;
+  /** Pin từ map; gửi lên API để tính distanceKm. */
+  latitude: number | null;
+  longitude: number | null;
   distanceKm: number | null;
   isDefault: boolean;
 }

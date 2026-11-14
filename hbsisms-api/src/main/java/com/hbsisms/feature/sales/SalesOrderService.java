@@ -728,9 +728,6 @@ public class SalesOrderService {
                 phone = customer.getPhone();
             }
             String province = Strings.trimToNull(input.province());
-            if (province == null) {
-                province = "Hải Phòng";
-            }
             AddressResponse created = customerAddressService.create(
                     customer.getId(),
                     new AddressRequest(
@@ -741,6 +738,8 @@ public class SalesOrderService {
                             Strings.trimToNull(input.ward()),
                             Strings.trimToNull(input.district()),
                             province,
+                            null,
+                            null,
                             input.distanceKm(),
                             Boolean.TRUE));
             return customerAddressRepository

@@ -5,5 +5,6 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [react()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
+  optimizeDeps: { include: ['@goongmaps/goong-js'] },
   server: { port: 5180 },
 });
