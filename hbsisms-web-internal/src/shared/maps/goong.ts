@@ -1,5 +1,5 @@
 import goongjs from '@goongmaps/goong-js';
-import '@goongmaps/goong-js/dist/goong-js.css';
+import '@/assets/vendor/goong-js.css';
 import './goong-map.css';
 
 export type LngLat = { lng: number; lat: number };
