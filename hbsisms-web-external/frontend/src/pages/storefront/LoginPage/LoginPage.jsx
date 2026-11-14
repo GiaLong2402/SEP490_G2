@@ -13,7 +13,8 @@ import {
 import { buildStubIdToken } from '@/auth/stubIdToken'
 import { useAuth } from '@/context/AuthContext'
 import { getHomePathForRole } from '@/auth/roleUtils'
-import { isValidVietnamPhone } from '@/utils/phone'
+import { addressesApi } from '@/api/addresses'
+import { isValidVietnamPhone, normalizeVietnamPhone } from '@/utils/phone'
 import authSeaBoat from '@/assets/banners/auth-sea-boat.png'
 import waveTealSimple from '@/assets/decorations/wave-teal-simple.png'
 import PhoneLoginForm from './PhoneLoginForm'
@@ -174,6 +175,29 @@ export default function LoginPage() {
         fullName: profile.fullName,
         email: profile.email || undefined,
       })
+
+      // Đăng ký API chỉ tạo user — tạo luôn địa chỉ đầu tiên vào sổ /me/addresses
+      const addr = profile.address
+      if (addr?.street && addr?.province) {
+        try {
+          const localPhone = normalizeVietnamPhone(phone)
+          await addressesApi.create({
+            recipientName: profile.fullName,
+            phone: localPhone ? `0${localPhone}` : phone,
+            line1: addr.street,
+            ward: addr.ward || '',
+            district: '',
+            province: addr.province,
+            latitude: null,
+            longitude: null,
+            distanceKm: null,
+            isDefault: addr.isDefault !== false,
+          })
+        } catch {
+          // Tài khoản đã tạo — không chặn vào app; khách thêm địa chỉ lại trong sổ nếu cần
+        }
+      }
+
       clearPhoneAuthSession()
       navigate(redirectTo || getHomePathForRole(loggedIn.role) || ROUTES.HOME, { replace: true })
     } catch (err) {
