@@ -6,5 +6,5 @@ export default defineConfig({
   plugins: [react()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   optimizeDeps: { include: ['@goongmaps/goong-js'] },
-  server: { port: 5180 },
+  server: { host: true, port: 5180 },
 });
