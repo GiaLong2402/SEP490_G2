@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import goongjs from '@goongmaps/goong-js'
-import '@goongmaps/goong-js/dist/goong-js.css'
+import '@/assets/vendor/goong-js.css'
 import './GoongMapPicker.css'
 
 function maptilesKey() {
