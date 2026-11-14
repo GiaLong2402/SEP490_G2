@@ -4,6 +4,7 @@ import CartIconButton from '@/components/storefront/CartIconButton/CartIconButto
 import { productDetailPath } from '@/constants/routes'
 import { formatPrice } from '@/utils/formatPrice'
 import { useCart } from '@/context/CartContext'
+import { useToast } from '@/context/ToastContext'
 import './ProductCard.css'
 
 /**
@@ -28,6 +29,7 @@ export default function ProductCard({
   imageRatio = 'standard',
 }) {
   const { addToCart } = useCart()
+  const { showToast } = useToast()
 
   // Hỗ trợ cả product đầy đủ và listing item
   const displayVariant = variant || product.variant || product.variants?.[0]
@@ -54,7 +56,9 @@ export default function ProductCard({
           primaryImageUrl: image,
         }
 
-    addToCart({ product: cartProduct, variant: displayVariant, quantity: 1 }).catch(() => {})
+    addToCart({ product: cartProduct, variant: displayVariant, quantity: 1 })
+      .then(() => showToast('Sản phẩm đã được thêm vào giỏ hàng'))
+      .catch(() => {})
   }
 
   const cartLabel = `Thêm ${name}${displayVariant ? ` ${displayVariant.label}` : ''} vào giỏ`
