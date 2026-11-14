@@ -17,7 +17,8 @@ export default defineConfig({
     include: ['@goongmaps/goong-js'],
   },
   server: {
-    host: true,
+    // Chỉ máy này — không mở LAN (192.168.x.x). OTP/Firebase: mở http://127.0.0.1:5173
+    host: '127.0.0.1',
     port: 5173,
     // Sau này gọi Spring Boot qua proxy (vd: /api -> http://localhost:8080)
     proxy: {
