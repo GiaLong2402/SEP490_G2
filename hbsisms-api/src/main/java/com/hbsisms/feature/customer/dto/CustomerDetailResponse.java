@@ -6,9 +6,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
-/**
- * Matches FE {@code CustomerDetail}. {@code recentOrders} stays empty until sales module lands.
- */
+/** Matches FE {@code CustomerDetail}. */
 public record CustomerDetailResponse(
         Long id,
         String code,
@@ -29,12 +27,13 @@ public record CustomerDetailResponse(
         Instant updatedAt,
         List<AddressResponse> addresses,
         List<CustomerPriceRowResponse> prices,
-        List<Object> recentOrders) {
+        List<CustomerOrderRowResponse> recentOrders) {
 
     public static CustomerDetailResponse from(
             Customer customer,
             List<AddressResponse> addresses,
-            List<CustomerPriceRowResponse> prices) {
+            List<CustomerPriceRowResponse> prices,
+            List<CustomerOrderRowResponse> recentOrders) {
         return new CustomerDetailResponse(
                 customer.getId(),
                 customer.getCode(),
@@ -55,6 +54,6 @@ public record CustomerDetailResponse(
                 customer.getUpdatedAt(),
                 addresses,
                 prices,
-                List.of());
+                recentOrders);
     }
 }
