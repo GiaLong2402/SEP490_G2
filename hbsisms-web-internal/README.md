@@ -48,6 +48,16 @@ VITE_API_MODE=http
 VITE_API_BASE_URL=https://api.example.com/api/v1
 ```
 
+Gắn dần Sales (mock + vài path HTTP): giữ `VITE_API_MODE=mock` và thêm CSV prefix vào `VITE_API_HTTP_PATHS` (xem `src/shared/api/httpPaths.ts`). Ví dụ:
+
+```
+VITE_API_MODE=mock
+VITE_API_BASE_URL=http://localhost:8081/api/v1
+VITE_API_HTTP_PATHS=/auth,/orders,/sales-requests,/payments,/pricing,/customers
+```
+
+`/pos` vẫn mock cho đến khi có BE. Full `http` bỏ qua `VITE_API_HTTP_PATHS`.
+
 Backend cần tuân theo:
 
 - Danh sách endpoint: [`API_ENDPOINTS.md`](API_ENDPOINTS.md). Kiểu dữ liệu: `features/*/types.ts`.

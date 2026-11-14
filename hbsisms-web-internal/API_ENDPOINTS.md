@@ -106,15 +106,19 @@ Tổng cộng 97 endpoint, sinh từ `src/features/*/mock.ts`. Kiểu dữ liệ
 
 ## orders
 
-| Phương thức | Đường dẫn |
-|---|---|
-| GET | `/orders` |
-| GET | `/orders/:id` |
-| POST | `/orders` |
-| POST | `/orders/:id/transition` |
-| POST | `/orders/:id/cancel` |
-| POST | `/orders/:id/complete-at-counter` |
-| POST | `/sales/hold-expire` |
+Contract FE (Doanh — Inter 2): `features/orders/api.ts` + `types.ts`; path const `shared/api/httpPaths.ts`. Hybrid: thêm prefix vào `VITE_API_HTTP_PATHS`.
+
+| Phương thức | Đường dẫn | Ghi chú contract |
+|---|---|---|
+| GET | `/orders` | filter: `q`, `state`, `orderType`, `paymentStatus`, `channel`, `allocationStatus`, `customerId`, `placedFrom`, `placedTo` |
+| GET | `/orders/:id` | `OrderDetail` |
+| POST | `/orders` | **201** + `OrderDetail`; body `OrderInput` (walk-in: `customerId` null + `phone`) |
+| PUT | `/orders/:id` | **200** + `OrderDetail` |
+| GET | `/orders/:id/receipt` | `Receipt` — chỉ đơn đã thanh toán đủ |
+| POST | `/orders/:id/transition` | **204**; body `{ state }` |
+| POST | `/orders/:id/cancel` | **204**; body `{ reason }` |
+| POST | `/orders/:id/complete-at-counter` | OUT hold idempotent |
+| POST | `/sales/hold-expire` | job hết hạn hold |
 
 ## payments
 
@@ -124,6 +128,8 @@ Tổng cộng 97 endpoint, sinh từ `src/features/*/mock.ts`. Kiểu dữ liệ
 | POST | `/payments` |
 
 ## pos
+
+Contract FE đã đăng ký path (`API_PATHS.pos`). **Chưa có BE** — giữ mock; **không** thêm `/pos` vào `VITE_API_HTTP_PATHS`.
 
 | Phương thức | Đường dẫn |
 |---|---|
@@ -181,6 +187,8 @@ Jackson khóa tên field `isPublished` / `isActive` (không `published` / `activ
 | GET | `/reports/sales` |
 
 ## requests
+
+Contract FE: `features/requests/api.ts` → `/sales-requests` (path const `API_PATHS.salesRequests`).
 
 | Phương thức | Đường dẫn |
 |---|---|

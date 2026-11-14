@@ -14,8 +14,17 @@ import { ordersApi } from '../api';
 import { useOrder } from '../hooks';
 import type { ShipAddressInput } from '../types';
 
-/** Không bán nợ — chỉ tiền mặt / CK / PayOS / COD trên form Sales. */
-const SALES_PAYMENT_OPTIONS = Object.entries(paymentMethodLabels).filter(([key]) => key !== 'credit_net');
+/** Không bán nợ — chỉ tiền mặt / chuyển khoản / COD trên form Sales.
+ *  PayOS (cổng QR web) bản chất cũng là CK → gộp vào bank_transfer, không hiện riêng. */
+const SALES_PAYMENT_OPTIONS = Object.entries(paymentMethodLabels).filter(
+  ([key]) => key !== 'credit_net' && key !== 'payos',
+);
+
+function toSalesPaymentMethod(method: PaymentMethod): PaymentMethod {
+  if (method === 'credit_net') return 'cash';
+  if (method === 'payos') return 'bank_transfer';
+  return method;
+}
 
 const emptyWalkInAddress = (): ShipAddressInput => ({
   recipientName: '',
@@ -84,7 +93,7 @@ export default function OrderFormPage() {
       });
     }
     setChannel(o.channel ?? 'phone');
-    setPaymentMethod(o.paymentMethod === 'credit_net' ? 'cash' : o.paymentMethod);
+    setPaymentMethod(toSalesPaymentMethod(o.paymentMethod));
     setFulfillment(o.fulfillmentMethod);
     setAddressId(o.shipAddressId);
     setShippingFee(String(o.shippingFee ?? 0));

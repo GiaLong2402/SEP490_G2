@@ -1,4 +1,5 @@
 import { api, type ListQuery, type Page } from '@/shared/api/client';
+import { API_PATHS } from '@/shared/api/httpPaths';
 import type { PaymentInput, PaymentListItem, PaymentReconcileFlag, PaymentRefundInput } from './types';
 
 export interface PaymentQuery extends ListQuery {
@@ -11,9 +12,10 @@ export interface PaymentQuery extends ListQuery {
 }
 
 export const paymentsApi = {
-  list: (query: PaymentQuery, signal?: AbortSignal) => api.get<Page<PaymentListItem>>('/payments', query, signal),
-  create: (body: PaymentInput) => api.post<PaymentListItem>('/payments', body),
-  refund: (body: PaymentRefundInput) => api.post<PaymentListItem>('/payments/refund', body),
+  list: (query: PaymentQuery, signal?: AbortSignal) =>
+    api.get<Page<PaymentListItem>>(API_PATHS.payments.root, query, signal),
+  create: (body: PaymentInput) => api.post<PaymentListItem>(API_PATHS.payments.root, body),
+  refund: (body: PaymentRefundInput) => api.post<PaymentListItem>(API_PATHS.payments.refund, body),
   markReconcile: (id: number | string, flag: PaymentReconcileFlag) =>
-    api.patch<PaymentListItem>(`/payments/${id}/reconcile`, { flag }),
+    api.patch<PaymentListItem>(API_PATHS.payments.reconcile(id), { flag }),
 };

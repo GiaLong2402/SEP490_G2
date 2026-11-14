@@ -13,6 +13,8 @@ import com.hbsisms.feature.catalog.ProductVariant;
 import com.hbsisms.feature.catalog.ProductVariantRepository;
 import com.hbsisms.feature.customer.Customer;
 import com.hbsisms.feature.customer.CustomerRepository;
+import com.hbsisms.feature.inventory.StockRepository;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +59,8 @@ class OrderApiIntegrationTest {
     private ProductVariantRepository productVariantRepository;
     @Autowired
     private SalesOrderRepository salesOrderRepository;
+    @Autowired
+    private StockRepository stockRepository;
 
     @Value("${app.seed.admin-password}")
     private String adminPassword;
@@ -74,14 +78,16 @@ class OrderApiIntegrationTest {
 
         customer = customerRepository.findAll().stream()
                 .filter(c -> "KH-001".equals(c.getCode()) || c.getCustomerType() != null)
-                .filter(c -> c.isActive())
+                .filter(Customer::isActive)
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("Cần ít nhất một khách active (KH-001)"));
+        // Không hard-code SKU: DB shared có thể hết tồn TOM-SU-05 sau các IT khác.
+        LocalDate today = LocalDate.now();
         variant = productVariantRepository.findAll().stream()
-                .filter(v -> "TOM-SU-05".equals(v.getSku()))
+                .filter(ProductVariant::isActive)
+                .filter(v -> stockRepository.sumAvailableByVariantExcludingExpired(v.getId(), today) > 0)
                 .findFirst()
-                .or(() -> productVariantRepository.findAll().stream().filter(ProductVariant::isActive).findFirst())
-                .orElseThrow(() -> new IllegalStateException("Cần ít nhất một quy cách active"));
+                .orElseThrow(() -> new IllegalStateException("Cần quy cách còn tồn khả dụng"));
     }
 
     @Test

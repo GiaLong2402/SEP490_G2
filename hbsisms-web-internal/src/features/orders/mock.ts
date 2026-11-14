@@ -56,7 +56,18 @@ mock('GET', '/orders', ({ query }) => {
   const placedTo = query.placedTo ? String(query.placedTo) : '';
   const customerId = query.customerId ? Number(query.customerId) : null;
   const rows = db.orders
-    .filter((o) => matches(query.q, o.code, toItem(o).customerName))
+    .filter((o) => {
+      const customer = db.customers.find((c) => c.id === o.customerId);
+      return matches(
+        query.q,
+        o.code,
+        toItem(o).customerName,
+        customer?.name,
+        customer?.code,
+        customer?.phone,
+        customer?.taxCode,
+      );
+    })
     .filter((o) => !query.state || o.state === query.state)
     .filter((o) => !query.orderType || o.orderType === query.orderType)
     .filter((o) => !query.paymentStatus || o.paymentStatus === query.paymentStatus)
