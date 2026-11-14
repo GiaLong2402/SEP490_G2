@@ -26,6 +26,7 @@ const EMPTY = {
 const FALLBACK_SHOP = { lat: 21.012728, lng: 105.525905 }
 const PROVINCES = listProvinces()
 const GEOCODE_DEBOUNCE_MS = 700
+const REVERSE_DEBOUNCE_MS = 450
 
 function validate(form) {
   const errors = {}
@@ -59,8 +60,9 @@ export default function AddressFormDialog({ open, onClose, address, forceDefault
   const [applyingMap, setApplyingMap] = useState(false)
   /** User kéo ghim → tạm không auto-geocode ghi đè đến khi đổi text địa chỉ. */
   const pinLockedRef = useRef(false)
+  /** Click/kéo map → tự reverse vào ô input. */
+  const mapDrivenRef = useRef(false)
   const lastQueryRef = useRef('')
-  const hasPin = form.latitude != null && form.longitude != null
 
   const provinceCode = provinceCodeOf(form.province)
   const wardOptions = useMemo(() => listWardsByProvinceCode(provinceCode), [provinceCode])
@@ -73,6 +75,7 @@ export default function AddressFormDialog({ open, onClose, address, forceDefault
   useEffect(() => {
     if (!open) return
     pinLockedRef.current = false
+    mapDrivenRef.current = false
     lastQueryRef.current = ''
     setForm({
       ...EMPTY,
@@ -139,15 +142,11 @@ export default function AddressFormDialog({ open, onClose, address, forceDefault
     if (errors[key]) setErrors((prev) => ({ ...prev, [key]: '' }))
   }
 
-  async function applyAddressFromMap() {
-    if (form.latitude == null || form.longitude == null) {
-      setFormError('Chọn vị trí trên bản đồ trước.')
-      return
-    }
+  async function reverseIntoForm(lat, lng) {
     setApplyingMap(true)
     setFormError('')
     try {
-      const hit = await geoApi.reverse(form.latitude, form.longitude)
+      const hit = await geoApi.reverse(lat, lng)
       const next = applyReverseAddress(hit)
       pinLockedRef.current = true
       lastQueryRef.current = [next.line1, next.ward, next.province]
@@ -165,8 +164,22 @@ export default function AddressFormDialog({ open, onClose, address, forceDefault
       setFormError(err.message || 'Không đọc được địa chỉ từ bản đồ.')
     } finally {
       setApplyingMap(false)
+      mapDrivenRef.current = false
     }
   }
+
+  // Click / kéo ghim → tự đổ số nhà + tỉnh + phường.
+  useEffect(() => {
+    if (!open || !mapDrivenRef.current) return
+    if (form.latitude == null || form.longitude == null) return
+    const lat = form.latitude
+    const lng = form.longitude
+    const t = window.setTimeout(() => {
+      void reverseIntoForm(lat, lng)
+    }, REVERSE_DEBOUNCE_MS)
+    return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when pin moves from map
+  }, [open, form.latitude, form.longitude])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -283,15 +296,7 @@ export default function AddressFormDialog({ open, onClose, address, forceDefault
 
         <div className="addr-map-block">
           <div className="addr-map-actions">
-            <Button
-              type="button"
-              variant="ghost"
-              pill
-              onClick={applyAddressFromMap}
-              disabled={!hasPin || applyingMap || saving}
-            >
-              {applyingMap ? 'Đang đọc địa chỉ…' : 'Dùng địa chỉ từ bản đồ'}
-            </Button>
+            {applyingMap && <span className="addr-map-distance">Đang đọc địa chỉ từ bản đồ…</span>}
             {locating && <span className="addr-map-distance">Đang định vị trên bản đồ…</span>}
           </div>
           <GoongMapPicker
@@ -301,6 +306,7 @@ export default function AddressFormDialog({ open, onClose, address, forceDefault
             fallbackCenter={shop}
             onChange={(pos) => {
               pinLockedRef.current = true
+              mapDrivenRef.current = true
               setForm((prev) => ({
                 ...prev,
                 latitude: pos.lat,

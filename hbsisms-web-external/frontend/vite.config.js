@@ -17,6 +17,7 @@ export default defineConfig({
     include: ['@goongmaps/goong-js'],
   },
   server: {
+    host: true,
     port: 5173,
     // Sau này gọi Spring Boot qua proxy (vd: /api -> http://localhost:8080)
     proxy: {
