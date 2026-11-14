@@ -179,6 +179,21 @@ export const orders = [
     lines: [line(97, 'Cá thu cắt khúc', 'Khay 500g', 2, 150000, IMG.ca)],
     events: [ev(2, 24 * 60 - 0.3, 'Khách hủy đơn'), ev(1, 24 * 60, 'Đặt hàng thành công')],
   }),
+  // Job hết hạn của backend hủy đơn: có sự kiện eventType 'expired' → giao diện hiện "Hết hạn"
+  order({
+    code: 'HB00090',
+    state: 'CANCELLED',
+    paymentStatus: 'UNPAID',
+    fulfillment: 'SHOP_DELIVERY',
+    hoursAgo: 26,
+    scheduled: dayIso(0),
+    timeWindow: '10:00-12:00',
+    lines: [line(90, 'Tôm sú', 'Khay 500g', 1, 180000, IMG.tom)],
+    events: [
+      { id: 2, eventType: 'expired', description: 'Hết hạn thanh toán (15 phút) — hủy đơn và giải phóng hold', createdAt: ago(25.7) },
+      ev(1, 26, 'Đặt hàng thành công, chờ thanh toán'),
+    ],
+  }),
 ]
 
 export const salesRequests = [

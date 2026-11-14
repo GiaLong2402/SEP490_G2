@@ -4,12 +4,18 @@
 .order-status {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
+  flex-shrink: 0;
+  gap: 5px;
+  padding: 4px 10px;
   border-radius: var(--radius-pill);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   white-space: nowrap;
+  line-height: 1.2;
+}
+
+.order-status svg {
+  flex-shrink: 0;
 }
 
 .order-status--info { background: #e6f0fd; color: #1d5fc4; }

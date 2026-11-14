@@ -43,6 +43,19 @@
   to { transform: rotate(360deg); }
 }
 
+/* QR đã đóng: hai trường hợp đã / chưa chuyển khoản — chữ to, rõ */
+.pay-result__cases {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 14px 16px 14px 34px;
+  border-radius: 12px;
+  background: var(--color-surface);
+  font-size: 16px;
+  line-height: 1.5;
+  text-align: left;
+}
+
 .pay-result__hint {
   padding: 10px 14px;
   border-radius: 10px;
