@@ -127,6 +127,9 @@ Contract FE (Doanh — Inter 2): `features/orders/api.ts` + `types.ts`; path con
 | GET | `/payments` |
 | POST | `/payments` |
 
+- `GET /payments?sort=asc` → cũ nhất trước; mặc định (bỏ trống) → giao dịch tạo gần nhất lên đầu.
+- Mỗi dòng có thêm `excessAmount` (tiền khách chuyển thừa, khi `reconcileFlag=over`) và `payerName` / `payerAccount` / `payerBank` (tài khoản người chuyển do PayOS gửi, có thể `null`) — form hoàn tiền dùng.
+
 ## pos
 
 Contract FE đã đăng ký path (`API_PATHS.pos`). **Chưa có BE** — giữ mock; **không** thêm `/pos` vào `VITE_API_HTTP_PATHS`.
