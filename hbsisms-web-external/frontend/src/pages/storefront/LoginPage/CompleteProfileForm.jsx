@@ -1,11 +1,14 @@
-import { useId, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import Button from '@/components/ui/Button'
 import { CheckIcon, LockIcon } from '@/components/icons/Icons'
 import { formatPhoneDisplay } from '@/utils/phone'
+import { listProvinces, listWardsByProvinceCode, provinceCodeOf } from '@/shared/geo/vnAdmin'
+
+const PROVINCES = listProvinces()
 
 /**
  * Form hoàn tất hồ sơ — hiện sau khi bấm "Tạo tài khoản"
- * SĐT khóa (đã OTP). Demo: lưu local rồi gọi onComplete.
+ * SĐT khóa (đã OTP). Tỉnh/Phường dropdown giống sổ địa chỉ khách.
  */
 export default function CompleteProfileForm({ phone, submitting, onComplete }) {
   const nameId = useId()
@@ -23,6 +26,9 @@ export default function CompleteProfileForm({ phone, submitting, onComplete }) {
   const [isDefaultAddress, setIsDefaultAddress] = useState(true)
   const [error, setError] = useState('')
 
+  const provinceCode = provinceCodeOf(province)
+  const wardOptions = useMemo(() => listWardsByProvinceCode(provinceCode), [provinceCode])
+
   async function handleSubmit(e) {
     e.preventDefault()
     if (submitting) return
@@ -32,7 +38,7 @@ export default function CompleteProfileForm({ phone, submitting, onComplete }) {
       return
     }
     if (!street.trim() || !ward.trim() || !province.trim()) {
-      setError('Vui lòng nhập đủ địa chỉ nhận hàng.')
+      setError('Vui lòng chọn đủ tỉnh/thành, phường/xã và số nhà.')
       return
     }
 
@@ -64,7 +70,6 @@ export default function CompleteProfileForm({ phone, submitting, onComplete }) {
       </p>
 
       <form className="auth-profile__form" onSubmit={handleSubmit} noValidate>
-        {/* SĐT đã xác thực — chỉ xem */}
         <div className="auth-field">
           <label className="auth-profile__label">Số điện thoại đăng nhập</label>
           <div className="auth-profile__locked">
@@ -135,36 +140,50 @@ export default function CompleteProfileForm({ phone, submitting, onComplete }) {
 
         <div className="auth-profile__row">
           <div className="auth-field">
-            <label className="auth-profile__label" htmlFor={wardId}>
-              Xã / Phường
-            </label>
-            <input
-              id={wardId}
-              className="auth-profile__input"
-              type="text"
-              placeholder="Xã / phường / đặc khu"
-              value={ward}
-              onChange={(e) => {
-                setWard(e.target.value)
-                setError('')
-              }}
-            />
-          </div>
-          <div className="auth-field">
             <label className="auth-profile__label" htmlFor={provinceId}>
               Tỉnh / Thành phố
             </label>
-            <input
+            <select
               id={provinceId}
               className="auth-profile__input"
-              type="text"
-              placeholder="Hải Phòng"
-              value={province}
+              value={provinceCode || ''}
               onChange={(e) => {
-                setProvince(e.target.value)
+                const p = PROVINCES.find((x) => x.code === e.target.value)
+                setProvince(p?.name || '')
+                setWard('')
                 setError('')
               }}
-            />
+            >
+              <option value="">— Chọn tỉnh/thành —</option>
+              {PROVINCES.map((p) => (
+                <option key={p.code} value={p.code}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="auth-field">
+            <label className="auth-profile__label" htmlFor={wardId}>
+              Phường / Xã
+            </label>
+            <select
+              id={wardId}
+              className="auth-profile__input"
+              value={wardOptions.find((w) => w.name === ward)?.code || ''}
+              disabled={!provinceCode}
+              onChange={(e) => {
+                const w = wardOptions.find((x) => x.code === e.target.value)
+                setWard(w?.name || '')
+                setError('')
+              }}
+            >
+              <option value="">{provinceCode ? '— Chọn phường/xã —' : 'Chọn tỉnh trước'}</option>
+              {wardOptions.map((w) => (
+                <option key={w.code} value={w.code}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
