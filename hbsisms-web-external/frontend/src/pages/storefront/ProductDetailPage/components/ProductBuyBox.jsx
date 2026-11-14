@@ -10,12 +10,12 @@ import {
   PlusIcon,
   TruckIcon,
 } from '@/components/icons/Icons'
-import { formatPrice, formatTrayLabel, formatWeight } from '@/utils/formatPrice'
+import { formatPrice, formatTrayLabel } from '@/utils/formatPrice'
 import BulkOrderForm from './BulkOrderForm'
 import './ProductBuyBox.css'
 
-/** Guest chỉ biết còn/hết — không dùng available 0|1 làm trần số lượng giỏ. */
-const GUEST_MAX_QTY = 99
+/** Soft-cap nhập tay trên detail; không gắn với tồn (cho phép vượt để gửi yêu cầu khi checkout). */
+const SOFT_MAX_QTY = 999
 
 const BENEFITS = [
   { icon: PackageIcon, text: 'Đóng khay rõ khối lượng' },
@@ -29,8 +29,9 @@ const BENEFITS = [
 export default function ProductBuyBox({ product, variant, onVariantChange, onAddToCart, onBuyNow }) {
   const [quantity, setQuantity] = useState(1)
 
-  const variantInStock = (variant?.stock || 0) > 0
-  const maxQuantity = variantInStock ? GUEST_MAX_QTY : 0
+  const availableTrays = Math.max(0, Number(variant?.stock) || 0)
+  const variantInStock = availableTrays > 0
+  const maxQuantity = variantInStock ? SOFT_MAX_QTY : 0
   const tiers = Array.isArray(variant?.tiers) ? variant.tiers : []
 
   useEffect(() => {
@@ -49,7 +50,6 @@ export default function ProductBuyBox({ product, variant, onVariantChange, onAdd
     onVariantChange(nextId)
   }
 
-  const totalWeight = (variant?.weightGrams || 0) * quantity
   const subtotal = (variant?.price || 0) * quantity
   const eyebrow = product.categoryId === 'che-bien' ? 'HẢI SẢN CHẾ BIẾN' : 'HẢI SẢN SƠ CHẾ'
 
@@ -137,9 +137,11 @@ export default function ProductBuyBox({ product, variant, onVariantChange, onAdd
             <PlusIcon />
           </button>
         </div>
-        <p className="buy-box__weight">
-          Tổng khối lượng: <strong>{formatWeight(totalWeight)}</strong>
-        </p>
+        {variantInStock ? (
+          <p className="buy-box__stock-hint" aria-live="polite">
+            {availableTrays.toLocaleString('vi-VN')} khay có sẵn
+          </p>
+        ) : null}
       </div>
 
       <p className="buy-box__subtotal">
