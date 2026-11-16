@@ -1,5 +1,6 @@
 package com.hbsisms.feature.sales.dto;
 
+import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -27,6 +28,15 @@ public record ShipAddressInput(
 
         @Size(max = 120, message = "Tỉnh/thành phố tối đa 120 ký tự")
         String province,
+
+        /** Pin bản đồ; khi có (cùng longitude) BE ưu tiên haversine, bỏ forward-geocode. */
+        @DecimalMin(value = "-90", message = "Vĩ độ không hợp lệ")
+        @DecimalMax(value = "90", message = "Vĩ độ không hợp lệ")
+        BigDecimal latitude,
+
+        @DecimalMin(value = "-180", message = "Kinh độ không hợp lệ")
+        @DecimalMax(value = "180", message = "Kinh độ không hợp lệ")
+        BigDecimal longitude,
 
         @DecimalMin(value = "0", message = "Khoảng cách không được âm")
         BigDecimal distanceKm) {

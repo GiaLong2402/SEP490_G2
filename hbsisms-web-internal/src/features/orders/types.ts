@@ -50,6 +50,9 @@ export interface ShipAddressInput {
   /** @deprecated Bỏ cấp huyện sau sáp nhập 2025. */
   district?: string | null;
   province?: string | null;
+  /** Pin từ Goong map — BE tính distanceKm / inDeliveryRadius. */
+  latitude?: number | null;
+  longitude?: number | null;
   distanceKm?: number | null;
 }
 

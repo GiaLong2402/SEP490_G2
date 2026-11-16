@@ -2,6 +2,7 @@ package com.hbsisms.feature.sales;
 
 import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.common.text.Strings;
+import com.hbsisms.feature.payment.PaymentStatus;
 import com.hbsisms.feature.sales.dto.DeliveryUpdateRequest;
 import com.hbsisms.feature.system.AuditLogService;
 import com.hbsisms.feature.user.AppUser;
@@ -116,6 +117,13 @@ public class DeliveryService {
         if (orderState != OrderState.TO_SHIP && orderState != OrderState.PARTIAL) {
             throw ApiException.conflict(
                     "Chỉ được bắt đầu/cập nhật giao khi đơn ở trạng thái Chờ giao hoặc Giao một phần");
+        }
+
+        if (target == DeliveryState.DELIVERED
+                && CollectOnDelivery.matches(order)
+                && order.getPaymentStatus() != PaymentStatus.PAID) {
+            throw ApiException.conflict(
+                    "Đơn COD — cần ghi nhận thanh toán đủ trước khi xác nhận đã giao");
         }
 
         delivery.setState(target);

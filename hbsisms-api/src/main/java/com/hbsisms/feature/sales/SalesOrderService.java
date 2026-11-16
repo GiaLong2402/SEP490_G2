@@ -199,6 +199,9 @@ public class SalesOrderService {
             throw ApiException.badRequest("Đơn phải có ít nhất một dòng hàng");
         }
 
+        PaymentMethod paymentMethod =
+                CollectOnDelivery.normalize(request.paymentMethod(), request.fulfillmentMethod());
+
         Customer customer = resolveCustomerForOrder(request);
         String customerName = resolveCustomerName(customer, request.customerName());
         CustomerAddress shipAddress = resolveShipAddress(customer, request);
@@ -211,7 +214,7 @@ public class SalesOrderService {
 
         PricingResultResponse priced = pricingService.resolve(new PricingRequest(
                 customer.getId(),
-                request.paymentMethod().code(),
+                paymentMethod.code(),
                 moneyOrZero(request.shippingFee()),
                 moneyOrZero(request.discountTotal()),
                 request.lines()));
@@ -226,7 +229,7 @@ public class SalesOrderService {
         order.setCustomerName(customerName);
         order.setOrderType(request.orderType());
         order.setChannel(request.channel());
-        order.setPaymentMethod(request.paymentMethod());
+        order.setPaymentMethod(paymentMethod);
         order.setPaymentTermDays((short) 0);
         order.setPaymentStatus(PaymentStatus.UNPAID);
         order.setAllocationStatus(AllocationStatus.NONE);
@@ -321,6 +324,9 @@ public class SalesOrderService {
             throw ApiException.badRequest("Đơn phải có ít nhất một dòng hàng");
         }
 
+        PaymentMethod paymentMethod =
+                CollectOnDelivery.normalize(request.paymentMethod(), request.fulfillmentMethod());
+
         Customer customer = resolveCustomerForOrder(request);
         String customerName = resolveCustomerName(customer, request.customerName());
         CustomerAddress shipAddress = resolveShipAddress(customer, request);
@@ -345,7 +351,7 @@ public class SalesOrderService {
 
         PricingResultResponse priced = pricingService.resolve(new PricingRequest(
                 customer.getId(),
-                request.paymentMethod().code(),
+                paymentMethod.code(),
                 moneyOrZero(request.shippingFee()),
                 moneyOrZero(request.discountTotal()),
                 request.lines()));
@@ -362,7 +368,7 @@ public class SalesOrderService {
         order.setCustomerName(customerName);
         order.setOrderType(request.orderType());
         order.setChannel(request.channel());
-        order.setPaymentMethod(request.paymentMethod());
+        order.setPaymentMethod(paymentMethod);
         order.setPaymentTermDays((short) 0);
         order.setFulfillmentMethod(request.fulfillmentMethod());
         order.setShipAddress(shipAddress);
@@ -615,7 +621,8 @@ public class SalesOrderService {
     }
 
     private void assertReadyForPreparing(SalesOrder order) {
-        if (order.getPaymentStatus() != PaymentStatus.PAID) {
+        // COD: thu khi giao — cho chuẩn bị khi đã giữ đủ hàng, chưa cần paid.
+        if (!CollectOnDelivery.matches(order) && order.getPaymentStatus() != PaymentStatus.PAID) {
             throw ApiException.conflict("Chỉ chuẩn bị khi đã thanh toán đủ");
         }
         if (order.getAllocationStatus() != AllocationStatus.FULL) {
@@ -624,8 +631,8 @@ public class SalesOrderService {
     }
 
     /**
-     * State machine bước kế tiếp cho FE. {@link OrderState#PREPARING} chỉ hiện khi
-     * đã {@code PAID} và phân bổ {@code FULL} — khớp AC vòng đời.
+     * State machine bước kế tiếp cho FE. {@link OrderState#PREPARING}: prepaid cần
+     * {@code PAID}+{@code FULL}; COD chỉ cần {@code FULL}.
      */
     private static List<OrderState> allowedNextStates(SalesOrder order) {
         if (order.isOverLimit() && order.getApprovedBy() == null) {
@@ -638,8 +645,10 @@ public class SalesOrderService {
         List<OrderState> next = new ArrayList<>(raw.size());
         for (OrderState state : raw) {
             if (state == OrderState.PREPARING) {
-                if (order.getPaymentStatus() == PaymentStatus.PAID
-                        && order.getAllocationStatus() == AllocationStatus.FULL) {
+                boolean allocationOk = order.getAllocationStatus() == AllocationStatus.FULL;
+                boolean paymentOk = CollectOnDelivery.matches(order)
+                        || order.getPaymentStatus() == PaymentStatus.PAID;
+                if (allocationOk && paymentOk) {
                     next.add(state);
                 }
             } else {
@@ -745,8 +754,8 @@ public class SalesOrderService {
                             Strings.trimToNull(input.ward()),
                             Strings.trimToNull(input.district()),
                             province,
-                            null,
-                            null,
+                            input.latitude(),
+                            input.longitude(),
                             input.distanceKm(),
                             Boolean.TRUE));
             return customerAddressRepository

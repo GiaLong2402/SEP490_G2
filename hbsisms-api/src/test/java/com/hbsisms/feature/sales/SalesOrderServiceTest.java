@@ -376,6 +376,91 @@ class SalesOrderServiceTest {
     }
 
     @Test
+    void transition_preparingWhenCodUnpaidAndFull_succeeds() {
+        SalesOrder order = baseOrder(18L, OrderState.CONFIRMED, PaymentStatus.UNPAID, AllocationStatus.FULL);
+        order.setPaymentMethod(PaymentMethod.COD);
+        order.setFulfillmentMethod(FulfillmentMethod.SHOP_DELIVERY);
+        when(salesOrderRepository.findWithDetailsById(18L)).thenReturn(Optional.of(order));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        service.transition(18L, OrderState.PREPARING, 9L);
+
+        assertThat(order.getState()).isEqualTo(OrderState.PREPARING);
+        verify(salesOrderRepository).save(order);
+    }
+
+    @Test
+    void transition_preparingWhenCashShopDeliveryUnpaid_succeeds() {
+        // Đơn cũ cash + shop_delivery (chưa normalize) vẫn coi là COD.
+        SalesOrder order = baseOrder(19L, OrderState.CONFIRMED, PaymentStatus.UNPAID, AllocationStatus.FULL);
+        order.setPaymentMethod(PaymentMethod.CASH);
+        order.setFulfillmentMethod(FulfillmentMethod.SHOP_DELIVERY);
+        when(salesOrderRepository.findWithDetailsById(19L)).thenReturn(Optional.of(order));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        service.transition(19L, OrderState.PREPARING, 9L);
+
+        assertThat(order.getState()).isEqualTo(OrderState.PREPARING);
+    }
+
+    @Test
+    void create_cashShopDelivery_normalizesToCod() {
+        com.hbsisms.feature.customer.CustomerAddress address = new com.hbsisms.feature.customer.CustomerAddress();
+        setId(address, 55L);
+        when(customerRepository.findById(1L)).thenReturn(Optional.of(retailCustomer));
+        when(customerAddressRepository.findByIdAndCustomerId(55L, 1L)).thenReturn(Optional.of(address));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(pricingService.resolve(any(PricingRequest.class))).thenReturn(priced(false));
+        when(productVariantRepository.findById(10L)).thenReturn(Optional.of(variant));
+        when(salesOrderRepository.findCodesByPrefix("SO-2026-")).thenReturn(List.of());
+        when(salesOrderRepository.save(any(SalesOrder.class))).thenAnswer(inv -> {
+            SalesOrder o = inv.getArgument(0);
+            if (o.getId() == null) {
+                setId(o, ids.incrementAndGet());
+            }
+            return o;
+        });
+        when(orderAllocationService.holdForOrder(any(), eq(9L), eq(false))).thenAnswer(inv -> {
+            SalesOrder o = inv.getArgument(0);
+            o.setAllocationStatus(AllocationStatus.FULL);
+            return 1;
+        });
+        when(salesOrderRepository.findWithDetailsById(anyLong())).thenAnswer(inv -> {
+            SalesOrder o = baseOrder(inv.getArgument(0), OrderState.CONFIRMED, PaymentStatus.UNPAID, AllocationStatus.FULL);
+            o.setPaymentMethod(PaymentMethod.COD);
+            o.setFulfillmentMethod(FulfillmentMethod.SHOP_DELIVERY);
+            return Optional.of(o);
+        });
+        when(deliveryRepository.findByOrder_IdOrderByIdAsc(anyLong())).thenReturn(List.of());
+        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(anyLong())).thenReturn(List.of());
+        when(orderEventRepository.findByOrder_IdOrderByCreatedAtAscIdAsc(anyLong())).thenReturn(List.of());
+
+        service.create(
+                new OrderInputRequest(
+                        1L,
+                        null,
+                        null,
+                        OrderType.RETAIL,
+                        SaleChannel.PHONE,
+                        PaymentMethod.CASH,
+                        FulfillmentMethod.SHOP_DELIVERY,
+                        55L,
+                        null,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        null,
+                        null,
+                        List.of(new PricingLineInput(10L, SellUnit.PACK, 1, null))),
+                9L);
+
+        verify(salesOrderRepository, org.mockito.Mockito.atLeastOnce()).save(org.mockito.ArgumentMatchers.argThat(
+                (SalesOrder o) -> o.getPaymentMethod() == PaymentMethod.COD
+                        && o.getFulfillmentMethod() == FulfillmentMethod.SHOP_DELIVERY));
+        verify(pricingService).resolve(org.mockito.ArgumentMatchers.argThat(
+                (PricingRequest req) -> "cod".equals(req.paymentMethod())));
+    }
+
+    @Test
     void cancel_releasesHold() {
         SalesOrder order = baseOrder(11L, OrderState.CONFIRMED, PaymentStatus.UNPAID, AllocationStatus.FULL);
         when(salesOrderRepository.findWithDetailsById(11L)).thenReturn(Optional.of(order));
