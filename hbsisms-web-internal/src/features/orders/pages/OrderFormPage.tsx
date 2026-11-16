@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -7,12 +7,23 @@ import { normalizeVnPhone, validateRequiredPhone } from '@/features/customers/cu
 import { LineItemsEditor, isCompleteLine, newLine, toPricingLines, type EditableLine, usePricing } from '@/features/pricing';
 import { useVariantOptions } from '@/features/products';
 import { useAction } from '@/shared/api/useAction';
+import { geoApi } from '@/shared/api/geo';
 import { fulfillmentLabels, paymentMethodLabels, saleChannelLabels, staffSaleChannelLabels, staffSaleChannels, type FulfillmentMethod, type PaymentMethod, type SaleChannel } from '@/shared/domain/enums';
+import { normalizePaymentForFulfillment } from '../cod';
+import { AdminUnitFields } from '@/shared/geo/AdminUnitFields';
+import { applyReverseAddress } from '@/shared/geo/applyReverseAddress';
 import { formatThousands, money, parseThousands } from '@/shared/lib/format';
+import { GoongMapPicker } from '@/shared/maps/GoongMapPicker';
+import type { LngLat } from '@/shared/maps/goong';
 import { Alert, Button, Card, Chip, Field, Input, PageHeader, Select, Textarea, enumOptions } from '@/shared/ui';
 import { ordersApi } from '../api';
 import { useOrder } from '../hooks';
 import type { ShipAddressInput } from '../types';
+
+const GEOCODE_DEBOUNCE_MS = 700;
+const REVERSE_DEBOUNCE_MS = 450;
+const FALLBACK_SHOP: LngLat = { lat: 20.951248, lng: 107.080502 };
+const DEFAULT_RADIUS_KM = 8;
 
 /** Không bán nợ — chỉ tiền mặt / chuyển khoản / COD trên form Sales.
  *  PayOS (cổng QR web) bản chất cũng là CK → gộp vào bank_transfer, không hiện riêng. */
@@ -33,6 +44,8 @@ const emptyWalkInAddress = (): ShipAddressInput => ({
   ward: '',
   district: '',
   province: '',
+  latitude: null,
+  longitude: null,
   distanceKm: null,
 });
 
@@ -63,6 +76,16 @@ export default function OrderFormPage() {
   const [lines, setLines] = useState<EditableLine[]>([newLine()]);
   const [touched, setTouched] = useState(false);
   const [hydrated, setHydrated] = useState(!isEdit);
+  const [shop, setShop] = useState<LngLat>(FALLBACK_SHOP);
+  const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM);
+  const [locating, setLocating] = useState(false);
+  const [applyingMap, setApplyingMap] = useState(false);
+  const [locateError, setLocateError] = useState<string | null>(null);
+  /** Map thu gọn mặc định — chỉ mở khi NV cần chỉnh ghim. */
+  const [walkInMapOpen, setWalkInMapOpen] = useState(false);
+  const pinLockedRef = useRef(false);
+  const mapDrivenRef = useRef(false);
+  const lastQueryRef = useRef('');
 
   const isB2b = !walkIn && customer?.customerType === 'b2b';
   const channelLabels = staffSaleChannels.includes(channel)
@@ -89,11 +112,13 @@ export default function OrderFormPage() {
         ward: o.address.ward ?? '',
         district: o.address.district ?? '',
         province: o.address.province ?? '',
+        latitude: o.address.latitude,
+        longitude: o.address.longitude,
         distanceKm: o.address.distanceKm,
       });
     }
     setChannel(o.channel ?? 'phone');
-    setPaymentMethod(toSalesPaymentMethod(o.paymentMethod));
+    setPaymentMethod(normalizePaymentForFulfillment(toSalesPaymentMethod(o.paymentMethod), o.fulfillmentMethod));
     setFulfillment(o.fulfillmentMethod);
     setAddressId(o.shipAddressId);
     setShippingFee(String(o.shippingFee ?? 0));
@@ -129,14 +154,118 @@ export default function OrderFormPage() {
       setCustomerId(null);
       setAddressId(null);
       if (paymentMethod === 'credit_net') setPaymentMethod('cash');
+    } else {
+      setWalkInMapOpen(false);
     }
   }, [walkIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (fulfillment === 'pickup') setWalkInMapOpen(false);
+  }, [fulfillment]);
+
+  // Shop tự giao + tiền mặt = thu khi giao → COD.
+  useEffect(() => {
+    setPaymentMethod((prev) => normalizePaymentForFulfillment(prev, fulfillment));
+  }, [fulfillment]);
+
+  useEffect(() => {
+    let cancelled = false;
+    geoApi
+      .shop()
+      .then((s) => {
+        if (cancelled) return;
+        setShop({ lat: Number(s.latitude), lng: Number(s.longitude) });
+        setRadiusKm(Number(s.deliveryRadiusKm) || DEFAULT_RADIUS_KM);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const walkInAddressQuery = useMemo(
+    () => [walkInAddress.line1, walkInAddress.ward, walkInAddress.province].filter((p) => p && String(p).trim()).join(', '),
+    [walkInAddress.line1, walkInAddress.ward, walkInAddress.province],
+  );
+
+  // Gõ đủ địa chỉ + tỉnh → geocode ghim / km (giống AddressFormModal).
+  useEffect(() => {
+    if (!walkIn || fulfillment === 'pickup') return;
+    if (!walkInAddress.line1?.trim() || !walkInAddress.province?.trim()) return;
+    if (pinLockedRef.current && lastQueryRef.current === walkInAddressQuery) return;
+
+    const t = window.setTimeout(async () => {
+      if (pinLockedRef.current && lastQueryRef.current === walkInAddressQuery) return;
+      setLocating(true);
+      setLocateError(null);
+      try {
+        const hit = await geoApi.geocode(walkInAddressQuery);
+        lastQueryRef.current = walkInAddressQuery;
+        pinLockedRef.current = false;
+        mapDrivenRef.current = false;
+        setWalkInAddress((prev) => ({
+          ...prev,
+          latitude: Number(hit.latitude),
+          longitude: Number(hit.longitude),
+          distanceKm: Number(hit.distanceKm),
+        }));
+      } catch (err) {
+        setLocateError(err instanceof Error ? err.message : 'Chưa định vị được — vẫn có thể bấm map');
+      } finally {
+        setLocating(false);
+      }
+    }, GEOCODE_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(t);
+  }, [walkIn, fulfillment, walkInAddressQuery, walkInAddress.line1, walkInAddress.province]);
+
+  async function reverseWalkInPin(lat: number, lng: number) {
+    setApplyingMap(true);
+    setLocateError(null);
+    try {
+      const hit = await geoApi.reverse(lat, lng);
+      const next = applyReverseAddress(hit);
+      pinLockedRef.current = true;
+      lastQueryRef.current = [next.line1, next.ward, next.province]
+        .filter((p) => p && String(p).trim())
+        .join(', ');
+      setWalkInAddress((prev) => ({
+        ...prev,
+        line1: next.line1 ?? prev.line1,
+        ward: next.ward,
+        district: null,
+        province: next.province,
+        latitude: next.latitude,
+        longitude: next.longitude,
+        distanceKm: next.distanceKm,
+      }));
+    } catch (err) {
+      setLocateError(err instanceof Error ? err.message : 'Không đọc được địa chỉ từ bản đồ');
+    } finally {
+      setApplyingMap(false);
+      mapDrivenRef.current = false;
+    }
+  }
+
+  useEffect(() => {
+    if (!walkIn || fulfillment === 'pickup' || !mapDrivenRef.current) return;
+    if (walkInAddress.latitude == null || walkInAddress.longitude == null) return;
+    const lat = walkInAddress.latitude;
+    const lng = walkInAddress.longitude;
+    const t = window.setTimeout(() => {
+      void reverseWalkInPin(lat, lng);
+    }, REVERSE_DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when pin moves from map
+  }, [walkIn, fulfillment, walkInAddress.latitude, walkInAddress.longitude]);
+
   const selectedAddress = addresses?.find((a) => a.id === addressId);
+  const walkInInRadius = walkInAddress.distanceKm != null && walkInAddress.distanceKm <= radiusKm;
   const pricingLines = useMemo(() => toPricingLines(lines), [lines]);
+  const effectivePaymentMethod = normalizePaymentForFulfillment(paymentMethod, fulfillment);
   const pricing = usePricing({
     customerId: walkIn ? null : customerId,
-    paymentMethod,
+    paymentMethod: effectivePaymentMethod,
     shippingFee: Number(shippingFee) || 0,
     discountTotal: Number(discount) || 0,
     lines: toPricingLines(lines.filter(isCompleteLine)),
@@ -150,7 +279,7 @@ export default function OrderFormPage() {
   const customerOk = walkIn
     ? walkInName.trim().length > 0 && !phoneError
     : !!customerId;
-  const walkInAddressOk = !!walkInAddress.line1.trim();
+  const walkInAddressOk = !!walkInAddress.line1.trim() && !!walkInAddress.province?.trim();
   const addressOk = !needsAddress || (walkIn ? walkInAddressOk : (!!customerId && !!addressId));
 
   const body = () => ({
@@ -159,7 +288,7 @@ export default function OrderFormPage() {
     phone: walkIn ? normalizeVnPhone(walkInPhone) : null,
     orderType: (isB2b ? 'b2b' : 'retail') as 'b2b' | 'retail',
     channel,
-    paymentMethod,
+    paymentMethod: effectivePaymentMethod,
     fulfillmentMethod: fulfillment,
     shipAddressId: walkIn || !needsAddress ? null : addressId,
     shipAddress: walkIn && needsAddress
@@ -170,6 +299,8 @@ export default function OrderFormPage() {
           ward: walkInAddress.ward?.trim() || null,
           district: null,
           province: walkInAddress.province?.trim() || null,
+          latitude: walkInAddress.latitude ?? null,
+          longitude: walkInAddress.longitude ?? null,
           distanceKm: walkInAddress.distanceKm ?? null,
         }
       : null,
@@ -242,28 +373,28 @@ export default function OrderFormPage() {
                     label="Địa chỉ giao"
                     required
                     className="md:col-span-2 xl:col-span-3"
-                    error={touched && !walkInAddressOk ? 'Nhập địa chỉ giao hàng' : undefined}
+                    error={touched && !walkInAddress.line1.trim() ? 'Nhập địa chỉ giao hàng' : undefined}
                   >
                     <Input
                       value={walkInAddress.line1}
-                      onChange={(e) => setWalkInAddress((a) => ({ ...a, line1: e.target.value }))}
+                      onChange={(e) => {
+                        pinLockedRef.current = false;
+                        setWalkInAddress((a) => ({ ...a, line1: e.target.value }));
+                      }}
                       placeholder="Số nhà, đường…"
                     />
                   </Field>
-                  <Field label="Xã/phường">
-                    <Input
-                      value={walkInAddress.ward ?? ''}
-                      onChange={(e) => setWalkInAddress((a) => ({ ...a, ward: e.target.value, district: '' }))}
-                      placeholder="Xã / phường / đặc khu"
-                    />
-                  </Field>
-                  <Field label="Tỉnh/thành phố">
-                    <Input
-                      value={walkInAddress.province ?? ''}
-                      onChange={(e) => setWalkInAddress((a) => ({ ...a, province: e.target.value }))}
-                      placeholder="Hải Phòng"
-                    />
-                  </Field>
+                  <AdminUnitFields
+                    province={walkInAddress.province ?? null}
+                    ward={walkInAddress.ward ?? null}
+                    onChange={(next) => {
+                      pinLockedRef.current = false;
+                      setWalkInAddress((a) => ({ ...a, ...next, district: null }));
+                    }}
+                  />
+                  {touched && !walkInAddress.province?.trim() && (
+                    <p className="md:col-span-2 xl:col-span-3 text-small text-red-fg">Chọn tỉnh/thành</p>
+                  )}
                   <Field label="Người nhận">
                     <Input
                       value={walkInAddress.recipientName ?? ''}
@@ -279,18 +410,41 @@ export default function OrderFormPage() {
                       inputMode="tel"
                     />
                   </Field>
-                  <Field label="Khoảng cách từ kho (km)" hint="Backend sẽ tự tính khi tích hợp bản đồ">
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.1"
-                      value={walkInAddress.distanceKm ?? ''}
-                      onChange={(e) => setWalkInAddress((a) => ({
-                        ...a,
-                        distanceKm: e.target.value === '' ? null : Number(e.target.value),
-                      }))}
-                    />
-                  </Field>
+                  <div className="md:col-span-2 xl:col-span-3 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant={walkInMapOpen ? 'secondary' : 'ghost'}
+                        onClick={() => setWalkInMapOpen((v) => !v)}
+                      >
+                        {walkInMapOpen ? 'Ẩn bản đồ' : 'Chọn trên bản đồ'}
+                      </Button>
+                      {locating && <span className="text-small text-ink-muted">Đang định vị…</span>}
+                      {applyingMap && <span className="text-small text-ink-muted">Đang đọc địa chỉ từ bản đồ…</span>}
+                      {!walkInMapOpen && walkInAddress.distanceKm != null && (
+                        <span className="text-small text-ink-muted">Đã định vị — mở bản đồ nếu cần chỉnh ghim</span>
+                      )}
+                    </div>
+                    {locateError && <p className="text-small text-red-600">{locateError}</p>}
+                    {walkInMapOpen && (
+                      <GoongMapPicker
+                        open={walkIn && needsAddress && walkInMapOpen}
+                        latitude={walkInAddress.latitude ?? null}
+                        longitude={walkInAddress.longitude ?? null}
+                        fallbackCenter={shop}
+                        onChange={(pos) => {
+                          pinLockedRef.current = true;
+                          mapDrivenRef.current = true;
+                          setWalkInAddress((prev) => ({
+                            ...prev,
+                            latitude: pos.lat,
+                            longitude: pos.lng,
+                            distanceKm: null,
+                          }));
+                        }}
+                      />
+                    )}
+                  </div>
                 </>
               )}
               {needsAddress && !walkIn && (
@@ -338,10 +492,10 @@ export default function OrderFormPage() {
             )}
             {needsAddress && walkIn && walkInAddress.distanceKm != null && (
               <div className="mt-2 flex items-center gap-2">
-                <Chip tone={walkInAddress.distanceKm <= 8 ? 'green' : 'amber'}>
-                  {walkInAddress.distanceKm <= 8 ? 'Trong bán kính tự giao' : 'Ngoài bán kính, nên dùng đối tác giao'}
+                <Chip tone={walkInInRadius ? 'green' : 'amber'}>
+                  {walkInInRadius ? 'Trong bán kính tự giao' : 'Ngoài bán kính, nên dùng đối tác giao'}
                 </Chip>
-                <span className="text-small text-ink-muted">{walkInAddress.distanceKm} km</span>
+                <span className="text-small text-ink-muted">{walkInAddress.distanceKm} km · bán kính {radiusKm} km</span>
               </div>
             )}
           </Card>
@@ -355,9 +509,22 @@ export default function OrderFormPage() {
           <Card title="Tóm tắt đơn">
             <div className="space-y-3">
               <Field label="Thanh toán" required>
-                <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}>
-                  {SALES_PAYMENT_OPTIONS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                <Select
+                  value={effectivePaymentMethod}
+                  onChange={(e) => {
+                    const next = e.target.value as PaymentMethod;
+                    setPaymentMethod(normalizePaymentForFulfillment(next, fulfillment));
+                  }}
+                >
+                  {SALES_PAYMENT_OPTIONS.map(([key, label]) => (
+                    <option key={key} value={key} disabled={fulfillment === 'shop_delivery' && key === 'cash'}>
+                      {label}{fulfillment === 'shop_delivery' && key === 'cod' ? ' (thu khi giao)' : ''}
+                    </option>
+                  ))}
                 </Select>
+                {fulfillment === 'shop_delivery' && effectivePaymentMethod === 'cod' && (
+                  <p className="mt-1 text-small text-ink-muted">Shop tự giao + thu tiền mặt khi giao được ghi nhận là COD.</p>
+                )}
               </Field>
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Chiết khấu (₫)">

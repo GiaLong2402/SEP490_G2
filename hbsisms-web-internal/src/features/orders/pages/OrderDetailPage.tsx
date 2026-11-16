@@ -11,6 +11,7 @@ import { allocationStatusMeta, deliveryStateMeta, fulfillmentLabels, orderStateM
 import { date, dateTime, money, num } from '@/shared/lib/format';
 import { Alert, Button, Card, Chip, ConfirmDialog, DataTable, ErrorState, InfoList, LinkButton, Meter, PageHeader, PageLoading, StatusChip, type Column } from '@/shared/ui';
 import { ordersApi } from '../api';
+import { isCollectOnDelivery } from '../cod';
 import { OrderProgress } from '../components/OrderProgress';
 import { useOrder } from '../hooks';
 import type { OrderDeliveryView, OrderLineView } from '../types';
@@ -50,13 +51,19 @@ export default function OrderDetailPage() {
     && order.paymentStatus === 'paid';
   const canEdit = ['pending', 'confirmed'].includes(order.state) && !['paid', 'partial'].includes(order.paymentStatus);
   const canPrintReceipt = order.paymentStatus === 'paid';
+  const collectOnDelivery = isCollectOnDelivery(order.paymentMethod, order.fulfillmentMethod);
   const waitingForPrepare = order.state === 'confirmed' && !order.nextStates.includes('preparing');
   const prepareBlockReason =
-    order.paymentStatus !== 'paid'
+    !collectOnDelivery && order.paymentStatus !== 'paid'
       ? 'Cần thanh toán đủ trước khi chuẩn bị hàng.'
       : order.allocationStatus !== 'full'
         ? 'Chưa phân bổ đủ hàng — không thể chuẩn bị.'
         : null;
+  const showCodHint =
+    collectOnDelivery
+    && order.paymentStatus !== 'paid'
+    && !['cancelled', 'completed'].includes(order.state)
+    && outstanding > 0;
 
   const lineColumns: Column<OrderLineView>[] = [
     { key: 'product', header: 'Sản phẩm', cell: (l) => <div><div className="font-medium">{l.productName}</div><div className="num text-ink-faint">{l.sku} · {l.packLabel}</div></div> },
@@ -73,7 +80,27 @@ export default function OrderDetailPage() {
     { key: 'who', header: 'Người giao', cell: (d) => d.assigneeName ?? d.carrier ?? fulfillmentLabels[d.fulfillmentMethod] },
     { key: 'qty', header: 'Khay', align: 'right', cell: (d) => <span className="num">{num((d.items ?? []).reduce((s, i) => s + i.qtyKhay, 0))}</span> },
     { key: 'state', header: 'Trạng thái', cell: (d) => <StatusChip meta={deliveryStateMeta} value={d.state} /> },
-    { key: 'actions', header: '', align: 'right', cell: (d) => <DeliveryStateActions delivery={d} orderState={order.state} /> },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      cell: (d) => (
+        <DeliveryStateActions
+          delivery={d}
+          orderState={order.state}
+          codCollect={{
+            paymentMethod: order.paymentMethod,
+            fulfillmentMethod: order.fulfillmentMethod,
+            paymentStatus: order.paymentStatus,
+            outstanding,
+            customerId: order.customerId,
+            customerName: order.customerName,
+            orderId: order.id,
+            orderCode: order.code,
+          }}
+        />
+      ),
+    },
   ];
 
   return (
@@ -121,7 +148,14 @@ export default function OrderDetailPage() {
       {waitingForPrepare && prepareBlockReason && (
         <div className="mb-4">
           <Alert tone="warning" title="Chưa thể chuyển sang Chuẩn bị">
-            {prepareBlockReason} {order.paymentStatus !== 'paid' && canPay && 'Hãy ghi nhận thanh toán đủ trước.'}
+            {prepareBlockReason} {!collectOnDelivery && order.paymentStatus !== 'paid' && canPay && 'Hãy ghi nhận thanh toán đủ trước.'}
+          </Alert>
+        </div>
+      )}
+      {showCodHint && (
+        <div className="mb-4">
+          <Alert tone="info" title="Đơn COD — thu tiền khi giao">
+            Có thể chuẩn bị và giao khi chưa thu. Ghi nhận thanh toán đủ trước khi xác nhận Đã giao.
           </Alert>
         </div>
       )}
@@ -198,7 +232,14 @@ export default function OrderDetailPage() {
 
       <ConfirmDialog open={cancelling} danger title={`Hủy đơn ${order.code}?`} message={order.paymentStatus === 'paid' || order.paymentStatus === 'partial' ? 'Hàng đang giữ sẽ được nhả. Đơn đã thu tiền sẽ chuyển sang Chờ hoàn tiền.' : 'Hàng đang giữ sẽ được nhả. Lý do hủy là bắt buộc.'} withNote noteRequired noteLabel="Lý do hủy" confirmLabel="Hủy đơn" loading={cancel.isPending} onConfirm={(reason) => cancel.mutate(reason)} onClose={() => setCancelling(false)} />
       <DeliveryFormModal open={deliveryOpen} onClose={() => setDeliveryOpen(false)} order={{ id: order.id, code: order.code, fulfillmentMethod: order.fulfillmentMethod, shipAddressId: order.shipAddressId, inRadius: order.address?.inDeliveryRadius ?? false, distanceKm: order.address?.distanceKm ?? null, legCount: order.deliveries.filter((d) => d.state !== 'failed').length, lines: order.lines.map((l) => ({ id: l.id, label: `${l.productName} · ${l.packLabel}`, qtyKhay: l.qtyKhay })), deliveries: order.deliveries }} />
-      <PaymentFormModal open={paymentOpen} onClose={() => setPaymentOpen(false)} customerId={order.customerId} customerName={order.customerName} order={{ id: order.id, code: order.code, outstanding }} defaultMethod={order.paymentMethod === 'cash' || order.paymentMethod === 'bank_transfer' ? order.paymentMethod : 'bank_transfer'} />
+      <PaymentFormModal
+        open={paymentOpen}
+        onClose={() => setPaymentOpen(false)}
+        customerId={order.customerId}
+        customerName={order.customerName}
+        order={{ id: order.id, code: order.code, outstanding }}
+        defaultMethod={collectOnDelivery || order.paymentMethod === 'cash' ? 'cash' : order.paymentMethod === 'bank_transfer' ? 'bank_transfer' : 'cash'}
+      />
       <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} />
     </>
   );

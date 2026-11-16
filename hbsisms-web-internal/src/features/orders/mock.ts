@@ -3,6 +3,7 @@ import { fail, matches, mock, paginate } from '@/shared/api/mockServer';
 import type { OrderState } from '@/shared/domain/enums';
 import { db, nextCode, nextId } from '@/shared/mock/db';
 import { addOrderEvent, allocateOrder, audit, configInt, confirmOrder, postDebtEntry, priceLines, releaseOrder, userName, variantLabel } from '@/shared/mock/services';
+import { isCollectOnDelivery, normalizePaymentForFulfillment } from './cod';
 
 const MANUAL_NEXT: Partial<Record<OrderState, OrderState[]>> = {
   pending: ['confirmed'],
@@ -32,7 +33,8 @@ function toDetail(id: number) {
   const rawNext = blockedByLimit ? [] : (MANUAL_NEXT[order.state] ?? []);
   const nextStates = rawNext.filter((state) => {
     if (state !== 'preparing') return true;
-    return order.paymentStatus === 'paid' && order.allocationStatus === 'full';
+    if (order.allocationStatus !== 'full') return false;
+    return isCollectOnDelivery(order.paymentMethod, order.fulfillmentMethod) || order.paymentStatus === 'paid';
   });
   return {
     ...toItem(order),
@@ -148,6 +150,8 @@ function resolveShipAddressId(customer: (typeof db.customers)[number], body: Rec
     const distanceKm = ship.distanceKm === null || ship.distanceKm === undefined || ship.distanceKm === ''
       ? null
       : Number(ship.distanceKm);
+    const latitude = ship.latitude == null || ship.latitude === '' ? null : Number(ship.latitude);
+    const longitude = ship.longitude == null || ship.longitude === '' ? null : Number(ship.longitude);
     const radius = configInt('delivery_radius_km', 8);
     const isFirst = !db.addresses.some((a) => a.customerId === customer.id);
     if (isFirst) {
@@ -164,8 +168,8 @@ function resolveShipAddressId(customer: (typeof db.customers)[number], body: Rec
       ward: String(ship.ward ?? '').trim() || null,
       district: null,
       province: String(ship.province ?? '').trim() || 'Hải Phòng',
-      latitude: null,
-      longitude: null,
+      latitude: Number.isFinite(latitude as number) ? (latitude as number) : null,
+      longitude: Number.isFinite(longitude as number) ? (longitude as number) : null,
       distanceKm: Number.isFinite(distanceKm as number) ? (distanceKm as number) : null,
       inDeliveryRadius: distanceKm != null && Number.isFinite(distanceKm) && distanceKm <= radius,
       isDefault: isFirst,
@@ -186,6 +190,7 @@ mock('PUT', '/orders/:id', ({ params, body, userId }) => {
   if (body.paymentMethod === 'credit_net') fail(409, 'Không bán nợ — mọi đơn phải thanh toán đủ trước khi chuẩn bị');
   if (!body.lines?.length) fail(400, 'Đơn phải có ít nhất một dòng hàng');
 
+  const paymentMethod = normalizePaymentForFulfillment(body.paymentMethod, body.fulfillmentMethod);
   const customer = resolveCustomerForOrder(body);
   const customerName = customer.name;
   const shipAddressId = resolveShipAddressId(customer, body);
@@ -204,7 +209,7 @@ mock('PUT', '/orders/:id', ({ params, body, userId }) => {
     customerName,
     orderType: body.orderType,
     channel: body.channel,
-    paymentMethod: body.paymentMethod,
+    paymentMethod,
     paymentTermDays: 0,
     fulfillmentMethod: body.fulfillmentMethod,
     shipAddressId,
@@ -268,6 +273,7 @@ mock('GET', '/orders/:id/receipt', ({ params, userId }) => {
 mock('POST', '/orders', ({ body, userId }) => {
   if (body.paymentMethod === 'credit_net') fail(409, 'Không bán nợ — mọi đơn phải thanh toán đủ trước khi chuẩn bị');
   if (!body.lines?.length) fail(400, 'Đơn phải có ít nhất một dòng hàng');
+  const paymentMethod = normalizePaymentForFulfillment(body.paymentMethod, body.fulfillmentMethod);
   const customer = resolveCustomerForOrder(body);
   const customerName = customer.name;
   const shipAddressId = resolveShipAddressId(customer, body);
@@ -279,7 +285,7 @@ mock('POST', '/orders', ({ body, userId }) => {
   const now = new Date().toISOString();
   const id = nextId(db.orders);
   const order = {
-    id, code: nextCode('SO-2026', db.orders), customerId: customer.id, customerName, orderType: body.orderType, channel: body.channel, sourceQuoteId: body.sourceQuoteId ?? null, paymentMethod: body.paymentMethod,
+    id, code: nextCode('SO-2026', db.orders), customerId: customer.id, customerName, orderType: body.orderType, channel: body.channel, sourceQuoteId: body.sourceQuoteId ?? null, paymentMethod,
     paymentTermDays: 0, paymentStatus: 'unpaid' as const, allocationStatus: 'none' as const, fulfillmentMethod: body.fulfillmentMethod,
     shipAddressId, state: 'pending' as const, subtotal, discountTotal: Number(body.discountTotal ?? 0), shippingFee: Number(body.shippingFee ?? 0), total, voucherCode: body.voucherCode,
     isOverLimit: false, overLimitAmount: 0, approvedBy: null, placedBy: userId, placedAt: now, holdExpiresAt: null, note: body.note, createdAt: now, updatedAt: now,
@@ -303,7 +309,8 @@ mock('POST', '/orders/:id/transition', ({ params, body, userId }) => {
     confirmOrder(order, userId);
   } else {
     if (body.state === 'preparing') {
-      if (order.paymentStatus !== 'paid') fail(409, 'Chỉ chuẩn bị khi đã thanh toán đủ');
+      const cod = isCollectOnDelivery(order.paymentMethod, order.fulfillmentMethod);
+      if (!cod && order.paymentStatus !== 'paid') fail(409, 'Chỉ chuẩn bị khi đã thanh toán đủ');
       if (order.allocationStatus !== 'full') fail(409, 'Chưa phân bổ đủ hàng — không thể chuẩn bị');
     }
     order.state = body.state;
