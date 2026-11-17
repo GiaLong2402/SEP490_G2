@@ -3,6 +3,7 @@ package com.hbsisms.feature.sales;
 import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
 import com.hbsisms.feature.sales.dto.OrderCancelRequest;
+import com.hbsisms.feature.sales.dto.OrderCountsResponse;
 import com.hbsisms.feature.sales.dto.OrderDetailResponse;
 import com.hbsisms.feature.sales.dto.OrderInputRequest;
 import com.hbsisms.feature.sales.dto.OrderListItemResponse;
@@ -24,7 +25,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Orders API (Doanh Inter 2): list / detail / create / update / transition / cancel / receipt.
+ * Orders API: list / detail / create / update / transition / cancel / receipt.
+ * Inter 3 dòng 5: thêm filter quản lý + GET /orders/counts.
  */
 @RestController
 @RequestMapping("/orders")
@@ -49,8 +51,14 @@ public class OrderController {
             @RequestParam(required = false) String channel,
             @RequestParam(required = false) String allocationStatus,
             @RequestParam(required = false) Long customerId,
+            @RequestParam(required = false) Long placedBy,
+            @RequestParam(required = false) String fulfillmentMethod,
             @RequestParam(required = false) String placedFrom,
             @RequestParam(required = false) String placedTo,
+            @RequestParam(required = false) String deliveryFrom,
+            @RequestParam(required = false) String deliveryTo,
+            @RequestParam(required = false) String timeWindow,
+            @RequestParam(required = false) String group,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "" + PageRequests.DEFAULT_PAGE_SIZE) int pageSize) {
         return salesOrderService.search(
@@ -61,10 +69,48 @@ public class OrderController {
                 channel,
                 allocationStatus,
                 customerId,
+                placedBy,
+                fulfillmentMethod,
                 placedFrom,
                 placedTo,
+                deliveryFrom,
+                deliveryTo,
+                timeWindow,
+                group,
                 page,
                 pageSize);
+    }
+
+    /** Đếm theo tab — phải khai báo trước /{id}. */
+    @GetMapping("/counts")
+    public OrderCountsResponse counts(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String orderType,
+            @RequestParam(required = false) String paymentStatus,
+            @RequestParam(required = false) String channel,
+            @RequestParam(required = false) String allocationStatus,
+            @RequestParam(required = false) Long customerId,
+            @RequestParam(required = false) Long placedBy,
+            @RequestParam(required = false) String fulfillmentMethod,
+            @RequestParam(required = false) String placedFrom,
+            @RequestParam(required = false) String placedTo,
+            @RequestParam(required = false) String deliveryFrom,
+            @RequestParam(required = false) String deliveryTo,
+            @RequestParam(required = false) String timeWindow) {
+        return salesOrderService.countGroups(
+                q,
+                orderType,
+                paymentStatus,
+                channel,
+                allocationStatus,
+                customerId,
+                placedBy,
+                fulfillmentMethod,
+                placedFrom,
+                placedTo,
+                deliveryFrom,
+                deliveryTo,
+                timeWindow);
     }
 
     @GetMapping("/{id}")

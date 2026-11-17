@@ -3,11 +3,13 @@ import { API_PATHS } from '@/shared/api/httpPaths';
 import type { ID } from '@/shared/domain/entities';
 import type { OrderState } from '@/shared/domain/enums';
 import type { Receipt } from '@/features/pos/types';
-import type { OrderDetail, OrderInput, OrderListItem, OrderQuery } from './types';
+import type { OrderCounts, OrderDetail, OrderInput, OrderListItem, OrderQuery } from './types';
 
 export const ordersApi = {
   list: (query: OrderQuery, signal?: AbortSignal) =>
     api.get<Page<OrderListItem>>(API_PATHS.orders.root, query, signal),
+  counts: (query: OrderQuery = {}, signal?: AbortSignal) =>
+    api.get<OrderCounts>(API_PATHS.orders.counts, query, signal),
   get: (id: ID) => api.get<OrderDetail>(API_PATHS.orders.byId(id)),
   create: (body: OrderInput) => api.post<OrderDetail>(API_PATHS.orders.root, body),
   update: (id: ID, body: OrderInput) => api.put<OrderDetail>(API_PATHS.orders.byId(id), body),

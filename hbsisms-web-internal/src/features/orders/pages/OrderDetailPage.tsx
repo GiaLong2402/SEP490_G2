@@ -40,8 +40,16 @@ export default function OrderDetailPage() {
   const scheduledKhay = order.deliveries.filter((d) => d.state !== 'failed').reduce((s, d) => s + (d.items ?? []).reduce((a, i) => a + i.qtyKhay, 0), 0);
   const canDeliver = ['to_ship', 'partial'].includes(order.state) && scheduledKhay < orderedKhay;
   const outstanding = order.total - order.paidAmount;
-  // Đơn công nợ chỉ phát sinh nợ sau khi xác nhận, nên chưa thể thu trước đó.
-  const canPay = can('debt') && order.state !== 'cancelled' && outstanding > 0 && !(order.paymentMethod === 'credit_net' && order.state === 'pending');
+  // Inter 3 dòng 8: thu = orders|debt; chặn khi đang có link PayOS chờ thanh toán.
+  const hasPendingPayos =
+    order.payments.some((p) => p.method === 'payos' && p.status === 'pending')
+    || (order.paymentMethod === 'payos' && order.paymentStatus === 'waiting');
+  const canPay =
+    (can('orders') || can('debt'))
+    && order.state !== 'cancelled'
+    && outstanding > 0
+    && !(order.paymentMethod === 'credit_net' && order.state === 'pending')
+    && !hasPendingPayos;
   const canReturn = ['delivered', 'completed', 'partial'].includes(order.state);
   const canCompleteCounter =
     order.fulfillmentMethod === 'pickup'

@@ -53,33 +53,92 @@ function toDetail(id: number) {
   };
 }
 
-mock('GET', '/orders', ({ query }) => {
+function orderMatchesSharedFilters(o: (typeof db.orders)[number], query: Record<string, unknown>) {
   const placedFrom = query.placedFrom ? String(query.placedFrom) : '';
   const placedTo = query.placedTo ? String(query.placedTo) : '';
-  const customerId = query.customerId ? Number(query.customerId) : null;
+  const deliveryFrom = query.deliveryFrom ? String(query.deliveryFrom) : '';
+  const deliveryTo = query.deliveryTo ? String(query.deliveryTo) : '';
+  const timeWindow = query.timeWindow ? String(query.timeWindow) : '';
+  const customerId = query.customerId != null ? Number(query.customerId) : null;
+  const placedBy = query.placedBy != null ? Number(query.placedBy) : null;
+  const customer = db.customers.find((c) => c.id === o.customerId);
+  if (!matches(query.q, o.code, toItem(o).customerName, customer?.name, customer?.code, customer?.phone, customer?.taxCode)) {
+    return false;
+  }
+  if (query.orderType && o.orderType !== query.orderType) return false;
+  if (query.paymentStatus && o.paymentStatus !== query.paymentStatus) return false;
+  if (query.channel && o.channel !== query.channel) return false;
+  if (query.allocationStatus && o.allocationStatus !== query.allocationStatus) return false;
+  if (customerId != null && !Number.isNaN(customerId) && o.customerId !== customerId) return false;
+  if (placedBy != null && !Number.isNaN(placedBy) && o.placedBy !== placedBy) return false;
+  if (query.fulfillmentMethod && o.fulfillmentMethod !== query.fulfillmentMethod) return false;
+  if (placedFrom && o.placedAt.slice(0, 10) < placedFrom) return false;
+  if (placedTo && o.placedAt.slice(0, 10) > placedTo) return false;
+  if (deliveryFrom || deliveryTo || timeWindow) {
+    const deliveries = db.deliveries.filter((d) => d.orderId === o.id);
+    const hit = deliveries.some((d) => {
+      const day = d.scheduledDate ?? '';
+      if (deliveryFrom && (!day || day < deliveryFrom)) return false;
+      if (deliveryTo && (!day || day > deliveryTo)) return false;
+      if (timeWindow && d.timeWindow !== timeWindow) return false;
+      return true;
+    });
+    if (!hit) return false;
+  }
+  return true;
+}
+
+function orderInGroup(o: (typeof db.orders)[number], group: string) {
+  const deliveries = db.deliveries.filter((d) => d.orderId === o.id);
+  switch (group) {
+    case 'awaiting_payment':
+      return (o.paymentStatus === 'unpaid' || o.paymentStatus === 'waiting') && o.state !== 'cancelled';
+    case 'awaiting_prepare':
+      return o.state === 'confirmed' && (o.paymentStatus === 'paid' || o.paymentStatus === 'debt') && o.allocationStatus === 'full';
+    case 'preparing':
+      return o.state === 'preparing';
+    case 'ready':
+      return o.state === 'to_ship';
+    case 'delivering':
+      return deliveries.some((d) => d.state === 'going');
+    case 'delivery_failed':
+      return o.state !== 'completed' && o.state !== 'cancelled'
+        && deliveries.some((d) => d.state === 'failed')
+        && !deliveries.some((d) => d.state === 'ready' || d.state === 'going');
+    case 'needs_refund':
+      return o.paymentStatus === 'refund_pending';
+    case 'completed':
+      return o.state === 'completed';
+    case 'cancelled':
+      return o.state === 'cancelled';
+    default:
+      return true;
+  }
+}
+
+mock('GET', '/orders', ({ query }) => {
   const rows = db.orders
-    .filter((o) => {
-      const customer = db.customers.find((c) => c.id === o.customerId);
-      return matches(
-        query.q,
-        o.code,
-        toItem(o).customerName,
-        customer?.name,
-        customer?.code,
-        customer?.phone,
-        customer?.taxCode,
-      );
-    })
+    .filter((o) => orderMatchesSharedFilters(o, query))
     .filter((o) => !query.state || o.state === query.state)
-    .filter((o) => !query.orderType || o.orderType === query.orderType)
-    .filter((o) => !query.paymentStatus || o.paymentStatus === query.paymentStatus)
-    .filter((o) => !query.channel || o.channel === query.channel)
-    .filter((o) => !query.allocationStatus || o.allocationStatus === query.allocationStatus)
-    .filter((o) => customerId == null || Number.isNaN(customerId) || o.customerId === customerId)
-    .filter((o) => !placedFrom || o.placedAt.slice(0, 10) >= placedFrom)
-    .filter((o) => !placedTo || o.placedAt.slice(0, 10) <= placedTo)
+    .filter((o) => !query.group || orderInGroup(o, String(query.group)))
     .sort((a, b) => b.placedAt.localeCompare(a.placedAt));
   return paginate(rows.map(toItem), query);
+});
+
+mock('GET', '/orders/counts', ({ query }) => {
+  const base = db.orders.filter((o) => orderMatchesSharedFilters(o, query));
+  const count = (group: string) => base.filter((o) => orderInGroup(o, group)).length;
+  return {
+    awaitingPayment: count('awaiting_payment'),
+    awaitingPrepare: count('awaiting_prepare'),
+    preparing: count('preparing'),
+    ready: count('ready'),
+    delivering: count('delivering'),
+    deliveryFailed: count('delivery_failed'),
+    needsRefund: count('needs_refund'),
+    completed: count('completed'),
+    cancelled: count('cancelled'),
+  };
 });
 
 mock('GET', '/orders/:id', ({ params }) => toDetail(Number(params.id)));

@@ -15,6 +15,7 @@ export const API_PATHS = {
   },
   orders: {
     root: '/orders',
+    counts: '/orders/counts',
     byId: (id: string | number) => `/orders/${id}`,
     transition: (id: string | number) => `/orders/${id}/transition`,
     cancel: (id: string | number) => `/orders/${id}/cancel`,

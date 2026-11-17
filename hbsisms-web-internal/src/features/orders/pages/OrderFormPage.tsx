@@ -343,10 +343,10 @@ export default function OrderFormPage() {
         <div className="min-w-0 space-y-4">
           <Card title="Khách hàng và giao nhận">
             <div className="mb-3 flex flex-wrap gap-2">
-              <Chip tone={!walkIn ? 'blue' : 'slate'}>
+              <Chip tone={!walkIn ? 'blue' : 'neutral'}>
                 <button type="button" className="bg-transparent" onClick={() => setWalkIn(false)}>Khách có sẵn</button>
               </Chip>
-              <Chip tone={walkIn ? 'blue' : 'slate'}>
+              <Chip tone={walkIn ? 'blue' : 'neutral'}>
                 <button type="button" className="bg-transparent" onClick={() => setWalkIn(true)}>Khách vãng lai</button>
               </Chip>
             </div>
@@ -522,10 +522,10 @@ export default function OrderFormPage() {
                     </option>
                   ))}
                 </Select>
-                {fulfillment === 'shop_delivery' && effectivePaymentMethod === 'cod' && (
-                  <p className="mt-1 text-small text-ink-muted">Shop tự giao + thu tiền mặt khi giao được ghi nhận là COD.</p>
-                )}
               </Field>
+              {fulfillment === 'shop_delivery' && effectivePaymentMethod === 'cod' && (
+                <p className="-mt-1 text-small text-ink-muted">Shop tự giao + thu tiền mặt khi giao được ghi nhận là COD.</p>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Chiết khấu (₫)">
                   <Input

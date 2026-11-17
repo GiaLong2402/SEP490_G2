@@ -77,6 +77,30 @@ export interface OrderInput {
   lines: PricingLineInput[];
 }
 
+/** Tab nhóm đơn quản lý (Inter 3 dòng 5 — khớp BE OrderListGroup). */
+export type OrderListGroup =
+  | 'awaiting_payment'
+  | 'awaiting_prepare'
+  | 'preparing'
+  | 'ready'
+  | 'delivering'
+  | 'delivery_failed'
+  | 'needs_refund'
+  | 'completed'
+  | 'cancelled';
+
+export interface OrderCounts {
+  awaitingPayment: number;
+  awaitingPrepare: number;
+  preparing: number;
+  ready: number;
+  delivering: number;
+  deliveryFailed: number;
+  needsRefund: number;
+  completed: number;
+  cancelled: number;
+}
+
 export interface OrderQuery {
   q?: string;
   page?: number;
@@ -87,7 +111,13 @@ export interface OrderQuery {
   channel?: string;
   allocationStatus?: string;
   customerId?: string | number;
+  placedBy?: string | number;
+  fulfillmentMethod?: string;
   placedFrom?: string;
   placedTo?: string;
+  deliveryFrom?: string;
+  deliveryTo?: string;
+  timeWindow?: string;
+  group?: OrderListGroup | string;
   [key: string]: string | number | undefined;
 }

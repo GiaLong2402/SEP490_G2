@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { ArrowDown, ArrowUp, ChevronDown } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '@/features/auth';
 import {
   payDirectionLabels,
   paymentMethodLabels,
@@ -43,6 +44,9 @@ type RefundTarget = {
 };
 
 export default function PaymentsPage() {
+  const { can } = useAuth();
+  // Inter 3 dòng 8: hoàn + đối soát chỉ Chủ (approve).
+  const canApprovePayments = can('approve');
   const list = useListParams(['method', 'direction', 'status', 'channel', 'reconcileFlag', 'sort'] as const);
   const oldestFirst = list.filters.sort === 'asc';
   const query = {
@@ -171,7 +175,7 @@ export default function PaymentsPage() {
           <Select
             aria-label={`Đối soát ${p.code}`}
             value={p.reconcileFlag ?? 'none'}
-            disabled={mark.isPending}
+            disabled={!canApprovePayments || mark.isPending}
             onChange={(e) => mark.mutate({ id: p.id, flag: e.target.value as PaymentReconcileFlag })}
           >
             {Object.entries(paymentReconcileFlagLabels).map(([value, label]) => (
@@ -217,7 +221,7 @@ export default function PaymentsPage() {
       key: 'actions',
       header: '',
       cell: (p) =>
-        p.orderId && p.direction === 'in' && p.status === 'success' ? (
+        canApprovePayments && p.orderId && p.direction === 'in' && p.status === 'success' ? (
           <Button variant={p.needsRefund ? 'primary' : 'ghost'} onClick={() => openRefund(p)}>
             Hoàn tiền
           </Button>

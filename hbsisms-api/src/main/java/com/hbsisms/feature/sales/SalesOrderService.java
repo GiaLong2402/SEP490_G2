@@ -35,6 +35,7 @@ import com.hbsisms.feature.payment.PayTxnStatus;
 import com.hbsisms.feature.payment.payos.PayosLinkCanceller;
 import com.hbsisms.feature.catalog.ProductVariant;
 import com.hbsisms.feature.catalog.ProductVariantRepository;
+import com.hbsisms.feature.sales.dto.OrderCountsResponse;
 import com.hbsisms.feature.sales.dto.OrderCustomerResponse;
 import com.hbsisms.feature.sales.dto.OrderDeliveryViewResponse;
 import com.hbsisms.feature.sales.dto.OrderDetailResponse;
@@ -65,6 +66,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -154,8 +156,14 @@ public class SalesOrderService {
             String channel,
             String allocationStatus,
             Long customerId,
+            Long placedBy,
+            String fulfillmentMethod,
             String placedFrom,
             String placedTo,
+            String deliveryFrom,
+            String deliveryTo,
+            String timeWindow,
+            String group,
             int page,
             int pageSize) {
         return PageResponse.from(salesOrderRepository
@@ -168,10 +176,62 @@ public class SalesOrderService {
                                 parseChannel(channel),
                                 parseAllocationStatus(allocationStatus),
                                 customerId,
+                                placedBy,
+                                parseFulfillmentMethod(fulfillmentMethod),
                                 parseDate(placedFrom),
-                                parseDate(placedTo)),
+                                parseDate(placedTo),
+                                parseDate(deliveryFrom),
+                                parseDate(deliveryTo),
+                                timeWindow,
+                                parseGroup(group)),
                         PageRequests.of(page, pageSize, LIST_SORT))
                 .map(OrderListItemResponse::from));
+    }
+
+    /** Inter 3 dòng 5 — đếm theo 9 tab; cùng bộ lọc list trừ state/group/page. */
+    @Transactional(readOnly = true)
+    public OrderCountsResponse countGroups(
+            String q,
+            String orderType,
+            String paymentStatus,
+            String channel,
+            String allocationStatus,
+            Long customerId,
+            Long placedBy,
+            String fulfillmentMethod,
+            String placedFrom,
+            String placedTo,
+            String deliveryFrom,
+            String deliveryTo,
+            String timeWindow) {
+        var shared = OrderSpecifications.sharedFilters(
+                q,
+                parseOrderType(orderType),
+                parsePaymentStatus(paymentStatus),
+                parseChannel(channel),
+                parseAllocationStatus(allocationStatus),
+                customerId,
+                placedBy,
+                parseFulfillmentMethod(fulfillmentMethod),
+                parseDate(placedFrom),
+                parseDate(placedTo),
+                parseDate(deliveryFrom),
+                parseDate(deliveryTo),
+                timeWindow);
+        return new OrderCountsResponse(
+                countGroup(shared, OrderListGroup.AWAITING_PAYMENT),
+                countGroup(shared, OrderListGroup.AWAITING_PREPARE),
+                countGroup(shared, OrderListGroup.PREPARING),
+                countGroup(shared, OrderListGroup.READY),
+                countGroup(shared, OrderListGroup.DELIVERING),
+                countGroup(shared, OrderListGroup.DELIVERY_FAILED),
+                countGroup(shared, OrderListGroup.NEEDS_REFUND),
+                countGroup(shared, OrderListGroup.COMPLETED),
+                countGroup(shared, OrderListGroup.CANCELLED));
+    }
+
+    private long countGroup(Specification<SalesOrder> shared, OrderListGroup group) {
+        return salesOrderRepository.count(Specification.allOf(shared, OrderSpecifications.groupSpec(group)));
     }
 
     @Transactional(readOnly = true)
@@ -1161,6 +1221,26 @@ public class SalesOrderService {
             return AllocationStatus.valueOf(value.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
             throw ApiException.badRequest("Trạng thái phân bổ không hợp lệ: " + raw);
+        }
+    }
+
+    private static FulfillmentMethod parseFulfillmentMethod(String raw) {
+        String value = Strings.trimToNull(raw);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return FulfillmentMethod.fromCode(value);
+        } catch (IllegalArgumentException ex) {
+            throw ApiException.badRequest(ex.getMessage());
+        }
+    }
+
+    private static OrderListGroup parseGroup(String raw) {
+        try {
+            return OrderListGroup.fromCode(Strings.trimToNull(raw));
+        } catch (IllegalArgumentException ex) {
+            throw ApiException.badRequest(ex.getMessage());
         }
     }
 
