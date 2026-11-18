@@ -112,9 +112,9 @@ Contract FE (Doanh): `features/orders/api.ts` + `types.ts`; path const `shared/a
 |---|---|---|
 | GET | `/orders` | filter Inter 2 + Inter 3 dòng 5: `placedBy`, `fulfillmentMethod`, `deliveryFrom`, `deliveryTo`, `timeWindow`, `group` |
 | GET | `/orders/counts` | Đếm 9 tab (`awaitingPayment`…`cancelled`); cùng filter list trừ `state`/`group`/`page` |
-| GET | `/orders/owner-inbox` | Inter 3 dòng 11 — việc cần Chủ; quyền **`approve`** (staff **403**); `items[]`: `discount_or_limit_approval`, `needs_refund`, `payment_mismatch`, `late_payos_refund`, `delivery_failed_open`, `return_pending_inspect` |
-| GET | `/orders/export` | Inter 3 dòng 12 — xlsx theo filter list; cột mã/ngày/khách/kênh/TT đơn/TT thanh toán/TT giao/tổng/đã thu; **400** nếu > 5000 dòng |
-| GET | `/orders/:id` | `OrderDetail` |
+| GET | `/orders/owner-inbox` | Inter 3 dòng 11 + FE dòng 13 sóng B — việc cần Chủ; quyền **`approve`**; badge + drawer trên `/orders` |
+| GET | `/orders/export` | Inter 3 dòng 12 + FE dòng 13 sóng B — xlsx theo filter; nút **Xuất Excel** trên `/orders`; **400** nếu > 5000 dòng |
+| GET | `/orders/:id` | `OrderDetail` — Inter 3 dòng 6 + FE dòng 13 sóng C: giao / trả / thu-hoàn / events / `auditTrail[]` |
 | POST | `/orders` | **201** + `OrderDetail`; body `OrderInput` (walk-in: `customerId` null + `phone`) |
 | PUT | `/orders/:id` | **200** + `OrderDetail` |
 | GET | `/orders/:id/receipt` | `Receipt` — chỉ đơn đã thanh toán đủ |

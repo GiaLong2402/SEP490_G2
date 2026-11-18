@@ -26,26 +26,19 @@ import com.hbsisms.feature.customer.pricing.dto.PricingResultResponse;
 import com.hbsisms.feature.payment.CustomerDebtLedger;
 import com.hbsisms.feature.payment.CustomerDebtLedgerRepository;
 import com.hbsisms.feature.payment.DebtEntryType;
-import com.hbsisms.feature.payment.PayDirection;
 import com.hbsisms.feature.payment.Payment;
 import com.hbsisms.feature.payment.PaymentMethod;
 import com.hbsisms.feature.payment.PaymentRepository;
 import com.hbsisms.feature.payment.PaymentStatus;
-import com.hbsisms.feature.payment.PayTxnStatus;
 import com.hbsisms.feature.payment.payos.PayosLinkCanceller;
 import com.hbsisms.feature.catalog.ProductVariant;
 import com.hbsisms.feature.catalog.ProductVariantRepository;
 import com.hbsisms.feature.sales.dto.OrderCountsResponse;
-import com.hbsisms.feature.sales.dto.OrderCustomerResponse;
-import com.hbsisms.feature.sales.dto.OrderDeliveryViewResponse;
 import com.hbsisms.feature.sales.dto.OrderDetailResponse;
-import com.hbsisms.feature.sales.dto.OrderEventViewResponse;
 import com.hbsisms.feature.sales.dto.OrderInputRequest;
-import com.hbsisms.feature.sales.dto.OrderLineViewResponse;
 import com.hbsisms.feature.sales.dto.OrderListItemResponse;
 import com.hbsisms.feature.sales.dto.OrderReceiptLineResponse;
 import com.hbsisms.feature.sales.dto.OrderReceiptResponse;
-import com.hbsisms.feature.sales.dto.PaymentViewResponse;
 import com.hbsisms.feature.sales.dto.ShipAddressInput;
 import com.hbsisms.feature.system.AuditLogService;
 import com.hbsisms.feature.user.AppUser;
@@ -57,7 +50,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -108,6 +100,7 @@ public class SalesOrderService {
     private final AuditLogService auditLogService;
     private final OrderAllocationService orderAllocationService;
     private final PayosLinkCanceller payosLinkCanceller;
+    private final OrderDetailAssembler orderDetailAssembler;
     private final Clock clock;
 
     public SalesOrderService(
@@ -127,6 +120,7 @@ public class SalesOrderService {
             AuditLogService auditLogService,
             OrderAllocationService orderAllocationService,
             PayosLinkCanceller payosLinkCanceller,
+            OrderDetailAssembler orderDetailAssembler,
             Clock clock) {
         this.salesOrderRepository = salesOrderRepository;
         this.orderEventRepository = orderEventRepository;
@@ -144,6 +138,7 @@ public class SalesOrderService {
         this.auditLogService = auditLogService;
         this.orderAllocationService = orderAllocationService;
         this.payosLinkCanceller = payosLinkCanceller;
+        this.orderDetailAssembler = orderDetailAssembler;
         this.clock = clock;
     }
 
@@ -239,7 +234,7 @@ public class SalesOrderService {
         SalesOrder order = salesOrderRepository
                 .findWithDetailsById(id)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy đơn hàng"));
-        return toDetail(order);
+        return orderDetailAssembler.assemble(order);
     }
 
     @Transactional
@@ -693,8 +688,9 @@ public class SalesOrderService {
     /**
      * State machine bước kế tiếp cho FE. {@link OrderState#PREPARING}: prepaid cần
      * {@code PAID}+{@code FULL}; COD chỉ cần {@code FULL}.
+     * Package-private: {@link OrderDetailAssembler} tái sử dụng.
      */
-    private static List<OrderState> allowedNextStates(SalesOrder order) {
+    static List<OrderState> allowedNextStates(SalesOrder order) {
         if (order.isOverLimit() && order.getApprovedBy() == null) {
             return List.of();
         }
@@ -1054,104 +1050,6 @@ public class SalesOrderService {
         event.setDescription(description);
         event.setCreatedBy(actor);
         orderEventRepository.save(event);
-    }
-
-    private OrderDetailResponse toDetail(SalesOrder order) {
-        List<Delivery> deliveries = deliveryRepository.findByOrder_IdOrderByIdAsc(order.getId());
-        Map<Long, Integer> deliveredByLine = new HashMap<>();
-        boolean hasDelivered = false;
-        for (Delivery delivery : deliveries) {
-            if (delivery.getState() == DeliveryState.DELIVERED) {
-                hasDelivered = true;
-                for (DeliveryItem item : delivery.getItems()) {
-                    if (item.orderLineId() == null) {
-                        continue;
-                    }
-                    deliveredByLine.merge(item.orderLineId(), item.qtyKhay(), Integer::sum);
-                }
-            }
-        }
-
-        boolean completedLike =
-                order.getState() == OrderState.DELIVERED || order.getState() == OrderState.COMPLETED;
-        List<OrderLineViewResponse> lines = order.getLines().stream()
-                .map(line -> {
-                    int delivered = deliveredByLine.getOrDefault(line.getId(), 0);
-                    if (delivered == 0 && deliveries.isEmpty() && completedLike) {
-                        delivered = line.getQtyKhay();
-                    }
-                    return OrderLineViewResponse.from(line, delivered);
-                })
-                .toList();
-
-        List<Payment> payments = paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(order.getId()).stream()
-                .filter(p -> p.getStatus() == PayTxnStatus.SUCCESS)
-                .toList();
-        BigDecimal paidAmount = payments.stream()
-                .map(p -> p.getDirection() == PayDirection.IN ? p.getAmount() : p.getAmount().negate())
-                .reduce(ZERO, BigDecimal::add);
-
-        List<OrderEventViewResponse> events = orderEventRepository
-                .findByOrder_IdOrderByCreatedAtAscIdAsc(order.getId())
-                .stream()
-                .sorted(Comparator.comparing(OrderEvent::getCreatedAt).reversed()
-                        .thenComparing(OrderEvent::getId, Comparator.reverseOrder()))
-                .map(OrderEventViewResponse::from)
-                .toList();
-
-        List<OrderState> nextStates = allowedNextStates(order);
-
-        boolean canCancel = !hasDelivered
-                && order.getState() != OrderState.DELIVERED
-                && order.getState() != OrderState.COMPLETED
-                && order.getState() != OrderState.CANCELLED
-                && order.getState() != OrderState.PARTIAL;
-
-        OrderListItemResponse header = OrderListItemResponse.from(order);
-        Customer customer = order.getCustomer();
-
-        return new OrderDetailResponse(
-                header.id(),
-                header.code(),
-                header.customerId(),
-                header.orderType(),
-                header.channel(),
-                header.sourceQuoteId(),
-                header.paymentMethod(),
-                header.paymentTermDays(),
-                header.paymentStatus(),
-                header.allocationStatus(),
-                header.fulfillmentMethod(),
-                header.shipAddressId(),
-                header.state(),
-                header.subtotal(),
-                header.discountTotal(),
-                header.shippingFee(),
-                header.total(),
-                header.voucherCode(),
-                header.isOverLimit(),
-                header.overLimitAmount(),
-                header.approvedBy(),
-                header.placedBy(),
-                header.placedAt(),
-                header.holdExpiresAt(),
-                header.note(),
-                header.createdAt(),
-                header.updatedAt(),
-                header.customerName(),
-                header.customerType(),
-                customer == null ? null : OrderCustomerResponse.from(customer),
-                order.getShipAddress() == null ? null : AddressResponse.from(order.getShipAddress()),
-                lines,
-                deliveries.stream().map(OrderDeliveryViewResponse::from).toList(),
-                payments.stream().map(PaymentViewResponse::from).toList(),
-                events,
-                paidAmount,
-                order.getSourceQuote() == null ? null : order.getSourceQuote().getCode(),
-                order.getPlacedBy() == null ? null : order.getPlacedBy().getFullName(),
-                order.getApprovedBy() == null ? null : order.getApprovedBy().getFullName(),
-                nextStates,
-                canCancel);
     }
 
     private String nextOrderCode() {

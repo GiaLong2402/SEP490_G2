@@ -9,4 +9,7 @@ public interface SalesReturnRepository extends JpaRepository<SalesReturn, Long> 
 
     @EntityGraph(attributePaths = {"order"})
     List<SalesReturn> findByStatusOrderByCreatedAtDesc(ReturnStatus status);
+
+    @EntityGraph(attributePaths = {"createdBy"})
+    List<SalesReturn> findByOrder_IdOrderByCreatedAtDesc(Long orderId);
 }

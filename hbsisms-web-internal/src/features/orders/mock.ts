@@ -27,7 +27,11 @@ function toDetail(id: number) {
   const deliveries = db.deliveries.filter((d) => d.orderId === id);
   const delivered = new Map<number, number>();
   deliveries.filter((d) => d.state === 'delivered').forEach((d) => d.items?.forEach((item) => delivered.set(item.orderLineId, (delivered.get(item.orderLineId) ?? 0) + item.qtyKhay)));
-  const payments = db.payments.filter((p) => p.orderId === id && p.status === 'success');
+  const allPayments = db.payments.filter((p) => p.orderId === id);
+  const payments = allPayments.filter((p) => p.status === 'success' || p.status === 'pending');
+  const paidAmount = allPayments
+    .filter((p) => p.status === 'success')
+    .reduce((sum, p) => sum + (p.direction === 'in' ? p.amount : -p.amount), 0);
   const hasDelivered = deliveries.some((d) => d.state === 'delivered');
   const blockedByLimit = order.isOverLimit && !order.approvedBy;
   const rawNext = blockedByLimit ? [] : (MANUAL_NEXT[order.state] ?? []);
@@ -44,7 +48,19 @@ function toDetail(id: number) {
     deliveries: deliveries.map((d) => ({ ...d, assigneeName: userName(d.assignedTo) })),
     payments,
     events: db.orderEvents.filter((e) => e.orderId === id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((e) => ({ ...e, actorName: userName(e.createdBy) })),
-    paidAmount: payments.reduce((sum, p) => sum + (p.direction === 'in' ? p.amount : -p.amount), 0),
+    returns: db.returns.filter((r) => r.orderId === id),
+    auditTrail: db.auditLog
+      .filter((a) => a.entityType === 'sales_order' && a.entityId === id)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((a) => ({
+        id: a.id,
+        action: a.action,
+        userId: a.userId,
+        actorName: userName(a.userId),
+        createdAt: a.createdAt,
+        detail: a.detail,
+      })),
+    paidAmount,
     sourceQuoteCode: db.quotes.find((q) => q.id === order.sourceQuoteId)?.code ?? null,
     placedByName: userName(order.placedBy),
     approvedByName: userName(order.approvedBy),

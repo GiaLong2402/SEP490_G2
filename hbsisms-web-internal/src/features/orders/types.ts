@@ -1,4 +1,4 @@
-import type { Customer, CustomerAddress, Delivery, ID, OrderEvent, Payment, SalesOrder, SalesOrderLine } from '@/shared/domain/entities';
+import type { Customer, CustomerAddress, Delivery, ID, OrderEvent, Payment, SalesOrder, SalesOrderLine, SalesReturn } from '@/shared/domain/entities';
 import type { FulfillmentMethod, OrderState, OrderType, PaymentMethod, SaleChannel } from '@/shared/domain/enums';
 import type { PricingLineInput } from '@/features/pricing';
 
@@ -22,13 +22,27 @@ export interface OrderEventView extends OrderEvent {
   actorName: string | null;
 }
 
+export interface OrderAuditTrailItem {
+  id: number;
+  action: string;
+  userId: number | null;
+  actorName: string | null;
+  createdAt: string;
+  detail: unknown;
+}
+
 export interface OrderDetail extends OrderListItem {
   customer: Customer | null;
   address: CustomerAddress | null;
   lines: OrderLineView[];
   deliveries: OrderDeliveryView[];
+  /** SUCCESS + PayOS PENDING + hoàn (Inter 3 dòng 6). */
   payments: Payment[];
   events: OrderEventView[];
+  /** Phiếu trả hàng — mảng rỗng nếu chưa có. */
+  returns: SalesReturn[];
+  /** Ai sửa đơn lúc nào (audit_log). */
+  auditTrail: OrderAuditTrailItem[];
   paidAmount: number;
   sourceQuoteCode: string | null;
   placedByName: string | null;
