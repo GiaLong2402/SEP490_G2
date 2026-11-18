@@ -141,6 +141,123 @@ mock('GET', '/orders/counts', ({ query }) => {
   };
 });
 
+/** Inter 3 dòng 11 — việc cần Chủ (mock). */
+mock('GET', '/orders/owner-inbox', () => {
+  const items: {
+    type: string;
+    title: string;
+    orderId: number | null;
+    orderCode: string | null;
+    refId: number | null;
+    createdAt: string;
+    link: string;
+  }[] = [];
+  const lateOrderIds = new Set<number>();
+
+  for (const task of db.approvals.filter((a) => a.status === 'pending' && a.refType === 'sales_order')) {
+    const order = db.orders.find((o) => o.id === task.refId);
+    items.push({
+      type: 'discount_or_limit_approval',
+      title: task.title,
+      orderId: task.refId,
+      orderCode: order?.code ?? null,
+      refId: task.id,
+      createdAt: task.createdAt,
+      link: `/orders/${task.refId}`,
+    });
+  }
+
+  for (const p of db.payments.filter((p) => p.needsRefund)) {
+    if (p.orderId == null) continue;
+    lateOrderIds.add(p.orderId);
+    const order = db.orders.find((o) => o.id === p.orderId);
+    items.push({
+      type: 'late_payos_refund',
+      title: `Tiền về sau khi đơn hết hạn — cần hoàn · ${order?.code ?? p.orderId}`,
+      orderId: p.orderId,
+      orderCode: order?.code ?? null,
+      refId: p.id,
+      createdAt: p.paidAt ?? order?.updatedAt ?? order?.placedAt ?? taskNow(),
+      link: `/orders/${p.orderId}`,
+    });
+  }
+
+  for (const o of db.orders.filter((o) => o.paymentStatus === 'refund_pending')) {
+    if (lateOrderIds.has(o.id)) continue;
+    items.push({
+      type: 'needs_refund',
+      title: `Cần hoàn tiền · ${o.code}`,
+      orderId: o.id,
+      orderCode: o.code,
+      refId: o.id,
+      createdAt: o.updatedAt,
+      link: `/orders/${o.id}`,
+    });
+  }
+
+  const mismatchOrders = new Set<number>();
+  for (const o of db.orders.filter((o) => o.paymentStatus === 'diff')) {
+    mismatchOrders.add(o.id);
+    items.push({
+      type: 'payment_mismatch',
+      title: `Thanh toán lệch tiền · ${o.code}`,
+      orderId: o.id,
+      orderCode: o.code,
+      refId: o.id,
+      createdAt: o.updatedAt,
+      link: `/orders/${o.id}`,
+    });
+  }
+  for (const p of db.payments.filter((p) => p.reconcileFlag && p.reconcileFlag !== 'none')) {
+    if (p.orderId == null || mismatchOrders.has(p.orderId)) continue;
+    mismatchOrders.add(p.orderId);
+    const order = db.orders.find((o) => o.id === p.orderId);
+    items.push({
+      type: 'payment_mismatch',
+      title: `Thanh toán lệch tiền · ${order?.code ?? p.orderId}`,
+      orderId: p.orderId,
+      orderCode: order?.code ?? null,
+      refId: p.id,
+      createdAt: p.paidAt ?? order?.updatedAt ?? taskNow(),
+      link: `/orders/${p.orderId}`,
+    });
+  }
+
+  for (const o of db.orders) {
+    if (!orderInGroup(o, 'delivery_failed')) continue;
+    const failed = db.deliveries.find((d) => d.orderId === o.id && d.state === 'failed');
+    items.push({
+      type: 'delivery_failed_open',
+      title: `Giao thất bại chưa xử lý · ${o.code}`,
+      orderId: o.id,
+      orderCode: o.code,
+      refId: failed?.id ?? o.id,
+      createdAt: failed?.deliveredAt ?? o.updatedAt,
+      link: `/orders/${o.id}`,
+    });
+  }
+
+  for (const r of db.returns.filter((r) => r.status === 'pending')) {
+    const order = r.orderId == null ? undefined : db.orders.find((o) => o.id === r.orderId);
+    items.push({
+      type: 'return_pending_inspect',
+      title: `Phiếu trả chờ kiểm · ${r.code}`,
+      orderId: r.orderId,
+      orderCode: order?.code ?? null,
+      refId: r.id,
+      createdAt: r.createdAt,
+      link: r.orderId == null ? '/returns' : `/orders/${r.orderId}`,
+    });
+  }
+
+  items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return { items };
+});
+
+function taskNow() {
+  return new Date().toISOString();
+}
+
 mock('GET', '/orders/:id', ({ params }) => toDetail(Number(params.id)));
 
 function phoneKey(raw: string | null | undefined) {

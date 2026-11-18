@@ -15,5 +15,13 @@ export const useOrderCounts = (query: OrderQuery) =>
     placeholderData: keepPreviousData,
   });
 
+/** Inbox Chủ (Inter 3 dòng 11) — chỉ gọi khi user có quyền approve. */
+export const useOwnerInbox = (enabled = true) =>
+  useQuery({
+    queryKey: ['orders', 'owner-inbox'],
+    queryFn: ({ signal }) => ordersApi.ownerInbox(signal),
+    enabled,
+  });
+
 export const useOrder = (id: ID, enabled = true) =>
   useQuery({ queryKey: ['order', id], queryFn: () => ordersApi.get(id), enabled: enabled && Number(id) > 0 });

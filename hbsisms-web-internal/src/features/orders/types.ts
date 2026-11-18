@@ -101,6 +101,29 @@ export interface OrderCounts {
   cancelled: number;
 }
 
+/** Việc cần Chủ (Inter 3 dòng 11 — khớp BE OwnerInboxItemResponse). */
+export type OwnerInboxType =
+  | 'discount_or_limit_approval'
+  | 'needs_refund'
+  | 'payment_mismatch'
+  | 'late_payos_refund'
+  | 'delivery_failed_open'
+  | 'return_pending_inspect';
+
+export interface OwnerInboxItem {
+  type: OwnerInboxType | string;
+  title: string;
+  orderId: number | null;
+  orderCode: string | null;
+  refId?: number | null;
+  createdAt: string;
+  link: string;
+}
+
+export interface OwnerInbox {
+  items: OwnerInboxItem[];
+}
+
 export interface OrderQuery {
   q?: string;
   page?: number;

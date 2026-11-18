@@ -69,6 +69,12 @@
             <artifactId>firebase-admin</artifactId>
             <version>9.11.0</version>
         </dependency>
+        <!-- Inter 3 dòng 12 — xuất Excel danh sách đơn -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.4.1</version>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
