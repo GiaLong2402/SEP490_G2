@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Download, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '@/features/auth';
 import {
   allocationStatusMeta,
   fulfillmentLabels,
@@ -27,9 +28,12 @@ import {
   Tabs,
   enumOptions,
   useListParams,
+  useToast,
   type Column,
 } from '@/shared/ui';
+import { ordersApi } from '../api';
 import { OrderSearchField } from '../components/OrderSearchField';
+import { OwnerInboxPanel } from '../components/OwnerInboxPanel';
 import { useOrderCounts, useOrders } from '../hooks';
 import type { OrderCounts, OrderListGroup, OrderListItem } from '../types';
 
@@ -49,6 +53,8 @@ const ORDER_TABS: { key: TabKey; label: string; countKey?: keyof OrderCounts }[]
 ];
 
 export default function OrdersPage() {
+  const { can } = useAuth();
+  const toast = useToast();
   const filterKeys = [
     'group',
     'state',
@@ -63,6 +69,7 @@ export default function OrdersPage() {
   ] as const;
   const list = useListParams(filterKeys);
   const [searchKey, setSearchKey] = useState(0);
+  const [exporting, setExporting] = useState(false);
 
   const activeTab: TabKey = (ORDER_TABS.some((t) => t.key === list.filters.group)
     ? list.filters.group
@@ -120,6 +127,22 @@ export default function OrdersPage() {
     }
   };
 
+  const exportExcel = async () => {
+    setExporting(true);
+    try {
+      await ordersApi.export({
+        ...sharedQuery,
+        group: activeTab === 'all' ? undefined : activeTab,
+        state: activeTab === 'all' ? (list.filters.state || undefined) : undefined,
+      });
+      toast.success('Đã tải file Excel');
+    } catch (err) {
+      toast.error(err instanceof Error ? err : new Error('Không xuất được Excel'));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const columns: Column<OrderListItem>[] = [
     { key: 'code', header: 'Mã đơn', cell: (o) => <Link to={`/orders/${o.id}`} className="num whitespace-nowrap text-primary hover:underline">{o.code}</Link> },
     {
@@ -159,7 +182,19 @@ export default function OrdersPage() {
 
   return (
     <>
-      <PageHeader title="Đơn hàng" subtitle="Đơn bán lẻ, B2B và online" actions={<LinkButton to="/orders/new" variant="primary" icon={<Plus size={15} />}>Tạo đơn</LinkButton>} />
+      <PageHeader
+        title="Đơn hàng"
+        subtitle="Đơn bán lẻ, B2B và online"
+        actions={
+          <>
+            {can('approve') && <OwnerInboxPanel />}
+            <Button type="button" icon={<Download size={15} />} loading={exporting} onClick={exportExcel}>
+              Xuất Excel
+            </Button>
+            <LinkButton to="/orders/new" variant="primary" icon={<Plus size={15} />}>Tạo đơn</LinkButton>
+          </>
+        }
+      />
       <Card flush>
         <Tabs label="Nhóm đơn" tabs={tabItems} value={activeTab} onChange={setTab} />
         {activeTab !== 'all' && (
