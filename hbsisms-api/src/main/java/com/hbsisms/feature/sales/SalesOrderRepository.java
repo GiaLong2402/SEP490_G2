@@ -17,6 +17,9 @@ public interface SalesOrderRepository
 
     Optional<SalesOrder> findByCode(String code);
 
+    /** Inbox Chủ — đơn chờ hoàn tiền / lệch tiền. */
+    List<SalesOrder> findByPaymentStatusOrderByUpdatedAtDesc(com.hbsisms.feature.payment.PaymentStatus paymentStatus);
+
     Optional<SalesOrder> findFirstBySourceQuote_Id(Long quoteId);
 
     @EntityGraph(attributePaths = {"customer", "shipAddress", "placedBy", "approvedBy", "sourceQuote"})

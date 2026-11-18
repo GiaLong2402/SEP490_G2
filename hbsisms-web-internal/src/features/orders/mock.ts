@@ -27,7 +27,11 @@ function toDetail(id: number) {
   const deliveries = db.deliveries.filter((d) => d.orderId === id);
   const delivered = new Map<number, number>();
   deliveries.filter((d) => d.state === 'delivered').forEach((d) => d.items?.forEach((item) => delivered.set(item.orderLineId, (delivered.get(item.orderLineId) ?? 0) + item.qtyKhay)));
-  const payments = db.payments.filter((p) => p.orderId === id && p.status === 'success');
+  const allPayments = db.payments.filter((p) => p.orderId === id);
+  const payments = allPayments.filter((p) => p.status === 'success' || p.status === 'pending');
+  const paidAmount = allPayments
+    .filter((p) => p.status === 'success')
+    .reduce((sum, p) => sum + (p.direction === 'in' ? p.amount : -p.amount), 0);
   const hasDelivered = deliveries.some((d) => d.state === 'delivered');
   const blockedByLimit = order.isOverLimit && !order.approvedBy;
   const rawNext = blockedByLimit ? [] : (MANUAL_NEXT[order.state] ?? []);
@@ -44,7 +48,19 @@ function toDetail(id: number) {
     deliveries: deliveries.map((d) => ({ ...d, assigneeName: userName(d.assignedTo) })),
     payments,
     events: db.orderEvents.filter((e) => e.orderId === id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((e) => ({ ...e, actorName: userName(e.createdBy) })),
-    paidAmount: payments.reduce((sum, p) => sum + (p.direction === 'in' ? p.amount : -p.amount), 0),
+    returns: db.returns.filter((r) => r.orderId === id),
+    auditTrail: db.auditLog
+      .filter((a) => a.entityType === 'sales_order' && a.entityId === id)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((a) => ({
+        id: a.id,
+        action: a.action,
+        userId: a.userId,
+        actorName: userName(a.userId),
+        createdAt: a.createdAt,
+        detail: a.detail,
+      })),
+    paidAmount,
     sourceQuoteCode: db.quotes.find((q) => q.id === order.sourceQuoteId)?.code ?? null,
     placedByName: userName(order.placedBy),
     approvedByName: userName(order.approvedBy),
@@ -53,34 +69,210 @@ function toDetail(id: number) {
   };
 }
 
-mock('GET', '/orders', ({ query }) => {
+function orderMatchesSharedFilters(o: (typeof db.orders)[number], query: Record<string, unknown>) {
   const placedFrom = query.placedFrom ? String(query.placedFrom) : '';
   const placedTo = query.placedTo ? String(query.placedTo) : '';
-  const customerId = query.customerId ? Number(query.customerId) : null;
+  const deliveryFrom = query.deliveryFrom ? String(query.deliveryFrom) : '';
+  const deliveryTo = query.deliveryTo ? String(query.deliveryTo) : '';
+  const timeWindow = query.timeWindow ? String(query.timeWindow) : '';
+  const customerId = query.customerId != null ? Number(query.customerId) : null;
+  const placedBy = query.placedBy != null ? Number(query.placedBy) : null;
+  const customer = db.customers.find((c) => c.id === o.customerId);
+  if (!matches(query.q, o.code, toItem(o).customerName, customer?.name, customer?.code, customer?.phone, customer?.taxCode)) {
+    return false;
+  }
+  if (query.orderType && o.orderType !== query.orderType) return false;
+  if (query.paymentStatus && o.paymentStatus !== query.paymentStatus) return false;
+  if (query.channel && o.channel !== query.channel) return false;
+  if (query.allocationStatus && o.allocationStatus !== query.allocationStatus) return false;
+  if (customerId != null && !Number.isNaN(customerId) && o.customerId !== customerId) return false;
+  if (placedBy != null && !Number.isNaN(placedBy) && o.placedBy !== placedBy) return false;
+  if (query.fulfillmentMethod && o.fulfillmentMethod !== query.fulfillmentMethod) return false;
+  if (placedFrom && o.placedAt.slice(0, 10) < placedFrom) return false;
+  if (placedTo && o.placedAt.slice(0, 10) > placedTo) return false;
+  if (deliveryFrom || deliveryTo || timeWindow) {
+    const deliveries = db.deliveries.filter((d) => d.orderId === o.id);
+    const hit = deliveries.some((d) => {
+      const day = d.scheduledDate ?? '';
+      if (deliveryFrom && (!day || day < deliveryFrom)) return false;
+      if (deliveryTo && (!day || day > deliveryTo)) return false;
+      if (timeWindow && d.timeWindow !== timeWindow) return false;
+      return true;
+    });
+    if (!hit) return false;
+  }
+  return true;
+}
+
+function orderInGroup(o: (typeof db.orders)[number], group: string) {
+  const deliveries = db.deliveries.filter((d) => d.orderId === o.id);
+  switch (group) {
+    case 'awaiting_payment':
+      return (o.paymentStatus === 'unpaid' || o.paymentStatus === 'waiting') && o.state !== 'cancelled';
+    case 'awaiting_prepare':
+      return o.state === 'confirmed' && (o.paymentStatus === 'paid' || o.paymentStatus === 'debt') && o.allocationStatus === 'full';
+    case 'preparing':
+      return o.state === 'preparing';
+    case 'ready':
+      return o.state === 'to_ship';
+    case 'delivering':
+      return deliveries.some((d) => d.state === 'going');
+    case 'delivery_failed':
+      return o.state !== 'completed' && o.state !== 'cancelled'
+        && deliveries.some((d) => d.state === 'failed')
+        && !deliveries.some((d) => d.state === 'ready' || d.state === 'going');
+    case 'needs_refund':
+      return o.paymentStatus === 'refund_pending';
+    case 'completed':
+      return o.state === 'completed';
+    case 'cancelled':
+      return o.state === 'cancelled';
+    default:
+      return true;
+  }
+}
+
+mock('GET', '/orders', ({ query }) => {
   const rows = db.orders
-    .filter((o) => {
-      const customer = db.customers.find((c) => c.id === o.customerId);
-      return matches(
-        query.q,
-        o.code,
-        toItem(o).customerName,
-        customer?.name,
-        customer?.code,
-        customer?.phone,
-        customer?.taxCode,
-      );
-    })
+    .filter((o) => orderMatchesSharedFilters(o, query))
     .filter((o) => !query.state || o.state === query.state)
-    .filter((o) => !query.orderType || o.orderType === query.orderType)
-    .filter((o) => !query.paymentStatus || o.paymentStatus === query.paymentStatus)
-    .filter((o) => !query.channel || o.channel === query.channel)
-    .filter((o) => !query.allocationStatus || o.allocationStatus === query.allocationStatus)
-    .filter((o) => customerId == null || Number.isNaN(customerId) || o.customerId === customerId)
-    .filter((o) => !placedFrom || o.placedAt.slice(0, 10) >= placedFrom)
-    .filter((o) => !placedTo || o.placedAt.slice(0, 10) <= placedTo)
+    .filter((o) => !query.group || orderInGroup(o, String(query.group)))
     .sort((a, b) => b.placedAt.localeCompare(a.placedAt));
   return paginate(rows.map(toItem), query);
 });
+
+mock('GET', '/orders/counts', ({ query }) => {
+  const base = db.orders.filter((o) => orderMatchesSharedFilters(o, query));
+  const count = (group: string) => base.filter((o) => orderInGroup(o, group)).length;
+  return {
+    awaitingPayment: count('awaiting_payment'),
+    awaitingPrepare: count('awaiting_prepare'),
+    preparing: count('preparing'),
+    ready: count('ready'),
+    delivering: count('delivering'),
+    deliveryFailed: count('delivery_failed'),
+    needsRefund: count('needs_refund'),
+    completed: count('completed'),
+    cancelled: count('cancelled'),
+  };
+});
+
+/** Inter 3 dòng 11 — việc cần Chủ (mock). */
+mock('GET', '/orders/owner-inbox', () => {
+  const items: {
+    type: string;
+    title: string;
+    orderId: number | null;
+    orderCode: string | null;
+    refId: number | null;
+    createdAt: string;
+    link: string;
+  }[] = [];
+  const lateOrderIds = new Set<number>();
+
+  for (const task of db.approvals.filter((a) => a.status === 'pending' && a.refType === 'sales_order')) {
+    const order = db.orders.find((o) => o.id === task.refId);
+    items.push({
+      type: 'discount_or_limit_approval',
+      title: task.title,
+      orderId: task.refId,
+      orderCode: order?.code ?? null,
+      refId: task.id,
+      createdAt: task.createdAt,
+      link: `/orders/${task.refId}`,
+    });
+  }
+
+  for (const p of db.payments.filter((p) => p.needsRefund)) {
+    if (p.orderId == null) continue;
+    lateOrderIds.add(p.orderId);
+    const order = db.orders.find((o) => o.id === p.orderId);
+    items.push({
+      type: 'late_payos_refund',
+      title: `Tiền về sau khi đơn hết hạn — cần hoàn · ${order?.code ?? p.orderId}`,
+      orderId: p.orderId,
+      orderCode: order?.code ?? null,
+      refId: p.id,
+      createdAt: p.paidAt ?? order?.updatedAt ?? order?.placedAt ?? taskNow(),
+      link: `/orders/${p.orderId}`,
+    });
+  }
+
+  for (const o of db.orders.filter((o) => o.paymentStatus === 'refund_pending')) {
+    if (lateOrderIds.has(o.id)) continue;
+    items.push({
+      type: 'needs_refund',
+      title: `Cần hoàn tiền · ${o.code}`,
+      orderId: o.id,
+      orderCode: o.code,
+      refId: o.id,
+      createdAt: o.updatedAt,
+      link: `/orders/${o.id}`,
+    });
+  }
+
+  const mismatchOrders = new Set<number>();
+  for (const o of db.orders.filter((o) => o.paymentStatus === 'diff')) {
+    mismatchOrders.add(o.id);
+    items.push({
+      type: 'payment_mismatch',
+      title: `Thanh toán lệch tiền · ${o.code}`,
+      orderId: o.id,
+      orderCode: o.code,
+      refId: o.id,
+      createdAt: o.updatedAt,
+      link: `/orders/${o.id}`,
+    });
+  }
+  for (const p of db.payments.filter((p) => p.reconcileFlag && p.reconcileFlag !== 'none')) {
+    if (p.orderId == null || mismatchOrders.has(p.orderId)) continue;
+    mismatchOrders.add(p.orderId);
+    const order = db.orders.find((o) => o.id === p.orderId);
+    items.push({
+      type: 'payment_mismatch',
+      title: `Thanh toán lệch tiền · ${order?.code ?? p.orderId}`,
+      orderId: p.orderId,
+      orderCode: order?.code ?? null,
+      refId: p.id,
+      createdAt: p.paidAt ?? order?.updatedAt ?? taskNow(),
+      link: `/orders/${p.orderId}`,
+    });
+  }
+
+  for (const o of db.orders) {
+    if (!orderInGroup(o, 'delivery_failed')) continue;
+    const failed = db.deliveries.find((d) => d.orderId === o.id && d.state === 'failed');
+    items.push({
+      type: 'delivery_failed_open',
+      title: `Giao thất bại chưa xử lý · ${o.code}`,
+      orderId: o.id,
+      orderCode: o.code,
+      refId: failed?.id ?? o.id,
+      createdAt: failed?.deliveredAt ?? o.updatedAt,
+      link: `/orders/${o.id}`,
+    });
+  }
+
+  for (const r of db.returns.filter((r) => r.status === 'pending')) {
+    const order = r.orderId == null ? undefined : db.orders.find((o) => o.id === r.orderId);
+    items.push({
+      type: 'return_pending_inspect',
+      title: `Phiếu trả chờ kiểm · ${r.code}`,
+      orderId: r.orderId,
+      orderCode: order?.code ?? null,
+      refId: r.id,
+      createdAt: r.createdAt,
+      link: r.orderId == null ? '/returns' : `/orders/${r.orderId}`,
+    });
+  }
+
+  items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return { items };
+});
+
+function taskNow() {
+  return new Date().toISOString();
+}
 
 mock('GET', '/orders/:id', ({ params }) => toDetail(Number(params.id)));
 

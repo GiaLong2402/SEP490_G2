@@ -106,12 +106,15 @@ Tổng cộng 97 endpoint, sinh từ `src/features/*/mock.ts`. Kiểu dữ liệ
 
 ## orders
 
-Contract FE (Doanh — Inter 2): `features/orders/api.ts` + `types.ts`; path const `shared/api/httpPaths.ts`. Hybrid: thêm prefix vào `VITE_API_HTTP_PATHS`.
+Contract FE (Doanh): `features/orders/api.ts` + `types.ts`; path const `shared/api/httpPaths.ts`. Hybrid: thêm prefix vào `VITE_API_HTTP_PATHS`.
 
 | Phương thức | Đường dẫn | Ghi chú contract |
 |---|---|---|
-| GET | `/orders` | filter: `q`, `state`, `orderType`, `paymentStatus`, `channel`, `allocationStatus`, `customerId`, `placedFrom`, `placedTo` |
-| GET | `/orders/:id` | `OrderDetail` |
+| GET | `/orders` | filter Inter 2 + Inter 3 dòng 5: `placedBy`, `fulfillmentMethod`, `deliveryFrom`, `deliveryTo`, `timeWindow`, `group` |
+| GET | `/orders/counts` | Đếm 9 tab (`awaitingPayment`…`cancelled`); cùng filter list trừ `state`/`group`/`page` |
+| GET | `/orders/owner-inbox` | Inter 3 dòng 11 + FE dòng 13 sóng B — việc cần Chủ; quyền **`approve`**; badge + drawer trên `/orders` |
+| GET | `/orders/export` | Inter 3 dòng 12 + FE dòng 13 sóng B — xlsx theo filter; nút **Xuất Excel** trên `/orders`; **400** nếu > 5000 dòng |
+| GET | `/orders/:id` | `OrderDetail` — Inter 3 dòng 6 + FE dòng 13 sóng C: giao / trả / thu-hoàn / events / `auditTrail[]` |
 | POST | `/orders` | **201** + `OrderDetail`; body `OrderInput` (walk-in: `customerId` null + `phone`) |
 | PUT | `/orders/:id` | **200** + `OrderDetail` |
 | GET | `/orders/:id/receipt` | `Receipt` — chỉ đơn đã thanh toán đủ |
@@ -122,10 +125,12 @@ Contract FE (Doanh — Inter 2): `features/orders/api.ts` + `types.ts`; path con
 
 ## payments
 
-| Phương thức | Đường dẫn |
-|---|---|
-| GET | `/payments` |
-| POST | `/payments` |
+| Phương thức | Đường dẫn | Quyền (Inter 3 dòng 8) |
+|---|---|---|
+| GET | `/payments` | `debt` \| `orders` \| `approve` |
+| POST | `/payments` | `orders` \| `debt` — **409** nếu đơn đang có PayOS `pending` |
+| POST | `/payments/refund` | `approve` (Chủ) |
+| PATCH | `/payments/:id/reconcile` | `approve` (Chủ) |
 
 - `GET /payments?sort=asc` → cũ nhất trước; mặc định (bỏ trống) → giao dịch tạo gần nhất lên đầu.
 - Mỗi dòng có thêm `excessAmount` (tiền khách chuyển thừa, khi `reconcileFlag=over`) và `payerName` / `payerAccount` / `payerBank` (tài khoản người chuyển do PayOS gửi, có thể `null`) — form hoàn tiền dùng.

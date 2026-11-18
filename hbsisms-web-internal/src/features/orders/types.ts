@@ -1,4 +1,4 @@
-import type { Customer, CustomerAddress, Delivery, ID, OrderEvent, Payment, SalesOrder, SalesOrderLine } from '@/shared/domain/entities';
+import type { Customer, CustomerAddress, Delivery, ID, OrderEvent, Payment, SalesOrder, SalesOrderLine, SalesReturn } from '@/shared/domain/entities';
 import type { FulfillmentMethod, OrderState, OrderType, PaymentMethod, SaleChannel } from '@/shared/domain/enums';
 import type { PricingLineInput } from '@/features/pricing';
 
@@ -22,13 +22,27 @@ export interface OrderEventView extends OrderEvent {
   actorName: string | null;
 }
 
+export interface OrderAuditTrailItem {
+  id: number;
+  action: string;
+  userId: number | null;
+  actorName: string | null;
+  createdAt: string;
+  detail: unknown;
+}
+
 export interface OrderDetail extends OrderListItem {
   customer: Customer | null;
   address: CustomerAddress | null;
   lines: OrderLineView[];
   deliveries: OrderDeliveryView[];
+  /** SUCCESS + PayOS PENDING + hoàn (Inter 3 dòng 6). */
   payments: Payment[];
   events: OrderEventView[];
+  /** Phiếu trả hàng — mảng rỗng nếu chưa có. */
+  returns: SalesReturn[];
+  /** Ai sửa đơn lúc nào (audit_log). */
+  auditTrail: OrderAuditTrailItem[];
   paidAmount: number;
   sourceQuoteCode: string | null;
   placedByName: string | null;
@@ -77,6 +91,53 @@ export interface OrderInput {
   lines: PricingLineInput[];
 }
 
+/** Tab nhóm đơn quản lý (Inter 3 dòng 5 — khớp BE OrderListGroup). */
+export type OrderListGroup =
+  | 'awaiting_payment'
+  | 'awaiting_prepare'
+  | 'preparing'
+  | 'ready'
+  | 'delivering'
+  | 'delivery_failed'
+  | 'needs_refund'
+  | 'completed'
+  | 'cancelled';
+
+export interface OrderCounts {
+  awaitingPayment: number;
+  awaitingPrepare: number;
+  preparing: number;
+  ready: number;
+  delivering: number;
+  deliveryFailed: number;
+  needsRefund: number;
+  completed: number;
+  cancelled: number;
+}
+
+/** Việc cần Chủ (Inter 3 dòng 11 — khớp BE OwnerInboxItemResponse). */
+export type OwnerInboxType =
+  | 'discount_or_limit_approval'
+  | 'needs_refund'
+  | 'payment_mismatch'
+  | 'late_payos_refund'
+  | 'delivery_failed_open'
+  | 'return_pending_inspect';
+
+export interface OwnerInboxItem {
+  type: OwnerInboxType | string;
+  title: string;
+  orderId: number | null;
+  orderCode: string | null;
+  refId?: number | null;
+  createdAt: string;
+  link: string;
+}
+
+export interface OwnerInbox {
+  items: OwnerInboxItem[];
+}
+
 export interface OrderQuery {
   q?: string;
   page?: number;
@@ -87,7 +148,13 @@ export interface OrderQuery {
   channel?: string;
   allocationStatus?: string;
   customerId?: string | number;
+  placedBy?: string | number;
+  fulfillmentMethod?: string;
   placedFrom?: string;
   placedTo?: string;
+  deliveryFrom?: string;
+  deliveryTo?: string;
+  timeWindow?: string;
+  group?: OrderListGroup | string;
   [key: string]: string | number | undefined;
 }
