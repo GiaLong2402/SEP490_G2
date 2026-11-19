@@ -8,6 +8,8 @@ import { adminApi } from '../api';
 import type { UserListItem } from '../types';
 
 const empty = { username: '', fullName: '', email: '', phone: '', roleId: '', position: '', employeeCode: '', isActive: true, password: '' };
+/** Chức vụ chỉ dùng để đánh dấu người giao hàng: để trống hoặc "Giao hàng". */
+const COURIER_POSITION = 'Giao hàng';
 
 export default function UsersPage() {
   const list = useListParams(['roleId'] as const);
@@ -22,7 +24,7 @@ export default function UsersPage() {
   const openForm = (user: UserListItem | 'new') => {
     setTouched(false);
     setEditing(user);
-    setForm(user === 'new' ? empty : { username: user.username ?? '', fullName: user.fullName, email: user.email ?? '', phone: user.phone ?? '', roleId: String(user.roleId ?? ''), position: user.position ?? '', employeeCode: user.employeeCode ?? '', isActive: user.isActive, password: '' });
+    setForm(user === 'new' ? empty : { username: user.username ?? '', fullName: user.fullName, email: user.email ?? '', phone: user.phone ?? '', roleId: String(user.roleId ?? ''), position: user.position === COURIER_POSITION ? COURIER_POSITION : '', employeeCode: user.employeeCode ?? '', isActive: user.isActive, password: '' });
   };
   const errors = {
     username: !form.username.trim() ? 'Bắt buộc' : undefined,
@@ -99,7 +101,12 @@ export default function UsersPage() {
               {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </Select>
           </Field>
-          <Field label="Chức vụ" hint="Chức vụ “Giao hàng” sẽ có trong danh sách phân công giao"><Input value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} /></Field>
+          <Field label="Chức vụ" hint="Chọn “Giao hàng” để có tên trong danh sách phân công giao">
+            <Select value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })}>
+              <option value="">Không</option>
+              <option value={COURIER_POSITION}>{COURIER_POSITION}</option>
+            </Select>
+          </Field>
           <Field label="Mã nhân viên"><Input value={form.employeeCode} onChange={(e) => setForm({ ...form, employeeCode: e.target.value })} /></Field>
           <Field
             label={isNew ? 'Mật khẩu ban đầu' : 'Đặt lại mật khẩu'}

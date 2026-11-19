@@ -1,4 +1,4 @@
-﻿package com.hbsisms.feature.payment;
+package com.hbsisms.feature.payment;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -104,6 +104,7 @@ class PaymentServiceTest {
         SalesOrder order = order(5L, OrderState.CONFIRMED, PaymentStatus.UNPAID, "150000.00");
         when(salesOrderRepository.findWithDetailsById(5L)).thenReturn(Optional.of(order));
         when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(5L)).thenReturn(List.of());
         when(paymentRepository.sumSuccessfulInByOrderId(5L)).thenReturn(new BigDecimal("50000.00"));
 
         assertThatThrownBy(() -> service.create(
@@ -119,11 +120,39 @@ class PaymentServiceTest {
     }
 
     @Test
+    void create_rejectsWhenPendingPayosLinkExists() {
+        SalesOrder order = order(55L, OrderState.CONFIRMED, PaymentStatus.WAITING, "100000.00");
+        when(salesOrderRepository.findWithDetailsById(55L)).thenReturn(Optional.of(order));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        Payment pendingPayos = new Payment();
+        setId(pendingPayos, 901L);
+        pendingPayos.setOrder(order);
+        pendingPayos.setMethod(PaymentMethod.PAYOS);
+        pendingPayos.setDirection(PayDirection.IN);
+        pendingPayos.setAmount(new BigDecimal("100000.00"));
+        pendingPayos.setStatus(PayTxnStatus.PENDING);
+        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(55L)).thenReturn(List.of(pendingPayos));
+
+        assertThatThrownBy(() -> service.create(
+                        new PaymentInputRequest(
+                                1L, 55L, PaymentMethod.CASH, new BigDecimal("100000.00"), null, null),
+                        9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(api.getMessage()).contains("PayOS");
+                });
+    }
+
+    @Test
     void create_marksOrderPaidWhenFullyCovered() {
         SalesOrder order = order(6L, OrderState.CONFIRMED, PaymentStatus.UNPAID, "100000.00");
         when(salesOrderRepository.findWithDetailsById(6L)).thenReturn(Optional.of(order));
         when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
         when(customerRepository.findById(1L)).thenReturn(Optional.of(customer));
+        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(6L)).thenReturn(List.of());
         when(paymentRepository.sumSuccessfulInByOrderId(6L))
                 .thenReturn(BigDecimal.ZERO.setScale(2))
                 .thenReturn(new BigDecimal("100000.00"));

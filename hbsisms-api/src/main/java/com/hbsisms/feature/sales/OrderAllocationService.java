@@ -139,6 +139,48 @@ public class OrderAllocationService {
         return totalHeld;
     }
 
+    /**
+     * Nhả HOLD còn lại theo từng variant (tối đa {@code qtyByVariant}), dùng khi nhận hàng về từ đợt
+     * giao thất bại — chưa OUT thì không nhập kho lại.
+     *
+     * @return số khay đã RELEASE
+     */
+    @Transactional
+    public int releaseHeldForVariants(SalesOrder order, Map<Long, Integer> qtyByVariant, Long actorId, String note) {
+        Objects.requireNonNull(order.getId(), "order id");
+        if (qtyByVariant == null || qtyByVariant.isEmpty()) {
+            return 0;
+        }
+        Map<Long, Integer> remaining = new LinkedHashMap<>(qtyByVariant);
+        Map<HoldKey, Integer> net = netHeldByLot(order.getId());
+        int released = 0;
+        for (Map.Entry<HoldKey, Integer> entry : net.entrySet()) {
+            HoldKey key = entry.getKey();
+            Integer want = remaining.get(key.variantId());
+            if (want == null || want <= 0) {
+                continue;
+            }
+            int take = Math.min(want, entry.getValue());
+            if (take <= 0) {
+                continue;
+            }
+            stockService.release(StockMutation.of(
+                    key.variantId(),
+                    key.lotId(),
+                    key.locationId(),
+                    take,
+                    REF_TYPE,
+                    order.getId(),
+                    note != null ? note : "Nhả hold — nhận hàng về đơn " + order.getCode(),
+                    actorId));
+            remaining.merge(key.variantId(), -take, Integer::sum);
+            released += take;
+        }
+        refreshAllocationStatus(order);
+        salesOrderRepository.save(order);
+        return released;
+    }
+
     /** Giải phóng toàn bộ HOLD còn lại của đơn (hủy / hết hạn). */
     @Transactional
     public int releaseForOrder(SalesOrder order, Long actorId, String note) {
@@ -371,5 +413,5 @@ public class OrderAllocationService {
         order.setHoldExpiresAt(Instant.now(clock).plusSeconds(hours * 3600L));
     }
 
-    record HoldKey(long variantId, long lotId, long locationId) {}
+    public record HoldKey(long variantId, long lotId, long locationId) {}
 }

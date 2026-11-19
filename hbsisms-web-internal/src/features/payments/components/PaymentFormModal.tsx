@@ -15,6 +15,8 @@ interface Props {
   order?: { id: ID; code: string; outstanding: number };
   maxAmount?: number;
   defaultMethod?: PaymentMethod;
+  /** Gọi sau khi ghi nhận thành công (trước khi đóng). */
+  onSuccess?: () => void;
 }
 
 /** PayOS (cổng QR web) bản chất là CK → gộp vào bank_transfer, không hiện riêng. */
@@ -24,7 +26,7 @@ function toStaffPaymentMethod(method: PaymentMethod): PaymentMethod {
   return method === 'payos' ? 'bank_transfer' : METHODS.includes(method) ? method : 'bank_transfer';
 }
 
-export function PaymentFormModal({ open, onClose, customerId, customerName, order, maxAmount, defaultMethod = 'bank_transfer' }: Props) {
+export function PaymentFormModal({ open, onClose, customerId, customerName, order, maxAmount, defaultMethod = 'bank_transfer', onSuccess }: Props) {
   const limit = order?.outstanding ?? maxAmount ?? 0;
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<PaymentMethod>(toStaffPaymentMethod(defaultMethod));
@@ -43,7 +45,10 @@ export function PaymentFormModal({ open, onClose, customerId, customerName, orde
   const valid = value > 0 && value <= limit;
   const create = useAction(() => paymentsApi.create({ customerId, orderId: order?.id ?? null, method, amount: value, reference: reference.trim() || null, note: null }), {
     success: (p) => `Đã ghi nhận ${money(p.amount)} (${p.code})`,
-    onDone: onClose,
+    onDone: () => {
+      onSuccess?.();
+      onClose();
+    },
   });
 
   return (

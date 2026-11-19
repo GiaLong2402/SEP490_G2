@@ -32,7 +32,9 @@ import com.hbsisms.feature.payment.CustomerDebtLedgerRepository;
 import com.hbsisms.feature.payment.PaymentMethod;
 import com.hbsisms.feature.payment.PaymentRepository;
 import com.hbsisms.feature.payment.PaymentStatus;
+import com.hbsisms.feature.sales.dto.OrderDetailResponse;
 import com.hbsisms.feature.sales.dto.OrderInputRequest;
+import com.hbsisms.feature.sales.dto.OrderListItemResponse;
 import com.hbsisms.feature.system.AppConfigService;
 import com.hbsisms.feature.system.AuditLogService;
 import com.hbsisms.feature.system.BusinessCodeService;
@@ -93,6 +95,8 @@ class SalesOrderServiceTest {
     private BusinessCodeService businessCodeService;
     @Mock
     private AppConfigService appConfigService;
+    @Mock
+    private OrderDetailAssembler orderDetailAssembler;
 
     private SalesOrderService service;
     private final Clock clock = Clock.fixed(Instant.parse("2026-11-09T10:00:00Z"), ZoneOffset.UTC);
@@ -123,7 +127,11 @@ class SalesOrderServiceTest {
                 payosLinkCanceller,
                 businessCodeService,
                 appConfigService,
+                orderDetailAssembler,
                 clock);
+        lenient()
+                .when(orderDetailAssembler.assemble(any(SalesOrder.class)))
+                .thenAnswer(inv -> stubDetail(inv.getArgument(0)));
 
         lenient().when(businessCodeService.nextSalesOrderCode()).thenReturn("SO-2026-0001");
         lenient().when(appConfigService.orderDiscountApprovePct()).thenReturn(5);
@@ -192,9 +200,6 @@ class SalesOrderServiceTest {
             o.setPlacedBy(actor);
             return Optional.of(o);
         });
-        when(deliveryRepository.findByOrder_IdOrderByIdAsc(anyLong())).thenReturn(List.of());
-        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(anyLong())).thenReturn(List.of());
-        when(orderEventRepository.findByOrder_IdOrderByCreatedAtAscIdAsc(anyLong())).thenReturn(List.of());
 
         var detail = service.create(input(1L, PaymentMethod.CASH), 9L);
 
@@ -330,9 +335,6 @@ class SalesOrderServiceTest {
             o.setPlacedBy(actor);
             return Optional.of(o);
         });
-        when(deliveryRepository.findByOrder_IdOrderByIdAsc(anyLong())).thenReturn(List.of());
-        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(anyLong())).thenReturn(List.of());
-        when(orderEventRepository.findByOrder_IdOrderByCreatedAtAscIdAsc(anyLong())).thenReturn(List.of());
 
         var detail = service.create(walkInInput("Anh Minh"), 9L);
 
@@ -365,9 +367,6 @@ class SalesOrderServiceTest {
             o.setPlacedBy(actor);
             return Optional.of(o);
         });
-        when(deliveryRepository.findByOrder_IdOrderByIdAsc(anyLong())).thenReturn(List.of());
-        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(anyLong())).thenReturn(List.of());
-        when(orderEventRepository.findByOrder_IdOrderByCreatedAtAscIdAsc(anyLong())).thenReturn(List.of());
 
         service.createFromRequest(input(1L, PaymentMethod.CASH), 9L);
 
@@ -413,9 +412,6 @@ class SalesOrderServiceTest {
             o.setPlacedBy(actor);
             return Optional.of(o);
         });
-        when(deliveryRepository.findByOrder_IdOrderByIdAsc(anyLong())).thenReturn(List.of());
-        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(anyLong())).thenReturn(List.of());
-        when(orderEventRepository.findByOrder_IdOrderByCreatedAtAscIdAsc(anyLong())).thenReturn(List.of());
 
         OrderInputRequest shortRequest = new OrderInputRequest(
                 1L,
@@ -460,9 +456,6 @@ class SalesOrderServiceTest {
             o.setDiscountTotal(new BigDecimal("10000.00"));
             return Optional.of(o);
         });
-        when(deliveryRepository.findByOrder_IdOrderByIdAsc(anyLong())).thenReturn(List.of());
-        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(anyLong())).thenReturn(List.of());
-        when(orderEventRepository.findByOrder_IdOrderByCreatedAtAscIdAsc(anyLong())).thenReturn(List.of());
 
         // 10% giảm trên 100k > ngưỡng 5% → chờ duyệt, chưa hold.
         OrderInputRequest request = new OrderInputRequest(
@@ -556,6 +549,87 @@ class SalesOrderServiceTest {
         assertThat(order.getState()).isEqualTo(OrderState.PREPARING);
         verify(orderEventRepository).save(any(OrderEvent.class));
         verify(salesOrderRepository).save(order);
+    }
+
+    @Test
+    void transition_preparingWhenCodUnpaidAndFull_succeeds() {
+        SalesOrder order = baseOrder(18L, OrderState.CONFIRMED, PaymentStatus.UNPAID, AllocationStatus.FULL);
+        order.setPaymentMethod(PaymentMethod.COD);
+        order.setFulfillmentMethod(FulfillmentMethod.SHOP_DELIVERY);
+        when(salesOrderRepository.findWithDetailsById(18L)).thenReturn(Optional.of(order));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        service.transition(18L, OrderState.PREPARING, 9L);
+
+        assertThat(order.getState()).isEqualTo(OrderState.PREPARING);
+        verify(salesOrderRepository).save(order);
+    }
+
+    @Test
+    void transition_preparingWhenCashShopDeliveryUnpaid_succeeds() {
+        // Đơn cũ cash + shop_delivery (chưa normalize) vẫn coi là COD.
+        SalesOrder order = baseOrder(19L, OrderState.CONFIRMED, PaymentStatus.UNPAID, AllocationStatus.FULL);
+        order.setPaymentMethod(PaymentMethod.CASH);
+        order.setFulfillmentMethod(FulfillmentMethod.SHOP_DELIVERY);
+        when(salesOrderRepository.findWithDetailsById(19L)).thenReturn(Optional.of(order));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        service.transition(19L, OrderState.PREPARING, 9L);
+
+        assertThat(order.getState()).isEqualTo(OrderState.PREPARING);
+    }
+
+    @Test
+    void create_cashShopDelivery_normalizesToCod() {
+        com.hbsisms.feature.customer.CustomerAddress address = new com.hbsisms.feature.customer.CustomerAddress();
+        setId(address, 55L);
+        when(customerRepository.findById(1L)).thenReturn(Optional.of(retailCustomer));
+        when(customerAddressRepository.findByIdAndCustomerId(55L, 1L)).thenReturn(Optional.of(address));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(pricingService.resolve(any(PricingRequest.class))).thenReturn(priced(false));
+        when(productVariantRepository.findById(10L)).thenReturn(Optional.of(variant));
+        when(salesOrderRepository.save(any(SalesOrder.class))).thenAnswer(inv -> {
+            SalesOrder o = inv.getArgument(0);
+            if (o.getId() == null) {
+                setId(o, ids.incrementAndGet());
+            }
+            return o;
+        });
+        when(orderAllocationService.holdForOrder(any(), eq(9L), eq(false))).thenAnswer(inv -> {
+            SalesOrder o = inv.getArgument(0);
+            o.setAllocationStatus(AllocationStatus.FULL);
+            return 1;
+        });
+        when(salesOrderRepository.findWithDetailsById(anyLong())).thenAnswer(inv -> {
+            SalesOrder o = baseOrder(inv.getArgument(0), OrderState.CONFIRMED, PaymentStatus.UNPAID, AllocationStatus.FULL);
+            o.setPaymentMethod(PaymentMethod.COD);
+            o.setFulfillmentMethod(FulfillmentMethod.SHOP_DELIVERY);
+            return Optional.of(o);
+        });
+
+        service.create(
+                new OrderInputRequest(
+                        1L,
+                        null,
+                        null,
+                        OrderType.RETAIL,
+                        SaleChannel.PHONE,
+                        PaymentMethod.CASH,
+                        FulfillmentMethod.SHOP_DELIVERY,
+                        55L,
+                        null,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        null,
+                        null,
+                        List.of(new PricingLineInput(10L, SellUnit.PACK, 1, null))),
+                9L);
+
+        verify(salesOrderRepository, org.mockito.Mockito.atLeastOnce()).save(org.mockito.ArgumentMatchers.argThat(
+                (SalesOrder o) -> o.getPaymentMethod() == PaymentMethod.COD
+                        && o.getFulfillmentMethod() == FulfillmentMethod.SHOP_DELIVERY));
+        verify(pricingService).resolve(org.mockito.ArgumentMatchers.argThat(
+                (PricingRequest req) -> "cod".equals(req.paymentMethod())));
     }
 
     @Test
@@ -871,6 +945,55 @@ class SalesOrderServiceTest {
                 null,
                 null,
                 List.of(new PricingLineInput(10L, SellUnit.PACK, 1, null)));
+    }
+
+    /** Stub tối giản — chỉ đủ field assert trong test create. */
+    private static OrderDetailResponse stubDetail(SalesOrder order) {
+        OrderListItemResponse h = OrderListItemResponse.from(order);
+        return new OrderDetailResponse(
+                h.id(),
+                h.code(),
+                h.customerId(),
+                h.orderType(),
+                h.channel(),
+                h.sourceQuoteId(),
+                h.paymentMethod(),
+                h.paymentTermDays(),
+                h.paymentStatus(),
+                h.allocationStatus(),
+                h.fulfillmentMethod(),
+                h.shipAddressId(),
+                h.state(),
+                h.subtotal(),
+                h.discountTotal(),
+                h.shippingFee(),
+                h.total(),
+                h.voucherCode(),
+                h.isOverLimit(),
+                h.overLimitAmount(),
+                h.approvedBy(),
+                h.placedBy(),
+                h.placedAt(),
+                h.holdExpiresAt(),
+                h.note(),
+                h.createdAt(),
+                h.updatedAt(),
+                h.customerName(),
+                h.customerType(),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                BigDecimal.ZERO,
+                null,
+                null,
+                null,
+                List.of(),
+                true);
     }
 
     private static void setId(Object entity, Long id) {

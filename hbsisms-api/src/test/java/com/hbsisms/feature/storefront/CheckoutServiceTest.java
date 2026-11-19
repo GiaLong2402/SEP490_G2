@@ -525,6 +525,8 @@ class CheckoutServiceTest {
                 List.of(),
                 List.of(),
                 List.of(),
+                List.of(),
+                List.of(),
                 BigDecimal.ZERO,
                 null,
                 null,

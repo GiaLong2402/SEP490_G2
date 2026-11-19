@@ -13,7 +13,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
-/** Matches FE {@code OrderDetail}. */
+/** Matches FE {@code OrderDetail} (Inter 3 dòng 6: +returns +auditTrail). */
 public record OrderDetailResponse(
         Long id,
         String code,
@@ -50,6 +50,8 @@ public record OrderDetailResponse(
         List<OrderDeliveryViewResponse> deliveries,
         List<PaymentViewResponse> payments,
         List<OrderEventViewResponse> events,
+        List<OrderReturnViewResponse> returns,
+        List<OrderAuditTrailItemResponse> auditTrail,
         BigDecimal paidAmount,
         String sourceQuoteCode,
         String placedByName,

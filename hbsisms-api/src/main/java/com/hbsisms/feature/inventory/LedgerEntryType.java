@@ -12,7 +12,9 @@ public enum LedgerEntryType {
     MOVE,
     ADJUST,
     DAMAGE,
-    EXPIRE;
+    EXPIRE,
+    /** Hàng trả về (nhập lại hoặc vào cách ly). */
+    RETURN;
 
     @JsonValue
     public String code() {

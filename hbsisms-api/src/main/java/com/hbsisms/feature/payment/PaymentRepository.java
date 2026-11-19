@@ -34,6 +34,25 @@ public interface PaymentRepository
     @EntityGraph(attributePaths = {"order", "customer", "receivedBy"})
     List<Payment> findByOrder_IdOrderByPaidAtAscIdAsc(Long orderId);
 
+    /** Batch net thu cho export đơn (Inter 3 dòng 12). */
+    List<Payment> findByOrder_IdIn(java.util.Collection<Long> orderIds);
+
+    /** Thanh toán lệch / đối soát tay — inbox Chủ (Inter 3 dòng 11). */
+    @EntityGraph(attributePaths = {"order"})
+    List<Payment> findByReconcileFlagIn(java.util.Collection<PaymentReconcileFlag> flags);
+
+    /**
+     * PayOS tiền về muộn cần hoàn ({@code raw_payload.needsRefund=true}).
+     * Native vì map JSON → JPQL không ổn định giữa bản Hibernate.
+     */
+    @Query(
+            value = """
+                    select p.id from hbsisms.payment p
+                    where (p.raw_payload ->> 'needsRefund') = 'true'
+                    """,
+            nativeQuery = true)
+    List<Long> findIdsWithNeedsRefundFlag();
+
     @Override
     @EntityGraph(attributePaths = {"order", "customer", "receivedBy"})
     Page<Payment> findAll(Specification<Payment> spec, Pageable pageable);

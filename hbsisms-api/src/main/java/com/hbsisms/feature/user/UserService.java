@@ -118,10 +118,21 @@ public class UserService {
             // New login phone must be re-verified via OTP (task 1).
             user.setPhoneVerifiedAt(null);
         }
-        user.setPosition(Strings.trimToNull(request.position()));
+        user.setPosition(normalizePosition(request.position()));
         user.setEmployeeCode(employeeCode);
         user.setRole(role);
         user.setActive(request.isActive());
+    }
+
+    static final String COURIER_POSITION = "Giao hàng";
+
+    /** "giao hang", "GIAO HÀNG"… → "Giao hàng" (danh sách người giao so khớp đúng chữ này); còn lại giữ nguyên. */
+    static String normalizePosition(String raw) {
+        String value = Strings.trimToNull(raw);
+        if (value == null) {
+            return null;
+        }
+        return "giao-hang".equals(Strings.slugify(value)) ? COURIER_POSITION : value;
     }
 
     /** Inter 2 task 3 — staff accounts always have a VN mobile used for OTP login. */

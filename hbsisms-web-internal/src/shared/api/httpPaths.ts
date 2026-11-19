@@ -15,11 +15,19 @@ export const API_PATHS = {
   },
   orders: {
     root: '/orders',
+    counts: '/orders/counts',
+    /** Inter 3 dòng 11 — việc cần Chủ (quyền approve; UI = dòng 13 sóng B). */
+    ownerInbox: '/orders/owner-inbox',
+    /** Inter 3 dòng 12 — xlsx theo filter list (nút UI = dòng 13 sóng B). */
+    export: '/orders/export',
     byId: (id: string | number) => `/orders/${id}`,
     transition: (id: string | number) => `/orders/${id}/transition`,
     cancel: (id: string | number) => `/orders/${id}/cancel`,
     receipt: (id: string | number) => `/orders/${id}/receipt`,
     completeAtCounter: (id: string | number) => `/orders/${id}/complete-at-counter`,
+    /** Cường Inter 3 — phiếu soạn từ HOLD. */
+    pickingSlip: (id: string | number) => `/orders/${id}/picking-slip`,
+    pickingSlipDaily: '/orders/picking-slip-daily',
   },
   salesRequests: {
     root: '/sales-requests',
