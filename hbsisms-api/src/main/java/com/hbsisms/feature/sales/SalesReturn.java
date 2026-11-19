@@ -44,6 +44,11 @@ public class SalesReturn {
     @JoinColumn(name = "order_id")
     private SalesOrder order;
 
+    /** Đợt giao thất bại khi phiếu là nhận hàng về (null = khách trả sau khi nhận). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "delivery_id")
+    private Delivery delivery;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "customer_id")
     private Customer customer;
@@ -64,6 +69,13 @@ public class SalesReturn {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
     private AppUser createdBy;
+
+    /** NV kho / người xác nhận đã nhận & kiểm hàng (task Inter 3 #30). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "inspected_by")
+    private AppUser inspectedBy;
+
+    private Instant inspectedAt;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)

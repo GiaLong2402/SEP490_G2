@@ -16,6 +16,15 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
 
     @Query("""
             select distinct s from Stock s
+            join fetch s.lot
+            join fetch s.location
+            where s.variant.id = :variantId
+            order by s.id desc
+            """)
+    List<Stock> findByVariantIdWithLotLocation(@Param("variantId") Long variantId);
+
+    @Query("""
+            select distinct s from Stock s
             join fetch s.variant v
             join fetch v.product
             join fetch s.lot

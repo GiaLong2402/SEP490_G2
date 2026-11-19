@@ -3,7 +3,7 @@ import { PaymentFormModal } from '@/features/payments';
 import { useAction } from '@/shared/api/useAction';
 import type { Delivery, ID } from '@/shared/domain/entities';
 import type { DeliveryState, FulfillmentMethod, OrderState, PaymentMethod, PaymentStatus } from '@/shared/domain/enums';
-import { Button, ConfirmDialog } from '@/shared/ui';
+import { Button, ConfirmDialog, LinkButton } from '@/shared/ui';
 import { isCollectOnDelivery } from '@/features/orders/cod';
 import { deliveriesApi } from '../api';
 
@@ -29,7 +29,7 @@ export function DeliveryStateActions({
   orderState,
   codCollect,
 }: {
-  delivery: Pick<Delivery, 'id' | 'state' | 'legLabel' | 'fulfillmentMethod'>;
+  delivery: Pick<Delivery, 'id' | 'orderId' | 'state' | 'legLabel' | 'fulfillmentMethod'>;
   /** Khi truyền: chỉ hiện nút nếu đơn đã Chờ giao / Giao một phần. */
   orderState?: OrderState | null;
   /** Khi có: COD chưa thu → mở ghi nhận TT trước khi Đã giao. */
@@ -45,7 +45,23 @@ export function DeliveryStateActions({
     },
   });
 
-  if (delivery.state === 'delivered' || delivery.state === 'failed') return null;
+  if (delivery.state === 'delivered') return null;
+
+  // Task 29: giao thất bại → tạo phiếu nhận hàng về (gắn deliveryId).
+  if (delivery.state === 'failed') {
+    return (
+      <div className="flex justify-end gap-1.5">
+        <LinkButton
+          className={ROW_BTN}
+          to={`/returns?orderId=${delivery.orderId}&deliveryId=${delivery.id}`}
+          variant="primary"
+        >
+          Nhận về
+        </LinkButton>
+      </div>
+    );
+  }
+
   if (orderState != null && !SHIPPING_ORDER_STATES.includes(orderState)) {
     if (!BEFORE_SHIP_STATES.includes(orderState)) return null;
     return <span className="whitespace-nowrap text-small text-ink-faint">Chờ đơn sang Chờ giao</span>;
