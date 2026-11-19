@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { PaymentFormModal } from '@/features/payments';
+import { returnsApi } from '@/features/returns/api';
 import { useAction } from '@/shared/api/useAction';
 import type { Delivery, ID } from '@/shared/domain/entities';
 import type { DeliveryState, FulfillmentMethod, OrderState, PaymentMethod, PaymentStatus } from '@/shared/domain/enums';
@@ -45,21 +47,59 @@ export function DeliveryStateActions({
     },
   });
 
+  const receiveHref = `/returns?orderId=${delivery.orderId}&deliveryId=${delivery.id}`;
+  const failed = delivery.state === 'failed';
+  const { data: returnable, isLoading: returnableLoading } = useQuery({
+    queryKey: ['returnable-delivery', delivery.id],
+    queryFn: () => returnsApi.returnableOrders(undefined, delivery.id),
+    enabled: failed,
+    staleTime: 15_000,
+  });
+  const canCreateReceiveBack = (returnable?.length ?? 0) > 0;
+
+  /** Hết SL tạo phiếu → xem còn phiếu Chờ nhận không; đã nhận/hoàn tiền thì ẩn nút. */
+  const { data: pendingReceive, isLoading: pendingLoading } = useQuery({
+    queryKey: ['pending-receive-delivery', delivery.id],
+    queryFn: async () => {
+      const page = await returnsApi.list({ page: 1, pageSize: 50, status: 'pending' });
+      return page.items.find((r) => r.deliveryId === delivery.id) ?? null;
+    },
+    enabled: failed && !returnableLoading && !canCreateReceiveBack,
+    staleTime: 15_000,
+  });
+
   if (delivery.state === 'delivered') return null;
 
-  // Task 29: giao thất bại → tạo phiếu nhận hàng về (gắn deliveryId).
-  if (delivery.state === 'failed') {
-    return (
-      <div className="flex justify-end gap-1.5">
-        <LinkButton
-          className={ROW_BTN}
-          to={`/returns?orderId=${delivery.orderId}&deliveryId=${delivery.id}`}
-          variant="primary"
-        >
-          Nhận về
-        </LinkButton>
-      </div>
-    );
+  // Task 29: thất bại → Nhận về (tạo) / Kiểm (chờ nhận) / ẩn khi đã xong.
+  if (failed) {
+    const loading = returnableLoading || (!canCreateReceiveBack && pendingLoading);
+    if (loading) {
+      return <span className="whitespace-nowrap text-small text-ink-faint">…</span>;
+    }
+    if (canCreateReceiveBack) {
+      return (
+        <div className="flex justify-end gap-1.5">
+          <LinkButton className={ROW_BTN} to={receiveHref} variant="primary" title="Tạo phiếu nhận hàng về">
+            Nhận về
+          </LinkButton>
+        </div>
+      );
+    }
+    if (pendingReceive) {
+      return (
+        <div className="flex justify-end gap-1.5">
+          <LinkButton
+            className={ROW_BTN}
+            to={receiveHref}
+            variant="primary"
+            title={`Kiểm / nhận hàng phiếu ${pendingReceive.code}`}
+          >
+            Kiểm nhận về
+          </LinkButton>
+        </div>
+      );
+    }
+    return <span className="whitespace-nowrap text-small text-ink-faint">Đã nhận về</span>;
   }
 
   if (orderState != null && !SHIPPING_ORDER_STATES.includes(orderState)) {

@@ -1,29 +1,37 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAction } from '@/shared/api/useAction';
 import { returnStatusMeta } from '@/shared/domain/enums';
 import { date, money } from '@/shared/lib/format';
 import { Button, Card, ConfirmDialog, DataTable, Field, FilterBar, FilterSelect, Input, Modal, PageHeader, Pagination, SearchBox, StatusChip, enumOptions, useListParams, type Column } from '@/shared/ui';
+import { useToast } from '@/shared/ui/Toast';
 import { returnsApi } from '../api';
+import { ReceiveInspectModal } from '../components/ReceiveInspectModal';
 import { ReturnableOrderSearchField } from '../components/ReturnableOrderSearchField';
 import { useReturns } from '../hooks';
-import type { ReturnListItem, ReturnStatus, ReturnableOrder } from '../types';
+import type { ReturnInspectLine, ReturnListItem, ReturnStatus, ReturnableOrder } from '../types';
 
-function statusToast(status: ReturnStatus) {
+function statusToast(status: ReturnStatus, opts?: { inspected?: boolean; receiveBackHeld?: boolean }) {
   switch (status) {
     case 'received':
-      return 'Đã nhận hàng. Cột Cách ly (theo SKU) đã tăng — F5 Tồn kho để đối chiếu.';
+      if (opts?.receiveBackHeld) {
+        return 'Đã nhận về: còn HOLD → chỉ nhả giữ về kệ (không vào khu hàng trả). F5 Tồn kho.';
+      }
+      return opts?.inspected
+        ? 'Đã kiểm hàng. Đạt → Khả dụng; không đạt → khu hàng trả. F5 Tồn kho để đối chiếu.'
+        : 'Đã nhận hàng. HOLD được nhả (nếu còn) hoặc mặc định vào khu hàng trả — F5 Tồn kho.';
     case 'rejected':
       return 'Đã từ chối phiếu — không thay đổi tồn kho.';
     case 'refunded':
-      return 'Đã ghi hoàn tiền. Tồn/Cách ly không đổi (đã cộng lúc Đã nhận hàng).';
+      return 'Đã hoàn tiền: ghi phiếu hoàn (TM/CK) hoặc giảm nợ B2B. Tồn không đổi — F5 Thanh toán / Công nợ.';
     default:
       return 'Đã cập nhật phiếu trả';
   }
 }
 
 export default function ReturnsPage() {
+  const toast = useToast();
   const list = useListParams(['status'] as const);
   const [params, setSearchParams] = useSearchParams();
   const presetOrder = params.get('orderId');
@@ -38,8 +46,12 @@ export default function ReturnsPage() {
   const [reason, setReason] = useState(receiveBack ? 'Giao thất bại — nhận hàng về' : '');
   const [quantities, setQuantities] = useState<Record<number, string>>({});
   const [touched, setTouched] = useState(false);
-  const [confirm, setConfirm] = useState<{ id: number; status: ReturnStatus; code?: string } | null>(null);
+  const [confirm, setConfirm] = useState<{ id: number; status: Exclude<ReturnStatus, 'received'>; code?: string } | null>(null);
+  const [inspectRow, setInspectRow] = useState<ReturnListItem | null>(null);
+  const inspectDetailedRef = useRef(false);
+  const receiveBackHeldRef = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [receiveLoading, setReceiveLoading] = useState(false);
 
   const selected = selectedOrder?.id === orderId ? selectedOrder : null;
   useEffect(() => {
@@ -47,34 +59,53 @@ export default function ReturnsPage() {
     setQuantities({});
   }, [orderId, receiveBack]);
 
-  // Prefill phiếu nhận về từ đợt giao thất bại (?deliveryId=).
   useEffect(() => {
     if (!receiveBack) return;
     let cancelled = false;
     setLoadError(null);
+    setReceiveLoading(true);
+    setSelectedOrder(null);
     returnsApi
       .returnableOrders(undefined, deliveryId!)
-      .then((rows) => {
+      .then(async (rows) => {
         if (cancelled) return;
         const row = rows[0] ?? null;
-        if (!row) {
-          setLoadError('Đợt giao này không còn hàng để nhận về (đã tạo phiếu hoặc không phải thất bại).');
-          setSelectedOrder(null);
-          setOrderId(null);
+        if (row) {
+          setSelectedOrder(row);
+          setOrderId(row.id);
+          setQuantities(Object.fromEntries(row.lines.map((l) => [l.variantId, String(l.maxQty)])));
+          setReason((prev) => prev.trim() || 'Giao thất bại — nhận hàng về');
+          setOpen(true);
           return;
         }
-        setSelectedOrder(row);
-        setOrderId(row.id);
-        setQuantities(Object.fromEntries(row.lines.map((l) => [l.variantId, String(l.maxQty)])));
-        setReason((prev) => prev.trim() || 'Giao thất bại — nhận hàng về');
-        setOpen(true);
+        // Đã tạo phiếu rồi → mở Kiểm nếu còn Chờ nhận; đã xong thì không mở form tạo (nút hết tác dụng tạo).
+        const page = await returnsApi.list({ page: 1, pageSize: 50, status: 'pending' });
+        if (cancelled) return;
+        const existing = page.items.find((r) => r.deliveryId === deliveryId) ?? null;
+        setOpen(false);
+        setSelectedOrder(null);
+        setOrderId(null);
+        clearQuery();
+        if (existing) {
+          setInspectRow(existing);
+          return;
+        }
+        toast.success(`Đợt giao #${deliveryId} đã nhận về xong — xem phiếu trên danh sách (Đã nhận hàng / Hoàn tiền).`);
       })
       .catch(() => {
-        if (!cancelled) setLoadError('Không tải được hàng nhận về từ đợt giao thất bại.');
+        if (!cancelled) {
+          setLoadError('Không tải được hàng nhận về từ đợt giao thất bại.');
+          setOpen(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setReceiveLoading(false);
       });
     return () => {
       cancelled = true;
     };
+    // clearQuery ổn định theo URL; cố ý không đưa vào deps để tránh loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ chạy lại khi đổi deliveryId
   }, [receiveBack, deliveryId]);
 
   const items = selected?.lines.map((l) => ({ variantId: l.variantId, qty: Number(quantities[l.variantId] ?? 0) })) ?? [];
@@ -121,11 +152,22 @@ export default function ReturnsPage() {
       },
     },
   );
+
   const setStatus = useAction(
-    ({ id, status }: { id: number; status: ReturnStatus }) => returnsApi.setStatus(id, status),
+    ({ id, status, inspections }: { id: number; status: ReturnStatus; inspections?: ReturnInspectLine[] | null }) =>
+      returnsApi.setStatus(id, status, inspections),
     {
-      success: () => statusToast(confirm?.status ?? 'received'),
-      onDone: () => setConfirm(null),
+      success: () =>
+        statusToast(confirm?.status ?? 'received', {
+          inspected: inspectDetailedRef.current,
+          receiveBackHeld: receiveBackHeldRef.current,
+        }),
+      onDone: () => {
+        setConfirm(null);
+        setInspectRow(null);
+        inspectDetailedRef.current = false;
+        receiveBackHeldRef.current = false;
+      },
     },
   );
 
@@ -168,7 +210,7 @@ export default function ReturnsPage() {
           {r.status === 'pending' && (
             <>
               <Button variant="ghost" onClick={() => setConfirm({ id: r.id, status: 'rejected', code: r.code })}>Từ chối</Button>
-              <Button onClick={() => setConfirm({ id: r.id, status: 'received', code: r.code })}>Đã nhận hàng</Button>
+              <Button onClick={() => setInspectRow(r)}>Kiểm / nhận hàng</Button>
             </>
           )}
           {r.status === 'received' && (
@@ -179,32 +221,25 @@ export default function ReturnsPage() {
     },
   ];
 
-  const confirmCopy = confirm?.status === 'received'
+  const confirmCopy = confirm?.status === 'rejected'
     ? {
-        title: 'Xác nhận đã nhận hàng?',
-        message: `Phiếu ${confirm.code ?? ''} sẽ chuyển sang Đã nhận hàng. Hệ thống mặc định cộng hàng vào cột Cách ly trên Tồn kho (chưa đưa vào Khả dụng để bán lại).`,
-        confirmLabel: 'Nhận hàng & cập nhật tồn',
-        danger: false,
+        title: 'Từ chối phiếu trả?',
+        message: `Phiếu ${confirm.code ?? ''} sẽ bị từ chối. Tồn kho không thay đổi.`,
+        confirmLabel: 'Từ chối phiếu',
+        danger: true,
       }
-    : confirm?.status === 'rejected'
-      ? {
-          title: 'Từ chối phiếu trả?',
-          message: `Phiếu ${confirm.code ?? ''} sẽ bị từ chối. Tồn kho không thay đổi.`,
-          confirmLabel: 'Từ chối phiếu',
-          danger: true,
-        }
-      : {
-          title: 'Xác nhận hoàn tiền?',
-          message: `Phiếu ${confirm?.code ?? ''} đánh dấu đã hoàn tiền. Không đụng tồn: Cách ly đã cộng lúc Đã nhận hàng vẫn giữ nguyên.`,
-          confirmLabel: 'Đã hoàn tiền',
-          danger: false,
-        };
+    : {
+        title: 'Xác nhận hoàn tiền?',
+        message: `Phiếu ${confirm?.code ?? ''}: ghi nhận hoàn theo giá trị phiếu (TM/CK hoặc giảm nợ nếu công nợ). Tồn kho không đổi.`,
+        confirmLabel: 'Đã hoàn tiền',
+        danger: false,
+      };
 
   return (
     <>
       <PageHeader
         title="Trả hàng"
-        subtitle="Chờ nhận → Đã nhận (+Cách ly) → Hoàn tiền (chỉ tiền). Từ chối không đổi tồn."
+        subtitle="Chờ nhận → Kiểm (đạt=kệ đã xuất / không đạt=HT-01 cùng kho) → Hoàn tiền. Giao thất bại: Nhận về → nhả HOLD hoặc kiểm."
         actions={<Button variant="primary" icon={<Plus size={15} />} onClick={() => { resetForm(); setOpen(true); }}>Tạo phiếu trả</Button>}
       />
       <Card flush>
@@ -227,6 +262,26 @@ export default function ReturnsPage() {
         onConfirm={() => confirm && setStatus.mutate({ id: confirm.id, status: confirm.status })}
       />
 
+      <ReceiveInspectModal
+        open={!!inspectRow}
+        row={inspectRow}
+        loading={setStatus.isPending}
+        onClose={() => setInspectRow(null)}
+        onConfirmInspect={(inspections) => {
+          if (!inspectRow) return;
+          inspectDetailedRef.current = true;
+          // Demo FAIL còn HOLD: BE chỉ nhả giữ — không vào CL dù FE chọn cách ly.
+          receiveBackHeldRef.current = inspectRow.deliveryId != null;
+          setStatus.mutate({ id: inspectRow.id, status: 'received', inspections });
+        }}
+        onConfirmQuarantineAll={() => {
+          if (!inspectRow) return;
+          inspectDetailedRef.current = false;
+          receiveBackHeldRef.current = inspectRow.deliveryId != null;
+          setStatus.mutate({ id: inspectRow.id, status: 'received', inspections: null });
+        }}
+      />
+
       <Modal
         open={open}
         title={receiveBack ? 'Nhận hàng về (giao thất bại)' : 'Tạo phiếu trả hàng'}
@@ -236,13 +291,25 @@ export default function ReturnsPage() {
           setTouched(true);
           if (selected && reason.trim() && qtyValid) create.mutate();
         }}
-        footer={<><span className="mr-auto self-center text-h2 tabular-nums">{money(amount)}</span><Button onClick={() => { setOpen(false); resetForm(); }}>Hủy bỏ</Button><Button type="submit" variant="primary" loading={create.isPending}>{receiveBack ? 'Tạo phiếu nhận về' : 'Tạo phiếu'}</Button></>}
+        footer={<><span className="mr-auto self-center text-h2 tabular-nums">{money(amount)}</span><Button onClick={() => { setOpen(false); resetForm(); }}>{loadError ? 'Đóng' : 'Hủy bỏ'}</Button><Button type="submit" variant="primary" loading={create.isPending} disabled={!!loadError || !selected}>{receiveBack ? 'Tạo phiếu nhận về' : 'Tạo phiếu'}</Button></>}
       >
         <div className="space-y-3">
           {loadError && <p className="text-small text-red-fg">{loadError}</p>}
-          <Field label="Đơn hàng" required error={touched && !selected ? 'Vui lòng chọn đơn đã giao' : undefined}>
+          <Field label="Đơn hàng" required error={touched && !selected && !loadError ? 'Vui lòng chọn đơn đã giao' : undefined}>
             {receiveBack ? (
-              <Input value={selected ? `${selected.code} · ${selected.customerName ?? 'Khách lẻ'}` : 'Đang tải…'} readOnly disabled />
+              <Input
+                value={
+                  selected
+                    ? `${selected.code} · ${selected.customerName ?? 'Khách lẻ'}`
+                    : receiveLoading
+                      ? 'Đang tải…'
+                      : loadError
+                        ? '—'
+                        : 'Đang tải…'
+                }
+                readOnly
+                disabled
+              />
             ) : (
               <ReturnableOrderSearchField
                 value={orderId}
@@ -254,7 +321,7 @@ export default function ReturnsPage() {
             )}
           </Field>
           {receiveBack && (
-            <p className="text-small text-ink-muted">Đợt giao #{deliveryId} — phiếu gắn deliveryId, chưa đụng tồn đến khi kho bấm Đã nhận hàng.</p>
+            <p className="text-small text-ink-muted">Đợt giao #{deliveryId} — phiếu gắn deliveryId, chưa đụng tồn đến khi kho kiểm / nhận hàng.</p>
           )}
           <Field label="Lý do" required error={touched && !reason.trim() ? 'Vui lòng nhập lý do' : undefined}><Input value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
           {selected && (

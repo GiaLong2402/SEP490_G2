@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -502,6 +503,73 @@ class PaymentServiceTest {
                         9L))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("tiền mặt");
+    }
+
+    @Test
+    void recordRefundForSalesReturn_creditNet_reducesDebt() {
+        customer.setCurrentDebt(new BigDecimal("500000.00"));
+        SalesOrder order = order(60L, OrderState.DELIVERED, PaymentStatus.DEBT, "200000.00");
+        order.setPaymentMethod(PaymentMethod.CREDIT_NET);
+        when(salesOrderRepository.findWithDetailsById(60L)).thenReturn(Optional.of(order));
+        when(customerRepository.findById(1L)).thenReturn(Optional.of(customer));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        service.recordRefundForSalesReturn(60L, new BigDecimal("200000.00"), "TH-2026-0009", 9L);
+
+        assertThat(customer.getCurrentDebt()).isEqualByComparingTo("300000.00");
+        ArgumentCaptor<CustomerDebtLedger> ledger = ArgumentCaptor.forClass(CustomerDebtLedger.class);
+        verify(customerDebtLedgerRepository).save(ledger.capture());
+        assertThat(ledger.getValue().getAmount()).isEqualByComparingTo("-200000.00");
+        assertThat(ledger.getValue().getEntryType()).isEqualTo(DebtEntryType.ADJUST);
+        verify(paymentRepository, never()).save(any(Payment.class));
+        verify(orderEventRepository).save(any());
+    }
+
+    @Test
+    void recordRefundForSalesReturn_cash_createsRefundPayment() {
+        SalesOrder order = order(61L, OrderState.DELIVERED, PaymentStatus.PAID, "150000.00");
+        order.setPaymentMethod(PaymentMethod.CASH);
+        when(salesOrderRepository.findWithDetailsById(61L)).thenReturn(Optional.of(order));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(paymentRepository.sumSuccessfulInByOrderId(61L)).thenReturn(new BigDecimal("150000.00"));
+        // netPaid ×3: check return → validate refund → applyOrderPaymentStatus
+        when(paymentRepository.sumSuccessfulRefundByOrderId(61L))
+                .thenReturn(ZERO)
+                .thenReturn(ZERO)
+                .thenReturn(new BigDecimal("150000.00"));
+        when(paymentRepository.findCodesByPrefix("TT-")).thenReturn(List.of());
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
+            Payment p = inv.getArgument(0);
+            if (p.getId() == null) {
+                setId(p, ids.incrementAndGet());
+            }
+            return p;
+        });
+        when(paymentRepository.findWithDetailsById(any())).thenAnswer(inv -> {
+            Payment refund = new Payment();
+            setId(refund, inv.getArgument(0));
+            refund.setCode("TT-99");
+            refund.setOrder(order);
+            refund.setCustomer(customer);
+            refund.setMethod(PaymentMethod.CASH);
+            refund.setDirection(PayDirection.REFUND);
+            refund.setAmount(new BigDecimal("150000.00"));
+            refund.setStatus(PayTxnStatus.SUCCESS);
+            refund.setReconcileFlag(PaymentReconcileFlag.NONE);
+            refund.setPaidAt(Instant.now(clock));
+            refund.setReceivedBy(actor);
+            return Optional.of(refund);
+        });
+        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(61L)).thenReturn(List.of());
+
+        service.recordRefundForSalesReturn(61L, new BigDecimal("150000.00"), "TH-2026-0010", 9L);
+
+        ArgumentCaptor<Payment> saved = ArgumentCaptor.forClass(Payment.class);
+        verify(paymentRepository).save(saved.capture());
+        assertThat(saved.getValue().getDirection()).isEqualTo(PayDirection.REFUND);
+        assertThat(saved.getValue().getAmount()).isEqualByComparingTo("150000.00");
+        assertThat(saved.getValue().getMethod()).isEqualTo(PaymentMethod.CASH);
+        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.REFUNDED);
     }
 
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);

@@ -148,7 +148,16 @@ function seed(): MockDb {
 
   // Capacity kho >= tổng capacity vị trí (120*5 + 160 + 500 = 1260).
   const warehouses: T.Warehouse[] = [{ id: 1, code: 'WH1', name: 'Kho Hải sản Hòa Bình', address: 'TP Hạ Long, Quảng Ninh', capacity: 1260, isActive: true }];
-  const locations: T.Location[] = ([['A-01', 'Khu A', 120], ['A-02', 'Khu A', 120], ['A-05', 'Khu A', 120], ['B-02', 'Khu B', 120], ['B-04', 'Khu B', 120], ['B-06', 'Khu B', 160], ['C-01', 'Kho lạnh C', 500]] as const)
+  const locations: T.Location[] = ([
+    ['A-01', 'Khu A', 120],
+    ['A-02', 'Khu A', 120],
+    ['A-05', 'Khu A', 120],
+    ['B-02', 'Khu B', 120],
+    ['B-04', 'Khu B', 120],
+    ['B-06', 'Khu B', 160],
+    ['C-01', 'Kho lạnh C', 500],
+    ['HT-01', 'Khu hàng trả', 200],
+  ] as const)
     .map(([code, zone, capacity], i) => ({ id: i + 1, warehouseId: 1, code, zone, capacity, note: null }));
 
   const rawMaterials: T.RawMaterial[] = [
