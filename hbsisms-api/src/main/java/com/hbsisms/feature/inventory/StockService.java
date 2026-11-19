@@ -263,6 +263,47 @@ public class StockService {
         return requireStock(stock.getId());
     }
 
+    /** Trả hàng đạt QC → cộng lại {@code qty_available}, ledger {@code RETURN}. */
+    @Transactional
+    public Stock receiveReturn(StockMutation cmd) {
+        requirePositiveQty(cmd.qty());
+        assertCapacityAllows(cmd.locationId(), cmd.qty());
+        Stock stock = getOrCreateStock(cmd.variantId(), cmd.lotId(), cmd.locationId());
+        int balance = applyAvailableDelta(stock.getId(), cmd.qty());
+        appendLedger(
+                stock,
+                null,
+                LedgerEntryType.RETURN,
+                cmd.qty(),
+                balance,
+                cmd.refType(),
+                cmd.refId(),
+                cmd.note() != null ? cmd.note() : "Nhập lại hàng trả",
+                cmd.actorId());
+        return requireStock(stock.getId());
+    }
+
+    /** Trả hàng không đạt → cộng {@code qty_quarantine}, ledger {@code RETURN}. */
+    @Transactional
+    public Stock quarantineReturn(StockMutation cmd) {
+        requirePositiveQty(cmd.qty());
+        assertCapacityAllows(cmd.locationId(), cmd.qty());
+        Stock stock = getOrCreateStock(cmd.variantId(), cmd.lotId(), cmd.locationId());
+        applyQuarantineDelta(stock.getId(), cmd.qty());
+        int balance = requireStock(stock.getId()).getQtyAvailable();
+        appendLedger(
+                stock,
+                null,
+                LedgerEntryType.RETURN,
+                cmd.qty(),
+                balance,
+                cmd.refType(),
+                cmd.refId(),
+                cmd.note() != null ? cmd.note() : "Hàng trả về, cách ly",
+                cmd.actorId());
+        return requireStock(stock.getId());
+    }
+
     /** Move by stock row id — used by {@code POST /inventory/moves}. */
     @Transactional
     public Stock moveByStockId(long stockId, long toLocationId, int qty, Long actorId) {

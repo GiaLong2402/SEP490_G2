@@ -134,7 +134,7 @@ export interface Delivery {
 export interface ReturnItem { variantId: ID; lotId: ID | null; qty: number; amount: number }
 
 export interface SalesReturn {
-  id: ID; code: string; orderId: ID | null; customerId: ID | null; reason: string | null; amount: number; items: ReturnItem[] | null;
+  id: ID; code: string; orderId: ID | null; deliveryId?: ID | null; customerId: ID | null; reason: string | null; amount: number; items: ReturnItem[] | null;
   status: E.ReturnStatus; createdBy: ID | null; createdAt: ISODateTime;
 }
 

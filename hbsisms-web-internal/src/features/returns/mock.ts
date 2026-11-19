@@ -12,10 +12,13 @@ function toItem(r: (typeof db.returns)[number]) {
   };
 }
 
-/** Số khay còn trả được = đã bán − các phiếu trả chưa bị từ chối. */
+/** Số khay còn trả được (khách trả sau khi nhận) = đã bán − phiếu trả chưa từ chối (không tính phiếu nhận về). */
 function returnableLines(orderId: number) {
   const returned = new Map<number, number>();
-  db.returns.filter((r) => r.orderId === orderId && r.status !== 'rejected').flatMap((r) => r.items ?? []).forEach((i) => returned.set(i.variantId, (returned.get(i.variantId) ?? 0) + i.qty));
+  db.returns
+    .filter((r) => r.orderId === orderId && r.status !== 'rejected' && !(r as { deliveryId?: number | null }).deliveryId)
+    .flatMap((r) => r.items ?? [])
+    .forEach((i) => returned.set(i.variantId, (returned.get(i.variantId) ?? 0) + i.qty));
   return db.orderLines
     .filter((l) => l.orderId === orderId)
     .map((l) => {
@@ -25,14 +28,52 @@ function returnableLines(orderId: number) {
     .filter((l) => l.maxQty > 0);
 }
 
-mock('GET', '/returns/returnable-orders', () =>
-  db.orders
+/** SL còn nhận về từ một đợt giao thất bại. */
+function returnableLinesForDelivery(deliveryId: number) {
+  const delivery = db.deliveries.find((d) => d.id === deliveryId);
+  if (!delivery || delivery.state !== 'failed') fail(409, 'Chỉ nhận hàng về từ đợt giao thất bại');
+  const returned = new Map<number, number>();
+  db.returns
+    .filter((r) => (r as { deliveryId?: number | null }).deliveryId === deliveryId && r.status !== 'rejected')
+    .flatMap((r) => r.items ?? [])
+    .forEach((i) => returned.set(i.variantId, (returned.get(i.variantId) ?? 0) + i.qty));
+
+  const byVariant = new Map<number, { maxQty: number; unitPrice: number }>();
+  for (const item of delivery.items ?? []) {
+    const line = db.orderLines.find((l) => l.id === item.orderLineId);
+    if (!line) continue;
+    const remain = item.qtyKhay - (returned.get(line.variantId) ?? 0);
+    if (remain <= 0) continue;
+    const cur = byVariant.get(line.variantId);
+    if (cur) cur.maxQty += remain;
+    else byVariant.set(line.variantId, { maxQty: remain, unitPrice: line.unitPrice });
+  }
+  return [...byVariant.entries()].map(([variantId, v]) => {
+    const label = variantLabel(variantId);
+    return { variantId, sku: label.sku, productName: label.productName, packLabel: label.packLabel, unitPrice: v.unitPrice, maxQty: v.maxQty };
+  });
+}
+
+mock('GET', '/returns/returnable-orders', ({ query }) => {
+  const deliveryId = query.deliveryId != null && query.deliveryId !== '' ? Number(query.deliveryId) : null;
+  if (deliveryId != null) {
+    const delivery = db.deliveries.find((d) => d.id === deliveryId);
+    if (!delivery) fail(404, 'Không tìm thấy đợt giao');
+    const order = db.orders.find((o) => o.id === delivery.orderId);
+    if (!order) return [];
+    const lines = returnableLinesForDelivery(deliveryId);
+    if (!lines.length) return [];
+    return [{ id: order.id, code: order.code, customerName: customerName(order.customerId) ?? 'Khách lẻ', lines }];
+  }
+  const q = String(query.q ?? '').trim().toLowerCase();
+  return db.orders
     .filter((o) => ['delivered', 'completed', 'partial'].includes(o.state))
     .sort((a, b) => b.placedAt.localeCompare(a.placedAt))
-    .slice(0, 100)
     .map((o) => ({ id: o.id, code: o.code, customerName: customerName(o.customerId) ?? 'Khách lẻ', lines: returnableLines(o.id) }))
-    .filter((o) => o.lines.length > 0),
-);
+    .filter((o) => o.lines.length > 0)
+    .filter((o) => !q || matches(q, o.code, o.customerName))
+    .slice(0, 100);
+});
 
 mock('GET', '/returns', ({ query }) => {
   const rows = db.returns.map(toItem).filter((r) => matches(query.q, r.code, r.orderCode, r.customerName)).filter((r) => !query.status || r.status === query.status).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -42,16 +83,41 @@ mock('GET', '/returns', ({ query }) => {
 mock('POST', '/returns', ({ body, userId }) => {
   const order = db.orders.find((o) => o.id === body.orderId);
   if (!order) fail(400, 'Vui lòng chọn đơn hàng');
-  const lines = returnableLines(order.id);
-  const items = body.items.filter((i: any) => i.qty > 0).map((i: any) => {
+  const deliveryId = body.deliveryId != null ? Number(body.deliveryId) : null;
+  const lines = deliveryId != null ? returnableLinesForDelivery(deliveryId) : returnableLines(order.id);
+  if (deliveryId != null) {
+    const delivery = db.deliveries.find((d) => d.id === deliveryId);
+    if (!delivery) fail(400, 'Không tìm thấy đợt giao');
+    if (delivery.orderId !== order.id) fail(400, 'Đợt giao không thuộc đơn đã chọn');
+  } else if (!['delivered', 'completed', 'partial'].includes(order.state)) {
+    fail(409, 'Chỉ trả hàng khi đơn đã giao / giao một phần / hoàn tất');
+  }
+  const items = body.items.filter((i: { qty: number }) => i.qty > 0).map((i: { variantId: number; qty: number }) => {
     const line = lines.find((l) => l.variantId === i.variantId);
     if (!line || i.qty > line.maxQty) fail(409, 'Số lượng trả vượt quá số đã mua');
     return { variantId: i.variantId, lotId: null, qty: i.qty, amount: i.qty * line.unitPrice };
   });
   if (!items.length) fail(400, 'Phiếu trả phải có ít nhất một khay');
-  const row = { id: nextId(db.returns), code: nextCode('TH', db.returns), orderId: order.id, customerId: order.customerId, reason: body.reason, amount: items.reduce((s: number, i: any) => s + i.amount, 0), items, status: 'pending' as const, createdBy: userId, createdAt: new Date().toISOString() };
+  const row = {
+    id: nextId(db.returns),
+    code: nextCode('TH', db.returns),
+    orderId: order.id,
+    deliveryId,
+    customerId: order.customerId,
+    reason: body.reason,
+    amount: items.reduce((s: number, i: { amount: number }) => s + i.amount, 0),
+    items,
+    status: 'pending' as const,
+    createdBy: userId,
+    createdAt: new Date().toISOString(),
+  };
   db.returns.push(row);
-  addOrderEvent(order.id, 'return', `Tạo phiếu trả ${row.code}`, userId);
+  addOrderEvent(
+    order.id,
+    'return',
+    deliveryId == null ? `Tạo phiếu trả ${row.code}` : `Tạo phiếu nhận hàng về ${row.code} (đợt giao #${deliveryId})`,
+    userId,
+  );
   return toItem(row);
 });
 

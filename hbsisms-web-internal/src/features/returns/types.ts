@@ -19,6 +19,8 @@ export interface ReturnListItem extends Omit<SalesReturn, 'items'> {
 
 export interface ReturnInput {
   orderId: ID;
+  /** Đợt giao thất bại — phiếu nhận hàng về (task 29). */
+  deliveryId?: ID | null;
   reason: string;
   items: { variantId: ID; qty: number }[];
 }
