@@ -20,8 +20,22 @@ class CollectOnDeliveryTest {
     }
 
     @Test
+    void normalize_codPickup_toCash() {
+        assertThat(CollectOnDelivery.normalize(PaymentMethod.COD, FulfillmentMethod.PICKUP))
+                .isEqualTo(PaymentMethod.CASH);
+    }
+
+    @Test
+    void normalize_codShopDelivery_staysCod() {
+        assertThat(CollectOnDelivery.normalize(PaymentMethod.COD, FulfillmentMethod.SHOP_DELIVERY))
+                .isEqualTo(PaymentMethod.COD);
+    }
+
+    @Test
     void matches_codOrLegacyCashShopDelivery() {
         assertThat(CollectOnDelivery.matches(PaymentMethod.COD, FulfillmentMethod.PARTNER_DELIVERY)).isTrue();
+        assertThat(CollectOnDelivery.matches(PaymentMethod.COD, FulfillmentMethod.SHOP_DELIVERY)).isTrue();
+        assertThat(CollectOnDelivery.matches(PaymentMethod.COD, FulfillmentMethod.PICKUP)).isFalse();
         assertThat(CollectOnDelivery.matches(PaymentMethod.CASH, FulfillmentMethod.SHOP_DELIVERY)).isTrue();
         assertThat(CollectOnDelivery.matches(PaymentMethod.CASH, FulfillmentMethod.PICKUP)).isFalse();
         assertThat(CollectOnDelivery.matches(PaymentMethod.BANK_TRANSFER, FulfillmentMethod.SHOP_DELIVERY))

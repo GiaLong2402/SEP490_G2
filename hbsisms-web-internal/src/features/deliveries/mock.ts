@@ -43,18 +43,23 @@ mock('GET', '/deliveries', ({ query }) => {
 mock('POST', '/deliveries', ({ body, userId }) => {
   const order = db.orders.find((o) => o.id === body.orderId);
   if (!order) fail(404, 'Không tìm thấy đơn hàng');
+  const active = db.deliveries.filter((d) => d.orderId === order.id && d.state !== 'failed');
+  if (active.length > 0) fail(409, 'Đơn chỉ được giao một lần — đã có chuyến giao');
   const items = body.items.filter((i: any) => i.qtyKhay > 0);
-  if (!items.length) fail(400, 'Đợt giao phải có ít nhất một khay');
-  // Không cho vượt số lượng còn lại của từng dòng.
+  if (!items.length) fail(400, 'Giao hàng phải có ít nhất một khay');
+  // Một lần giao = đủ toàn bộ khay từng dòng.
+  const lines = db.orderLines.filter((l) => l.orderId === order.id);
+  lines.forEach((line) => {
+    const qty = items.filter((i: any) => i.orderLineId === line.id).reduce((s: number, i: any) => s + i.qtyKhay, 0);
+    if (qty !== line.qtyKhay) fail(409, 'Phải giao đủ toàn bộ khay của đơn trong một lần');
+  });
   items.forEach((item: any) => {
     const line = db.orderLines.find((l) => l.id === item.orderLineId);
-    if (!line) fail(400, 'Dòng hàng không thuộc đơn');
-    const scheduled = db.deliveries.filter((d) => d.orderId === order.id && d.state !== 'failed').flatMap((d) => d.items ?? []).filter((i) => i.orderLineId === line.id).reduce((sum, i) => sum + i.qtyKhay, 0);
-    if (scheduled + item.qtyKhay > line.qtyKhay) fail(409, 'Số khay vượt quá phần còn lại của đơn');
+    if (!line || line.orderId !== order.id) fail(400, 'Dòng hàng không thuộc đơn');
   });
-  const row = { ...body, items, id: nextId(db.deliveries), code: nextCode('GH', db.deliveries), state: 'ready' as const, deliveredAt: null };
+  const row = { ...body, items, legLabel: 'Trọn đơn', id: nextId(db.deliveries), code: nextCode('GH', db.deliveries), state: 'ready' as const, deliveredAt: null };
   db.deliveries.push(row);
-  addOrderEvent(order.id, 'delivery', `Tạo đợt giao ${row.legLabel}`, userId);
+  addOrderEvent(order.id, 'delivery', `Tạo giao hàng ${row.legLabel}`, userId);
   return toItem(row);
 });
 
