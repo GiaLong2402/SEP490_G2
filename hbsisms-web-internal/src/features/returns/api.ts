@@ -8,7 +8,11 @@ export interface ReturnQuery extends ListQuery {
 
 export const returnsApi = {
   list: (query: ReturnQuery, signal?: AbortSignal) => api.get<Page<ReturnListItem>>('/returns', query, signal),
-  returnableOrders: (q?: string) => api.get<ReturnableOrder[]>('/returns/returnable-orders', { q }),
+  returnableOrders: (q?: string, deliveryId?: ID) =>
+    api.get<ReturnableOrder[]>('/returns/returnable-orders', {
+      q,
+      deliveryId: deliveryId ?? undefined,
+    }),
   create: (body: ReturnInput) => api.post<ReturnListItem>('/returns', body),
   setStatus: (id: ID, status: ReturnStatus) => api.patch<void>(`/returns/${id}/status`, { status }),
 };

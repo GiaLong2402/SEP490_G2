@@ -1,8 +1,10 @@
 import type { Delivery, DeliveryItem, ID } from '@/shared/domain/entities';
-import type { DeliveryState, FulfillmentMethod } from '@/shared/domain/enums';
+import type { DeliveryState, FulfillmentMethod, OrderState } from '@/shared/domain/enums';
 
 export interface DeliveryListItem extends Delivery {
   orderCode: string;
+  /** Trạng thái đơn — nút đổi trạng thái chỉ hiện khi Chờ giao / Giao một phần. */
+  orderState: OrderState;
   customerName: string | null;
   addressText: string | null;
   assigneeName: string | null;

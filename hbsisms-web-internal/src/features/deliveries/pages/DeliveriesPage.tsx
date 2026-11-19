@@ -1,3 +1,4 @@
+import { ArrowDown, ArrowUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/features/auth';
 import { useAction } from '@/shared/api/useAction';
@@ -11,14 +12,28 @@ import type { DeliveryListItem } from '../types';
 
 export default function DeliveriesPage() {
   const { user } = useAuth();
-  const list = useListParams(['state', 'date', 'assignedTo'] as const);
+  const list = useListParams(['state', 'date', 'assignedTo', 'sort'] as const);
+  const oldestFirst = list.filters.sort === 'asc';
   const couriers = useCouriers();
-  const { data, isLoading, error, refetch } = useDeliveries({ q: list.q, page: list.page, state: list.filters.state, date: list.filters.date, assignedTo: list.filters.assignedTo });
+  const { data, isLoading, error, refetch } = useDeliveries({ q: list.q, page: list.page, state: list.filters.state, date: list.filters.date, assignedTo: list.filters.assignedTo, sort: list.filters.sort });
   const assign = useAction(({ id, assignedTo }: { id: number; assignedTo: number | null }) => deliveriesApi.update(id, { assignedTo }), { success: 'Đã phân công người giao' });
   const isCourier = user?.position === 'Giao hàng';
 
   const columns: Column<DeliveryListItem>[] = [
-    { key: 'code', header: 'Mã', cell: (d) => <div><div className="num">{d.code}</div><div className="text-micro font-normal text-ink-faint">{d.legLabel}</div></div> },
+    {
+      key: 'code',
+      header: (
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-ink"
+          onClick={() => list.setFilter('sort', oldestFirst ? '' : 'asc')}
+          title={oldestFirst ? 'Đang xếp ngày giao cũ nhất trước — bấm để xếp mới nhất trước' : 'Đang xếp ngày giao mới nhất trước — bấm để xếp cũ nhất trước'}
+          aria-label={oldestFirst ? 'Mã, cũ nhất trước. Bấm để xếp mới nhất trước' : 'Mã, mới nhất trước. Bấm để xếp cũ nhất trước'}
+        >
+          Mã {oldestFirst ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
+        </button>
+      ),
+      cell: (d) => <div><div className="num">{d.code}</div><div className="text-micro font-normal text-ink-faint">{d.legLabel}</div></div> },
     { key: 'order', header: 'Đơn hàng', cell: (d) => (user?.permissions.includes('orders') ? <Link to={`/orders/${d.orderId}`} className="num whitespace-nowrap text-primary hover:underline">{d.orderCode}</Link> : <span className="num whitespace-nowrap">{d.orderCode}</span>) },
     { key: 'customer', header: 'Khách · địa chỉ', cell: (d) => <div className="min-w-[180px]"><div className="font-medium">{d.customerName}</div><div className="text-ink-muted">{d.addressText ?? 'Đến lấy tại kho'}</div></div> },
     { key: 'when', header: 'Lịch giao', cell: (d) => <div className="whitespace-nowrap">{date(d.scheduledDate)}<div className="text-ink-faint">{d.timeWindow}</div></div> },
@@ -33,11 +48,11 @@ export default function DeliveriesPage() {
             {couriers.data?.map((c) => <option key={c.id} value={c.id}>{c.fullName}</option>)}
           </Select>
         ) : (
-          d.assigneeName ?? d.carrier ?? fulfillmentLabels[d.fulfillmentMethod]
+          <span className="whitespace-nowrap">{d.assigneeName ?? d.carrier ?? fulfillmentLabels[d.fulfillmentMethod]}</span>
         ),
     },
     { key: 'state', header: 'Trạng thái', cell: (d) => <StatusChip meta={deliveryStateMeta} value={d.state} /> },
-    { key: 'actions', header: '', align: 'right', cell: (d) => <DeliveryStateActions delivery={d} /> },
+    { key: 'actions', header: '', align: 'right', cell: (d) => <DeliveryStateActions delivery={d} orderState={d.orderState} /> },
   ];
 
   return (

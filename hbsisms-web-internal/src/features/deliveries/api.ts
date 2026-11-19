@@ -6,6 +6,8 @@ export interface DeliveryQuery extends ListQuery {
   state?: string;
   assignedTo?: string;
   date?: string;
+  /** 'asc' = ngày giao cũ nhất trước; bỏ trống = mới nhất trước. */
+  sort?: string;
 }
 
 export const deliveriesApi = {

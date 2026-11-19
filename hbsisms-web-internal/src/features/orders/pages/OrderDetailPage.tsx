@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, CreditCard, Pencil, Printer, RotateCcw, Truck, XCircle } from 'lucide-react';
+import { CheckCircle2, ClipboardList, CreditCard, Pencil, Printer, RotateCcw, Truck, XCircle } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { approvalsApi } from '@/features/approvals/api';
 import { useAuth } from '@/features/auth';
 import { DeliveryFormModal, DeliveryStateActions } from '@/features/deliveries';
 import { PaymentFormModal } from '@/features/payments';
+import { PickingSlipDialog, pickingApi } from '@/features/picking';
+import type { OrderPickingSlip } from '@/features/picking';
 import { ReceiptDialog } from '@/features/pos/components/ReceiptDialog';
 import type { Receipt } from '@/features/pos/types';
 import { useAction } from '@/shared/api/useAction';
@@ -38,6 +40,8 @@ export default function OrderDetailPage() {
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
+  const [pickingOpen, setPickingOpen] = useState(false);
+  const [pickingSlip, setPickingSlip] = useState<OrderPickingSlip | null>(null);
   const [deciding, setDeciding] = useState<'approved' | 'rejected' | null>(null);
 
   const needsOrderApproval = !!order && order.isOverLimit && !order.approvedBy && order.state !== 'cancelled';
@@ -52,6 +56,10 @@ export default function OrderDetailPage() {
   const cancel = useAction((reason: string) => ordersApi.cancel(id, reason), { success: 'Đã hủy đơn, hàng giữ đã được nhả', onDone: () => setCancelling(false) });
   const completeCounter = useAction(() => ordersApi.completeAtCounter(id), { success: 'Đã hoàn tất bàn giao tại quầy' });
   const printReceipt = useAction(() => ordersApi.receipt(id), { success: 'Đã tải biên lai', onDone: (r) => setReceipt(r) });
+  const printPicking = useAction(() => pickingApi.orderSlip(id), {
+    success: 'Đã tải phiếu soạn',
+    onDone: (slip) => setPickingSlip(slip),
+  });
   const decideApproval = useAction(
     (note: string) => approvalsApi.decide(pendingApproval.data!.id, { decision: deciding!, note }),
     {
@@ -86,6 +94,10 @@ export default function OrderDetailPage() {
     && order.paymentStatus === 'paid';
   const canEdit = ['pending', 'confirmed'].includes(order.state) && !['paid', 'partial'].includes(order.paymentStatus);
   const canPrintReceipt = order.paymentStatus === 'paid';
+  const canPrintPicking =
+    order.state !== 'cancelled'
+    && order.state !== 'pending'
+    && (order.allocationStatus === 'full' || order.allocationStatus === 'held');
   const collectOnDelivery = isCollectOnDelivery(order.paymentMethod, order.fulfillmentMethod);
   const waitingForPrepare = order.state === 'confirmed' && !order.nextStates.includes('preparing');
   const prepareBlockReason =
@@ -180,6 +192,19 @@ export default function OrderDetailPage() {
             {canPrintReceipt && (
               <Button icon={<Printer size={14} />} loading={printReceipt.isPending} onClick={() => printReceipt.mutate()}>
                 In biên lai
+              </Button>
+            )}
+            {canPrintPicking && (
+              <Button
+                icon={<ClipboardList size={14} />}
+                loading={printPicking.isPending}
+                onClick={() => {
+                  setPickingSlip(null);
+                  setPickingOpen(true);
+                  printPicking.mutate();
+                }}
+              >
+                In phiếu soạn
               </Button>
             )}
             {order.canCancel && <Button variant="danger" icon={<XCircle size={14} />} onClick={() => setCancelling(true)}>Hủy đơn</Button>}
@@ -345,6 +370,17 @@ export default function OrderDetailPage() {
         defaultMethod={collectOnDelivery || order.paymentMethod === 'cash' ? 'cash' : order.paymentMethod === 'bank_transfer' ? 'bank_transfer' : 'cash'}
       />
       <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} />
+      <PickingSlipDialog
+        open={pickingOpen}
+        slip={pickingSlip}
+        loading={printPicking.isPending}
+        error={printPicking.error}
+        onClose={() => {
+          setPickingOpen(false);
+          setPickingSlip(null);
+        }}
+        onRetry={() => printPicking.mutate()}
+      />
     </>
   );
 }
