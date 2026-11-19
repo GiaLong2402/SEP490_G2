@@ -9,7 +9,7 @@ export function mapApiProduct(product) {
       label: v.packLabel || v.sku || 'Quy cách',
       weightGrams: v.unitWeightG || 0,
       price: Number(v.listPrice || 0),
-      // Guest API masks stock as 0|1 — treat as in/out flag only, not max cart qty.
+      // List guest: available 0|1. Detail guest: real tray qty — display only, not cart max.
       stock: Number(v.available || 0),
       tiers: (v.tiers || []).map((t) => ({
         minQtyKhay: Number(t.minQtyKhay || 0),

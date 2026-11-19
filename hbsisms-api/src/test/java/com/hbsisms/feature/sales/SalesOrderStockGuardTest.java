@@ -76,6 +76,8 @@ class SalesOrderStockGuardTest {
     private PayosLinkCanceller payosLinkCanceller;
     @Mock
     private AuditLogService auditLogService;
+    @Mock
+    private OrderDetailAssembler orderDetailAssembler;
 
     private SalesOrderService service;
 
@@ -98,6 +100,7 @@ class SalesOrderStockGuardTest {
                 auditLogService,
                 orderAllocationService,
                 payosLinkCanceller,
+                orderDetailAssembler,
                 Clock.fixed(Instant.parse("2026-11-11T00:00:00Z"), ZoneOffset.UTC));
     }
 

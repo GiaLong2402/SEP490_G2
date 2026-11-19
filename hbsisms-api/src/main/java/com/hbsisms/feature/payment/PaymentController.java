@@ -23,10 +23,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Payments API: list + thu + đối soát (#39) + ghi nhận hoàn (#40).
+ * Inter 3 dòng 8: thu = orders|debt; hoàn + đối soát = approve.
  */
 @RestController
 @RequestMapping("/payments")
-@PreAuthorize("hasAnyAuthority('debt', 'orders')")
 public class PaymentController {
 
     private final PaymentService paymentService;
@@ -36,6 +36,7 @@ public class PaymentController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyAuthority('debt', 'orders', 'approve')")
     public PageResponse<PaymentListItemResponse> list(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String method,
@@ -53,6 +54,7 @@ public class PaymentController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyAuthority('orders', 'debt')")
     public PaymentListItemResponse create(
             @Valid @RequestBody PaymentInputRequest request, @AuthenticationPrincipal AuthUser actor) {
         return paymentService.create(request, actor == null ? null : actor.id());
@@ -60,12 +62,14 @@ public class PaymentController {
 
     @PostMapping("/refund")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAuthority('approve')")
     public PaymentListItemResponse refund(
             @Valid @RequestBody PaymentRefundRequest request, @AuthenticationPrincipal AuthUser actor) {
         return paymentService.recordRefund(request, actor == null ? null : actor.id());
     }
 
     @PatchMapping("/{id}/reconcile")
+    @PreAuthorize("hasAuthority('approve')")
     public PaymentListItemResponse reconcile(
             @PathVariable Long id,
             @Valid @RequestBody PaymentReconcileRequest request,

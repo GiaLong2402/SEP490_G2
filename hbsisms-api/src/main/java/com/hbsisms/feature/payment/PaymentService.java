@@ -153,6 +153,8 @@ public class PaymentService {
                     && order.getState() == OrderState.PENDING) {
                 throw ApiException.conflict("Đơn công nợ chưa được xác nhận, chưa phát sinh nợ");
             }
+            // Inter 3 dòng 8: không ghi thu tay khi đang có link PayOS chờ thanh toán.
+            assertNoPendingPayosLink(order.getId());
             BigDecimal outstanding = order.getTotal().subtract(netPaid(order.getId()));
             if (amount.compareTo(outstanding) > 0) {
                 throw ApiException.conflict("Số tiền vượt quá phần còn lại của đơn");
@@ -301,6 +303,16 @@ public class PaymentService {
 
         return PaymentListItemResponse.from(
                 paymentRepository.findWithDetailsById(refund.getId()).orElse(refund));
+    }
+
+    /** Inter 3 dòng 8 — đơn đang có PayOS PENDING thì không cho thu CASH/CK tay. */
+    private void assertNoPendingPayosLink(Long orderId) {
+        boolean pendingPayos = paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(orderId).stream()
+                .anyMatch(p -> p.getMethod() == PaymentMethod.PAYOS && p.getStatus() == PayTxnStatus.PENDING);
+        if (pendingPayos) {
+            throw ApiException.conflict(
+                    "Đơn đang có link PayOS chờ thanh toán — không ghi thu tay");
+        }
     }
 
     private void clearNeedsRefund(Long orderId, Payment source) {

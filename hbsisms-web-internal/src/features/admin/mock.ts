@@ -29,8 +29,12 @@ mock('PUT', '/admin/users/:id', ({ params, body, userId }) => {
   const row = db.users.find((u) => u.id === Number(params.id));
   if (!row) fail(404, 'Không tìm thấy người dùng');
   if (row.id === userId && (!body.isActive || body.roleId !== row.roleId)) fail(409, 'Không thể tự khóa hoặc đổi vai trò của chính mình');
-  const { password: _ignored, ...rest } = body;
+  const { password, ...rest } = body;
   Object.assign(row, rest, { username: checkUnique(body, row.id), updatedAt: new Date().toISOString() });
+  if (password != null && String(password).trim()) {
+    if (String(password).trim().length < 8) fail(400, 'Mật khẩu phải từ 8 ký tự');
+    row.password = String(password).trim();
+  }
   audit(userId, 'update', 'app_user', row.id);
   return publicUser(row);
 });

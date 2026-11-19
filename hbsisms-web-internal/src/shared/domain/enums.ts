@@ -83,6 +83,15 @@ export type AllocationStatus = 'none' | 'incoming' | 'held' | 'full';
 export const allocationStatusMeta: Meta<AllocationStatus> = {
   none: { label: 'Chưa giữ', tone: 'neutral' }, incoming: { label: 'Chờ hàng về', tone: 'amber' }, held: { label: 'Giữ một phần', tone: 'amber' }, full: { label: 'Đã giữ đủ', tone: 'green' },
 };
+/**
+ * Filter danh sách đơn: chỉ Chưa giữ / Đã giữ đủ.
+ * Không bán thiếu — không dùng “Giữ một phần” / “Chờ hàng về” trên UI lọc
+ * (enum vẫn giữ để hiển thị dữ liệu cũ nếu có).
+ */
+export const orderListAllocationStatuses: AllocationStatus[] = ['none', 'full'];
+export const orderListAllocationStatusMeta: Record<string, { label: string; tone: Tone }> = Object.fromEntries(
+  orderListAllocationStatuses.map((s) => [s, allocationStatusMeta[s]]),
+);
 
 export type FulfillmentMethod = 'shop_delivery' | 'pickup' | 'partner_delivery';
 export const fulfillmentLabels: Record<FulfillmentMethod, string> = { shop_delivery: 'Shop tự giao', pickup: 'Khách đến lấy', partner_delivery: 'Đối tác giao' };

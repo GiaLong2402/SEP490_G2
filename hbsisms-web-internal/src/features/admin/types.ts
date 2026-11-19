@@ -13,7 +13,7 @@ export interface UserInput {
   position: string | null;
   employeeCode: string | null;
   isActive: boolean;
-  /** Chỉ gửi khi tạo tài khoản. */
+  /** Bắt buộc khi tạo; khi sửa — có giá trị = đặt lại mật khẩu. */
   password?: string;
 }
 

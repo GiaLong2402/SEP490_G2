@@ -23,6 +23,8 @@ spring:
         jdbc.time_zone: UTC
 
 server:
+  # 127.0.0.1 = chỉ local; đổi 0.0.0.0 nếu cần LAN/demo chung mạng
+  address: ${SERVER_ADDRESS:127.0.0.1}
   port: ${SERVER_PORT:8080}
   servlet:
     context-path: /api/v1

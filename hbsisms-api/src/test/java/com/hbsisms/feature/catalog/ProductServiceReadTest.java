@@ -226,7 +226,24 @@ class ProductServiceReadTest {
     }
 
     @Test
-    void getBySlugPublic_published_masksZeroStock() {
+    void getBySlugPublic_published_returnsRealAvailableQty() {
+        Product product = product(10L, "P-TOM", "Tôm sú", null);
+        product.setSlug("tom-su");
+        product.setPublished(true);
+        ProductVariant variant = variant(20L, product, "TOM-05");
+        when(productRepository.findWithCategoryBySlugIgnoreCase("tom-su")).thenReturn(Optional.of(product));
+        when(productVariantRepository.findByProduct_IdOrderByIdAsc(10L)).thenReturn(List.of(variant));
+        when(volumeTierRepository.findByVariant_IdOrderByMinQtyKhayAsc(20L)).thenReturn(List.of());
+        when(stockRepository.sumQtyAvailableByVariantId(20L)).thenReturn(42L);
+
+        ProductResponse response = productService.getBySlugPublic("tom-su");
+
+        assertThat(response.variants()).hasSize(1);
+        assertThat(response.variants().get(0).available()).isEqualTo(42L);
+    }
+
+    @Test
+    void getBySlugPublic_published_zeroStockStaysZero() {
         Product product = product(10L, "P-TOM", "Tôm sú", null);
         product.setSlug("tom-su");
         product.setPublished(true);

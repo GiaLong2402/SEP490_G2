@@ -6,5 +6,6 @@ export default defineConfig({
   plugins: [react()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   optimizeDeps: { include: ['@goongmaps/goong-js'] },
-  server: { host: true, port: 5180 },
+  // Chỉ máy này — không mở LAN. OTP/Firebase: http://127.0.0.1:5180
+  server: { host: '127.0.0.1', port: 5180 },
 });

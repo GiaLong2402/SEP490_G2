@@ -25,6 +25,10 @@ Trang  →  src/hooks/useAsync.js  →  src/api/<domain>.js  →  fetch thật  
 Mock chỉ chặn các endpoint trong tài liệu này; `/products`, `/auth/**` vẫn gọi backend thật. Bản build không chứa mock.
 Kịch bản mock qua URL: `?mock=shortage | pay-pending | pay-cancelled | pay-failed | pay-expired | empty`.
 
+**Catalog `/products` (guest):**
+- `GET /products` (list): mỗi variant `available` = **0|1** (còn/hết) — dùng cho thẻ sản phẩm.
+- `GET /products/slug/{slug}` và `GET /products/{id}` (chi tiết): `available` = **số khay tồn thật** — FE hiện “N khay có sẵn”; vẫn cho đặt vượt tồn → checkout 409 + gửi yêu cầu.
+
 ## Checklist khi làm xong 1 endpoint (người làm backend tự kiểm)
 
 1. **URL + method** đúng bảng ở mục tương ứng. Khác thì sửa đúng 1 dòng trong `src/api/<domain>.js` và cập nhật tài liệu này.

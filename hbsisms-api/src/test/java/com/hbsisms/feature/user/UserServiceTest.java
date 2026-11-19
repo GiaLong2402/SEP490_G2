@@ -156,6 +156,39 @@ class UserServiceTest {
     }
 
     @Test
+    void updateStaff_withPassword_resetsHashAndRevokesTokens() {
+        AppUser sales = TestFixtures.staff(5L, "mai", salesRole);
+        sales.setPhone("0901234567");
+        sales.setPasswordHash("old-hash");
+        when(userRepository.findWithRoleById(5L)).thenReturn(Optional.of(sales));
+        when(roleService.getAssignableStaffRole((short) 3)).thenReturn(salesRole);
+        when(userRepository.findByUsername("mai")).thenReturn(Optional.of(sales));
+        when(passwordEncoder.encode("NewPass12")).thenReturn("new-hash");
+        when(userRepository.saveAndFlush(sales)).thenReturn(sales);
+
+        userService.updateStaff(5L, request("mai", null, "0901234567", (short) 3, true, "NewPass12"), 1L);
+
+        assertThat(sales.getPasswordHash()).isEqualTo("new-hash");
+        verify(userRepository).incrementTokenVersion(5L);
+    }
+
+    @Test
+    void updateStaff_blankPassword_keepsHash() {
+        AppUser sales = TestFixtures.staff(5L, "mai", salesRole);
+        sales.setPhone("0901234567");
+        sales.setPasswordHash("old-hash");
+        when(userRepository.findWithRoleById(5L)).thenReturn(Optional.of(sales));
+        when(roleService.getAssignableStaffRole((short) 3)).thenReturn(salesRole);
+        when(userRepository.findByUsername("mai")).thenReturn(Optional.of(sales));
+        when(userRepository.saveAndFlush(sales)).thenReturn(sales);
+
+        userService.updateStaff(5L, request("mai", null, "0901234567", (short) 3, true, null), 1L);
+
+        assertThat(sales.getPasswordHash()).isEqualTo("old-hash");
+        verify(userRepository, never()).incrementTokenVersion(5L);
+    }
+
+    @Test
     void updateStaff_customerAccount_isNotFound() {
         AppUser customer = TestFixtures.staff(8L, "khach", salesRole);
         customer.setUserType(UserType.CUSTOMER);

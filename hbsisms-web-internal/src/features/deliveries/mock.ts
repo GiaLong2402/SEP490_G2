@@ -69,6 +69,12 @@ mock('PATCH', '/deliveries/:id', ({ params, body, userId }) => {
     if (order && order.state !== 'to_ship' && order.state !== 'partial') {
       fail(409, 'Chỉ được bắt đầu/cập nhật giao khi đơn ở trạng thái Chờ giao hoặc Giao một phần');
     }
+    if (body.state === 'delivered' && order) {
+      const cod = order.paymentMethod === 'cod' || (order.paymentMethod === 'cash' && order.fulfillmentMethod === 'shop_delivery');
+      if (cod && order.paymentStatus !== 'paid') {
+        fail(409, 'Đơn COD — cần ghi nhận thanh toán đủ trước khi xác nhận đã giao');
+      }
+    }
     row.state = body.state;
     if (body.state === 'delivered') {
       row.deliveredAt = new Date().toISOString();

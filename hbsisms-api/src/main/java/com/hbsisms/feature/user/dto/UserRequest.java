@@ -6,7 +6,10 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
-/** Body of POST/PUT /admin/users. {@code password} is only used when creating an account. */
+/**
+ * Body of POST/PUT /admin/users.
+ * {@code password}: required on create; on update optional — non-blank = đặt lại mật khẩu.
+ */
 public record UserRequest(
         @NotBlank(message = "Tên đăng nhập là bắt buộc")
         @Pattern(regexp = "^\\s*[A-Za-z0-9._-]{3,60}\\s*$",

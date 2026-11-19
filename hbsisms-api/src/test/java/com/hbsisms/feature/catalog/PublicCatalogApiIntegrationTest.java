@@ -1,6 +1,7 @@
 package com.hbsisms.feature.catalog;
 
 import static org.hamcrest.Matchers.everyItem;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.not;
@@ -133,7 +134,8 @@ class PublicCatalogApiIntegrationTest {
                 .andExpect(jsonPath("$.variants").isArray())
                 .andExpect(jsonPath("$.variants.length()").value(1))
                 .andExpect(jsonPath("$.variants[0].listPrice").exists())
-                .andExpect(jsonPath("$.variants[0].available", lessThanOrEqualTo(1)));
+                // Detail guest: real tray qty (>= 0), not list binary 0|1
+                .andExpect(jsonPath("$.variants[0].available", greaterThanOrEqualTo(0)));
     }
 
     @Test

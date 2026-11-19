@@ -50,7 +50,7 @@ public class ProductService {
     }
 
     /**
-     * B2C guest catalog: only published + active products; stock exposed as binary availability.
+     * B2C guest catalog list: only published + active products; {@code available} masked as 0|1.
      */
     public PageResponse<ProductResponse> listPublic(String q, Long categoryId, int page, int pageSize) {
         return listInternal(q, categoryId, page, pageSize, true);
@@ -79,7 +79,7 @@ public class ProductService {
         };
         return PageResponse.from(productRepository
                 .findAll(spec, PageRequests.of(page, pageSize, LIST_SORT))
-                .map(publicView ? this::toPublicResponse : this::toResponse));
+                .map(publicView ? this::toPublicListResponse : this::toResponse));
     }
 
     /** Selected category plus every descendant in the category tree. */
@@ -118,19 +118,22 @@ public class ProductService {
         return toResponse(requireBySlug(slug));
     }
 
-    /** B2C guest: 404 unless product is published and active. */
+    /**
+     * B2C guest detail by slug: published only; {@code available} is real tray qty (not binary).
+     */
     public ProductResponse getBySlugPublic(String slug) {
         Product product = requireBySlug(slug);
         assertPubliclyVisible(product);
-        return toPublicResponse(product);
+        return toPublicDetailResponse(product);
     }
 
+    /** B2C guest detail by id: published only; {@code available} is real tray qty. */
     public ProductResponse getPublic(Long id) {
         Product product = productRepository
                 .findWithCategoryById(id)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy sản phẩm"));
         assertPubliclyVisible(product);
-        return toPublicResponse(product);
+        return toPublicDetailResponse(product);
     }
 
     private Product requireBySlug(String slug) {
@@ -187,14 +190,24 @@ public class ProductService {
     }
 
     private ProductResponse toResponse(Product product) {
-        return toResponse(product, false);
+        return toResponse(product, false, false);
     }
 
-    private ProductResponse toPublicResponse(Product product) {
-        return toResponse(product, true);
+    /** Guest list card: hide inactive variants; mask stock as còn/hết (0|1). */
+    private ProductResponse toPublicListResponse(Product product) {
+        return toResponse(product, true, true);
     }
 
-    private ProductResponse toResponse(Product product, boolean publicView) {
+    /** Guest product detail: hide inactive variants; expose real available trays. */
+    private ProductResponse toPublicDetailResponse(Product product) {
+        return toResponse(product, true, false);
+    }
+
+    /**
+     * @param publicView only active variants; used for B2C guest payloads
+     * @param maskStockBinary when true, {@code available} is 0 or 1 (list); when false, real qty (detail/staff)
+     */
+    private ProductResponse toResponse(Product product, boolean publicView, boolean maskStockBinary) {
         List<ProductVariant> variants = product.getId() == null
                 ? List.of()
                 : productVariantRepository.findByProduct_IdOrderByIdAsc(product.getId());
@@ -205,7 +218,7 @@ public class ProductService {
             }
             List<VolumeTier> tiers = volumeTierRepository.findByVariant_IdOrderByMinQtyKhayAsc(variant.getId());
             long available = stockRepository.sumQtyAvailableByVariantId(variant.getId());
-            if (publicView) {
+            if (maskStockBinary) {
                 available = available > 0 ? 1L : 0L;
             }
             variantRows.add(VariantWithTiersResponse.from(variant, tiers, available));
