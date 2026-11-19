@@ -12,6 +12,7 @@ import '@/features/deliveries/mock';
 import '@/features/inventory/mock';
 import '@/features/marketing/mock';
 import '@/features/notifications/mock';
+import '@/features/picking/mock'; // trước orders — tránh /orders/:id nuốt picking-slip-daily
 import '@/features/orders/mock';
 import '@/features/payments/mock';
 import '@/features/pos/mock';

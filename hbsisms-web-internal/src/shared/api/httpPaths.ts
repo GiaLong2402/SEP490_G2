@@ -20,6 +20,9 @@ export const API_PATHS = {
     cancel: (id: string | number) => `/orders/${id}/cancel`,
     receipt: (id: string | number) => `/orders/${id}/receipt`,
     completeAtCounter: (id: string | number) => `/orders/${id}/complete-at-counter`,
+    /** Cường Inter 3 — phiếu soạn từ HOLD. */
+    pickingSlip: (id: string | number) => `/orders/${id}/picking-slip`,
+    pickingSlipDaily: '/orders/picking-slip-daily',
   },
   salesRequests: {
     root: '/sales-requests',
