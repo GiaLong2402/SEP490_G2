@@ -72,7 +72,12 @@
   }
 }
 
-/* In biên lai bán hàng: chỉ giữ lại khối .print-receipt (không phải HĐĐT). */
+/* Khối chỉ dùng khi in: ẩn trên màn hình, hiện qua .print-receipt lúc print. */
+@media screen {
+  .print-receipt.print-only { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+}
+
+/* In biên lai / phiếu soạn: chỉ giữ lại khối .print-receipt (không phải HĐĐT). */
 @media print {
   body * { visibility: hidden; }
   .print-receipt, .print-receipt * { visibility: visible; }
