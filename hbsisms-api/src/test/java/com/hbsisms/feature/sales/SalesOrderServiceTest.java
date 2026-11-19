@@ -3,6 +3,7 @@ package com.hbsisms.feature.sales;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
@@ -11,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.hbsisms.common.exception.ApiException;
+import com.hbsisms.feature.approval.ApprovalTask;
 import com.hbsisms.feature.approval.ApprovalTaskRepository;
 import com.hbsisms.feature.catalog.Product;
 import com.hbsisms.feature.catalog.ProductVariant;
@@ -33,7 +35,9 @@ import com.hbsisms.feature.payment.PaymentStatus;
 import com.hbsisms.feature.sales.dto.OrderDetailResponse;
 import com.hbsisms.feature.sales.dto.OrderInputRequest;
 import com.hbsisms.feature.sales.dto.OrderListItemResponse;
+import com.hbsisms.feature.system.AppConfigService;
 import com.hbsisms.feature.system.AuditLogService;
+import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
 import java.math.BigDecimal;
@@ -46,6 +50,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -86,6 +92,10 @@ class SalesOrderServiceTest {
     @Mock
     private PayosLinkCanceller payosLinkCanceller;
     @Mock
+    private BusinessCodeService businessCodeService;
+    @Mock
+    private AppConfigService appConfigService;
+    @Mock
     private OrderDetailAssembler orderDetailAssembler;
 
     private SalesOrderService service;
@@ -115,11 +125,16 @@ class SalesOrderServiceTest {
                 auditLogService,
                 orderAllocationService,
                 payosLinkCanceller,
+                businessCodeService,
+                appConfigService,
                 orderDetailAssembler,
                 clock);
         lenient()
                 .when(orderDetailAssembler.assemble(any(SalesOrder.class)))
                 .thenAnswer(inv -> stubDetail(inv.getArgument(0)));
+
+        lenient().when(businessCodeService.nextSalesOrderCode()).thenReturn("SO-2026-0001");
+        lenient().when(appConfigService.orderDiscountApprovePct()).thenReturn(5);
 
         retailCustomer = new Customer();
         setId(retailCustomer, 1L);
@@ -151,7 +166,6 @@ class SalesOrderServiceTest {
         when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
         when(pricingService.resolve(any(PricingRequest.class))).thenReturn(priced(false));
         when(productVariantRepository.findById(10L)).thenReturn(Optional.of(variant));
-        when(salesOrderRepository.findCodesByPrefix("SO-2026-")).thenReturn(List.of());
         when(salesOrderRepository.save(any(SalesOrder.class))).thenAnswer(inv -> {
             SalesOrder o = inv.getArgument(0);
             if (o.getId() == null) {
@@ -222,6 +236,62 @@ class SalesOrderServiceTest {
     }
 
     @Test
+    void create_emptyLines_returns400() {
+        OrderInputRequest request = withLines(input(1L, PaymentMethod.CASH), List.of());
+
+        assertBadRequest(() -> service.create(request, 9L), "Đơn phải có ít nhất một dòng hàng");
+        verify(customerRepository, never()).findById(any());
+        verify(salesOrderRepository, never()).save(any());
+    }
+
+    @Test
+    void create_nullLines_returns400() {
+        OrderInputRequest request = withLines(input(1L, PaymentMethod.CASH), null);
+
+        assertBadRequest(() -> service.create(request, 9L), "Đơn phải có ít nhất một dòng hàng");
+        verify(salesOrderRepository, never()).save(any());
+    }
+
+    @Test
+    void create_customerNotFound_returns400() {
+        when(customerRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertBadRequest(() -> service.create(input(999L, PaymentMethod.CASH), 9L), "Vui lòng chọn khách hàng");
+        verify(pricingService, never()).resolve(any());
+        verify(salesOrderRepository, never()).save(any());
+    }
+
+    @Test
+    void create_variantMissing_returns400() {
+        when(customerRepository.findById(1L)).thenReturn(Optional.of(retailCustomer));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(pricingService.resolve(any(PricingRequest.class))).thenReturn(pricedForVariant(999L));
+        when(productVariantRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertBadRequest(() -> service.create(input(1L, PaymentMethod.CASH), 9L), "Quy cách không tồn tại");
+        verify(salesOrderRepository, never()).save(any());
+        verify(orderAllocationService, never()).holdForOrder(any(), any(), anyBoolean());
+    }
+
+    @Test
+    void create_walkInMissingPhone_returns400() {
+        OrderInputRequest request = withPhone(walkInInput("Anh Minh"), null);
+
+        assertBadRequest(() -> service.create(request, 9L), "Số điện thoại khách là bắt buộc");
+        verify(customerRepository, never()).save(any());
+        verify(salesOrderRepository, never()).save(any());
+    }
+
+    @Test
+    void create_walkInInvalidPhone_returns400() {
+        OrderInputRequest request = withPhone(walkInInput("Anh Minh"), "12345");
+
+        assertBadRequest(() -> service.create(request, 9L), "Số điện thoại không hợp lệ");
+        verify(customerRepository, never()).save(any());
+        verify(salesOrderRepository, never()).save(any());
+    }
+
+    @Test
     void create_walkIn_withoutCustomerId() {
         when(customerRepository.findFirstByPhoneAndAccountUserIsNullOrderByIdAsc("0912345678"))
                 .thenReturn(Optional.empty());
@@ -237,7 +307,6 @@ class SalesOrderServiceTest {
         when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
         when(pricingService.resolve(any(PricingRequest.class))).thenReturn(priced(false));
         when(productVariantRepository.findById(10L)).thenReturn(Optional.of(variant));
-        when(salesOrderRepository.findCodesByPrefix("SO-2026-")).thenReturn(List.of());
         when(salesOrderRepository.save(any(SalesOrder.class))).thenAnswer(inv -> {
             SalesOrder o = inv.getArgument(0);
             if (o.getId() == null) {
@@ -281,7 +350,6 @@ class SalesOrderServiceTest {
         when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
         when(pricingService.resolve(any(PricingRequest.class))).thenReturn(priced(false));
         when(productVariantRepository.findById(10L)).thenReturn(Optional.of(variant));
-        when(salesOrderRepository.findCodesByPrefix("SO-2026-")).thenReturn(List.of());
         when(salesOrderRepository.save(any(SalesOrder.class))).thenAnswer(inv -> {
             SalesOrder o = inv.getArgument(0);
             if (o.getId() == null) {
@@ -303,6 +371,114 @@ class SalesOrderServiceTest {
         service.createFromRequest(input(1L, PaymentMethod.CASH), 9L);
 
         verify(orderAllocationService).holdForOrder(any(SalesOrder.class), eq(9L), eq(true));
+    }
+
+    @Test
+    void createFromRequest_whenShortStock_skipsAssertAndAllowsOutstanding() {
+        when(customerRepository.findById(1L)).thenReturn(Optional.of(retailCustomer));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        // Cần 8 khay, chỉ còn 5 — create thường sẽ 409; từ YC khả thi phải qua được.
+        when(pricingService.resolve(any(PricingRequest.class))).thenReturn(new PricingResultResponse(
+                List.of(new PricedLineResponse(
+                        10L,
+                        SellUnit.PACK,
+                        8,
+                        8,
+                        new BigDecimal("100000.00"),
+                        PriceBasis.LIST,
+                        new BigDecimal("800000.00"),
+                        5L,
+                        3L)),
+                new BigDecimal("800000.00"),
+                new BigDecimal("800000.00"),
+                false,
+                BigDecimal.ZERO.setScale(2)));
+        when(productVariantRepository.findById(10L)).thenReturn(Optional.of(variant));
+        when(salesOrderRepository.save(any(SalesOrder.class))).thenAnswer(inv -> {
+            SalesOrder o = inv.getArgument(0);
+            if (o.getId() == null) {
+                setId(o, ids.incrementAndGet());
+            }
+            return o;
+        });
+        when(orderAllocationService.holdForOrder(any(), eq(9L), eq(true))).thenAnswer(inv -> {
+            SalesOrder o = inv.getArgument(0);
+            o.setAllocationStatus(AllocationStatus.HELD);
+            o.getLines().forEach(line -> line.setOutstandingQty(3));
+            return 5;
+        });
+        when(salesOrderRepository.findWithDetailsById(anyLong())).thenAnswer(inv -> {
+            SalesOrder o = baseOrder(inv.getArgument(0), OrderState.CONFIRMED, PaymentStatus.UNPAID, AllocationStatus.HELD);
+            o.setPlacedBy(actor);
+            return Optional.of(o);
+        });
+
+        OrderInputRequest shortRequest = new OrderInputRequest(
+                1L,
+                null,
+                null,
+                OrderType.RETAIL,
+                SaleChannel.PHONE,
+                PaymentMethod.CASH,
+                FulfillmentMethod.PICKUP,
+                null,
+                null,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                null,
+                null,
+                List.of(new PricingLineInput(10L, SellUnit.PACK, 8, null)));
+
+        var detail = service.createFromRequest(shortRequest, 9L);
+
+        assertThat(detail.state()).isEqualTo(OrderState.CONFIRMED);
+        verify(orderAllocationService).holdForOrder(any(SalesOrder.class), eq(9L), eq(true));
+        verify(salesOrderRepository, org.mockito.Mockito.atLeastOnce()).save(any(SalesOrder.class));
+    }
+
+    @Test
+    void create_discountOverThreshold_opensApprovalWithoutHold() {
+        when(customerRepository.findById(1L)).thenReturn(Optional.of(retailCustomer));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(pricingService.resolve(any(PricingRequest.class))).thenReturn(priced(false));
+        when(productVariantRepository.findById(10L)).thenReturn(Optional.of(variant));
+        when(salesOrderRepository.save(any(SalesOrder.class))).thenAnswer(inv -> {
+            SalesOrder o = inv.getArgument(0);
+            if (o.getId() == null) {
+                setId(o, ids.incrementAndGet());
+            }
+            return o;
+        });
+        when(approvalTaskRepository.save(any(ApprovalTask.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(salesOrderRepository.findWithDetailsById(anyLong())).thenAnswer(inv -> {
+            SalesOrder o = baseOrder(inv.getArgument(0), OrderState.PENDING, PaymentStatus.UNPAID, AllocationStatus.NONE);
+            o.setPlacedBy(actor);
+            o.setDiscountTotal(new BigDecimal("10000.00"));
+            return Optional.of(o);
+        });
+
+        // 10% giảm trên 100k > ngưỡng 5% → chờ duyệt, chưa hold.
+        OrderInputRequest request = new OrderInputRequest(
+                1L,
+                null,
+                null,
+                OrderType.RETAIL,
+                SaleChannel.PHONE,
+                PaymentMethod.CASH,
+                FulfillmentMethod.PICKUP,
+                null,
+                null,
+                BigDecimal.ZERO,
+                new BigDecimal("10000.00"),
+                null,
+                null,
+                List.of(new PricingLineInput(10L, SellUnit.PACK, 1, null)));
+
+        var detail = service.create(request, 9L);
+
+        assertThat(detail.state()).isEqualTo(OrderState.PENDING);
+        verify(approvalTaskRepository).save(any(ApprovalTask.class));
+        verify(orderAllocationService, never()).holdForOrder(any(), any(), anyBoolean());
     }
 
     @Test
@@ -412,7 +588,6 @@ class SalesOrderServiceTest {
         when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
         when(pricingService.resolve(any(PricingRequest.class))).thenReturn(priced(false));
         when(productVariantRepository.findById(10L)).thenReturn(Optional.of(variant));
-        when(salesOrderRepository.findCodesByPrefix("SO-2026-")).thenReturn(List.of());
         when(salesOrderRepository.save(any(SalesOrder.class))).thenAnswer(inv -> {
             SalesOrder o = inv.getArgument(0);
             if (o.getId() == null) {
@@ -506,6 +681,102 @@ class SalesOrderServiceTest {
     }
 
     @Test
+    void cancel_nullReason_returns400() {
+        assertBadRequest(() -> service.cancel(11L, null, 9L), "Vui lòng nhập lý do hủy");
+        verify(salesOrderRepository, never()).findWithDetailsById(any());
+        verify(orderAllocationService, never()).releaseForOrder(any(), any(), any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = OrderState.class,
+            names = {"PENDING", "CONFIRMED"})
+    void cancel_pendingOrConfirmedUnpaid_cancelsAndStaysUnpaid(OrderState state) {
+        SalesOrder order = baseOrder(21L, state, PaymentStatus.UNPAID, AllocationStatus.FULL);
+        when(salesOrderRepository.findWithDetailsById(21L)).thenReturn(Optional.of(order));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(deliveryRepository.findByOrder_IdOrderByIdAsc(21L)).thenReturn(List.of());
+        when(approvalTaskRepository.findByRefTypeAndRefIdAndStatus(any(), eq(21L), any()))
+                .thenReturn(Optional.empty());
+
+        service.cancel(21L, "Khách đổi ý", 9L);
+
+        assertThat(order.getState()).isEqualTo(OrderState.CANCELLED);
+        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.UNPAID);
+        verify(orderAllocationService).releaseForOrder(eq(order), eq(9L), any());
+    }
+
+    @Test
+    void cancel_preparingPartialPaid_returns409UseReturn() {
+        SalesOrder order = baseOrder(22L, OrderState.PREPARING, PaymentStatus.PARTIAL, AllocationStatus.FULL);
+        when(salesOrderRepository.findWithDetailsById(22L)).thenReturn(Optional.of(order));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        assertThatThrownBy(() -> service.cancel(22L, "Khách hủy giữa chừng", 9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(api.getMessage()).contains("trả hàng");
+                });
+        assertThat(order.getState()).isEqualTo(OrderState.PREPARING);
+        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.PARTIAL);
+        verify(orderAllocationService, never()).releaseForOrder(any(), any(), any());
+    }
+
+    @Test
+    void cancel_preparing_returns409() {
+        SalesOrder order = baseOrder(24L, OrderState.PREPARING, PaymentStatus.PAID, AllocationStatus.FULL);
+        when(salesOrderRepository.findWithDetailsById(24L)).thenReturn(Optional.of(order));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        assertThatThrownBy(() -> service.cancel(24L, "Khách đổi ý", 9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(api.getMessage()).contains("trả hàng");
+                });
+        assertThat(order.getState()).isEqualTo(OrderState.PREPARING);
+        verify(orderAllocationService, never()).releaseForOrder(any(), any(), any());
+    }
+
+    @Test
+    void cancel_orderNotFound_returns404() {
+        when(salesOrderRepository.findWithDetailsById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.cancel(999L, "Khách đổi ý", 9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+                    assertThat(api.getMessage()).isEqualTo("Không tìm thấy đơn hàng");
+                });
+        verify(orderAllocationService, never()).releaseForOrder(any(), any(), any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = OrderState.class,
+            names = {"DELIVERED", "COMPLETED", "CANCELLED", "PARTIAL", "PREPARING", "TO_SHIP"})
+    void cancel_terminalOrDeliveredState_returns409(OrderState state) {
+        SalesOrder order = baseOrder(23L, state, PaymentStatus.PAID, AllocationStatus.FULL);
+        when(salesOrderRepository.findWithDetailsById(23L)).thenReturn(Optional.of(order));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        assertThatThrownBy(() -> service.cancel(23L, "Khách đổi ý", 9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(api.getMessage()).contains("trả hàng");
+                });
+        assertThat(order.getState()).isEqualTo(state);
+        verify(orderAllocationService, never()).releaseForOrder(any(), any(), any());
+        verify(auditLogService, never()).record(any(), eq("cancel"), any(), any(), any());
+    }
+
+    @Test
     void receipt_unpaid_returns409() {
         SalesOrder order = baseOrder(16L, OrderState.CONFIRMED, PaymentStatus.UNPAID, AllocationStatus.FULL);
         when(salesOrderRepository.findWithDetailsById(16L)).thenReturn(Optional.of(order));
@@ -556,6 +827,70 @@ class SalesOrderServiceTest {
         order.setOverLimitAmount(BigDecimal.ZERO.setScale(2));
         order.setPlacedAt(Instant.now(clock));
         return order;
+    }
+
+    private static OrderInputRequest withLines(OrderInputRequest base, List<PricingLineInput> lines) {
+        return new OrderInputRequest(
+                base.customerId(),
+                base.customerName(),
+                base.phone(),
+                base.orderType(),
+                base.channel(),
+                base.paymentMethod(),
+                base.fulfillmentMethod(),
+                base.shipAddressId(),
+                base.shipAddress(),
+                base.shippingFee(),
+                base.discountTotal(),
+                base.voucherCode(),
+                base.note(),
+                lines);
+    }
+
+    private static OrderInputRequest withPhone(OrderInputRequest base, String phone) {
+        return new OrderInputRequest(
+                base.customerId(),
+                base.customerName(),
+                phone,
+                base.orderType(),
+                base.channel(),
+                base.paymentMethod(),
+                base.fulfillmentMethod(),
+                base.shipAddressId(),
+                base.shipAddress(),
+                base.shippingFee(),
+                base.discountTotal(),
+                base.voucherCode(),
+                base.note(),
+                base.lines());
+    }
+
+    private static void assertBadRequest(Runnable action, String message) {
+        assertThatThrownBy(action::run)
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(api.getMessage()).isEqualTo(message);
+                });
+    }
+
+    private static PricingResultResponse pricedForVariant(long variantId) {
+        return new PricingResultResponse(
+                List.of(new PricedLineResponse(
+                        variantId,
+                        SellUnit.PACK,
+                        1,
+                        1,
+                        new BigDecimal("100000.00"),
+                        PriceBasis.LIST,
+                        new BigDecimal("100000.00"),
+                        5,
+                        0)),
+                new BigDecimal("100000.00"),
+                new BigDecimal("100000.00"),
+                false,
+                BigDecimal.ZERO.setScale(2));
     }
 
     private PricingResultResponse priced(boolean overLimit) {

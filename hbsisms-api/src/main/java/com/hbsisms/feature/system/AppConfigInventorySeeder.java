@@ -42,6 +42,18 @@ public class AppConfigInventorySeeder implements ApplicationRunner {
                 AppConfigService.PAYMENT_GRACE_MINUTES,
                 String.valueOf(AppConfigService.DEFAULT_PAYMENT_GRACE_MINUTES),
                 "Phút ân hạn sau giờ giữ hàng để nhận giao dịch đang xử lý");
+        ensure(
+                AppConfigService.ORDER_DISCOUNT_APPROVE_PCT,
+                String.valueOf(AppConfigService.DEFAULT_ORDER_DISCOUNT_APPROVE_PCT),
+                "Ngưỡng % giảm giá trên tạm tính cần Chủ duyệt");
+        ensure(
+                AppConfigService.SALES_UNPAID_HOLD_HOURS,
+                String.valueOf(AppConfigService.DEFAULT_SALES_UNPAID_HOLD_HOURS),
+                "Số giờ giữ hàng đơn Sales (quầy/điện thoại/Zalo) chưa thanh toán");
+        ensure(
+                AppConfigService.SALES_HOLD_WARN_MINUTES,
+                String.valueOf(AppConfigService.DEFAULT_SALES_HOLD_WARN_MINUTES),
+                "Phút báo Sales trước khi hết hạn giữ hàng đơn Sales");
     }
 
     private void ensure(String key, String value, String description) {

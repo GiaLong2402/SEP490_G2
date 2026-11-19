@@ -22,6 +22,7 @@ import com.hbsisms.feature.sales.SalesOrderService;
 import com.hbsisms.feature.sales.dto.OrderDetailResponse;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.system.AppConfigService;
+import com.hbsisms.feature.system.BusinessCodeService;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -49,6 +50,8 @@ class PayosLinkServiceTest {
     private SalesOrderService salesOrderService;
     @Mock
     private AppConfigService appConfigService;
+    @Mock
+    private BusinessCodeService businessCodeService;
 
     private PayosProperties properties;
     private PayosLinkService service;
@@ -69,6 +72,7 @@ class PayosLinkServiceTest {
                 paymentRepository,
                 salesOrderService,
                 appConfigService,
+                businessCodeService,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -78,7 +82,7 @@ class PayosLinkServiceTest {
         when(appConfigService.paymentGraceMinutes()).thenReturn(2);
         SalesOrder order = orderWithTotal("SO-2026-0001", new BigDecimal("150000"));
         Customer customer = new Customer();
-        when(paymentRepository.maxPayosOrderCode()).thenReturn(130000L);
+        when(businessCodeService.nextPayosOrderCode()).thenReturn(130001L);
         when(payosClient.createPaymentRequest(eq(130001L), eq(150000), anyString(), eq(HOLD_EXPIRES.plusSeconds(120).getEpochSecond())))
                 .thenReturn(new PayosPaymentLinkResult(
                         130001L,
@@ -135,6 +139,7 @@ class PayosLinkServiceTest {
                 paymentRepository,
                 salesOrderService,
                 appConfigService,
+                businessCodeService,
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
         assertThatThrownBy(() ->
@@ -154,6 +159,75 @@ class PayosLinkServiceTest {
                     .isEqualTo(HttpStatus.BAD_REQUEST);
         }
         verify(payosClient, never()).createPaymentRequest(anyLong(), anyInt(), anyString(), anyLong());
+    }
+
+    @Test
+    void createForCheckout_whenDisabled_exactMessage() {
+        // UTCID10: 503 "PayOS chưa cấu hình", không đụng DB / PayOS
+        service = new PayosLinkService(
+                new PayosProperties("off", "", "", "", "https://api-merchant.payos.vn", "", ""),
+                payosClient,
+                paymentRepository,
+                salesOrderService,
+                appConfigService,
+                businessCodeService,
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        assertThatThrownBy(() ->
+                        service.createForCheckout(orderWithTotal("SO-1", BigDecimal.TEN), new Customer(), HOLD_EXPIRES))
+                .isInstanceOfSatisfying(ApiException.class, ex -> {
+                    assertThat(ex.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(ex.getMessage()).isEqualTo("PayOS chưa cấu hình");
+                });
+        verify(payosClient, never()).createPaymentRequest(anyLong(), anyInt(), anyString(), anyLong());
+        verify(paymentRepository, never()).save(any());
+    }
+
+    @Test
+    void createForCheckout_nullAmount_exactMessage() {
+        // UTCID11
+        assertThatThrownBy(() ->
+                        service.createForCheckout(orderWithTotal("SO-1", null), new Customer(), HOLD_EXPIRES))
+                .isInstanceOfSatisfying(ApiException.class, ex -> {
+                    assertThat(ex.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(ex.getMessage()).isEqualTo("Đơn không có số tiền thanh toán");
+                });
+        verify(payosClient, never()).createPaymentRequest(anyLong(), anyInt(), anyString(), anyLong());
+    }
+
+    @Test
+    void createForCheckout_fractionalAmount_exactMessage() {
+        // UTCID12
+        assertThatThrownBy(() -> service.createForCheckout(
+                        orderWithTotal("SO-1", new BigDecimal("1000.5")), new Customer(), HOLD_EXPIRES))
+                .isInstanceOfSatisfying(ApiException.class, ex -> {
+                    assertThat(ex.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(ex.getMessage()).isEqualTo("Số tiền thanh toán phải là số nguyên VND");
+                });
+        verify(payosClient, never()).createPaymentRequest(anyLong(), anyInt(), anyString(), anyLong());
+    }
+
+    @Test
+    void createForCheckout_payosRejectsOrUnreachable_propagatesAndDoesNotPersist() {
+        // UTCID07 / UTCID08 ở tầng service: lỗi từ PayosClient được ném nguyên vẹn, không lưu Payment
+        when(appConfigService.paymentGraceMinutes()).thenReturn(2);
+        when(businessCodeService.nextPayosOrderCode()).thenReturn(130001L);
+        when(payosClient.createPaymentRequest(anyLong(), anyInt(), anyString(), anyLong()))
+                .thenThrow(ApiException.badRequest("PayOS từ chối tạo link: HTTP 400"))
+                .thenThrow(new ApiException(HttpStatus.BAD_GATEWAY, "Không gọi được PayOS: timeout"));
+        SalesOrder order = orderWithTotal("SO-2026-0001", new BigDecimal("150000"));
+
+        assertThatThrownBy(() -> service.createForCheckout(order, new Customer(), HOLD_EXPIRES))
+                .isInstanceOfSatisfying(ApiException.class, ex -> {
+                    assertThat(ex.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(ex.getMessage()).isEqualTo("PayOS từ chối tạo link: HTTP 400");
+                });
+        assertThatThrownBy(() -> service.createForCheckout(order, new Customer(), HOLD_EXPIRES))
+                .isInstanceOfSatisfying(ApiException.class, ex -> {
+                    assertThat(ex.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
+                    assertThat(ex.getMessage()).startsWith("Không gọi được PayOS: ");
+                });
+        verify(paymentRepository, never()).save(any());
     }
 
     @Test

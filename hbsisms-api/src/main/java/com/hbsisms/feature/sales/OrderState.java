@@ -14,7 +14,9 @@ public enum OrderState {
     PARTIAL,
     DELIVERED,
     COMPLETED,
-    CANCELLED;
+    CANCELLED,
+    /** Hết hạn giữ hàng (đơn Sales unpaid). */
+    EXPIRED;
 
     @JsonValue
     public String code() {

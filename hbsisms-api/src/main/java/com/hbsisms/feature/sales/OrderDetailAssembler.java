@@ -119,7 +119,10 @@ public class OrderDetailAssembler {
                 && order.getState() != OrderState.DELIVERED
                 && order.getState() != OrderState.COMPLETED
                 && order.getState() != OrderState.CANCELLED
-                && order.getState() != OrderState.PARTIAL;
+                && order.getState() != OrderState.EXPIRED
+                && order.getState() != OrderState.PARTIAL
+                && order.getState() != OrderState.PREPARING
+                && order.getState() != OrderState.TO_SHIP;
 
         OrderListItemResponse header = OrderListItemResponse.from(order);
         Customer customer = order.getCustomer();

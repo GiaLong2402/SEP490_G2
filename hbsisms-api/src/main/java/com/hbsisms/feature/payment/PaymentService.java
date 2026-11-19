@@ -16,6 +16,7 @@ import com.hbsisms.feature.sales.SaleChannel;
 import com.hbsisms.feature.sales.SalesOrder;
 import com.hbsisms.feature.sales.SalesOrderRepository;
 import com.hbsisms.feature.system.AuditLogService;
+import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
 import java.math.BigDecimal;
@@ -46,6 +47,7 @@ public class PaymentService {
     private final OrderEventRepository orderEventRepository;
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
+    private final BusinessCodeService businessCodeService;
     private final Clock clock;
 
     public PaymentService(
@@ -56,6 +58,7 @@ public class PaymentService {
             OrderEventRepository orderEventRepository,
             UserRepository userRepository,
             AuditLogService auditLogService,
+            BusinessCodeService businessCodeService,
             Clock clock) {
         this.paymentRepository = paymentRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -64,6 +67,7 @@ public class PaymentService {
         this.orderEventRepository = orderEventRepository;
         this.userRepository = userRepository;
         this.auditLogService = auditLogService;
+        this.businessCodeService = businessCodeService;
         this.clock = clock;
     }
 
@@ -399,20 +403,7 @@ public class PaymentService {
     }
 
     private String nextPaymentCode() {
-        String prefix = "TT-";
-        int next = paymentRepository.findCodesByPrefix(prefix).stream()
-                .map(code -> code.substring(prefix.length()))
-                .map(digits -> {
-                    try {
-                        return Integer.parseInt(digits);
-                    } catch (NumberFormatException ex) {
-                        return 0;
-                    }
-                })
-                .max(Integer::compareTo)
-                .orElse(0)
-                + 1;
-        return prefix + String.format(Locale.ROOT, "%04d", next);
+        return businessCodeService.nextPaymentCode();
     }
 
     private static String gatewayOf(PaymentMethod method) {

@@ -15,6 +15,7 @@ import com.hbsisms.feature.sales.dto.OrderInputRequest;
 import com.hbsisms.feature.sales.dto.SalesRequestFeasibilityRequest;
 import com.hbsisms.feature.sales.dto.SalesRequestInputRequest;
 import com.hbsisms.feature.sales.dto.SalesRequestRejectRequest;
+import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.UserRepository;
 import java.time.Clock;
 import java.time.Instant;
@@ -42,6 +43,8 @@ class SalesRequestServiceTest {
     private UserRepository userRepository;
     @Mock
     private SalesOrderService salesOrderService;
+    @Mock
+    private BusinessCodeService businessCodeService;
 
     private SalesRequestService service;
     private final Clock clock = Clock.fixed(Instant.parse("2026-11-09T10:00:00Z"), ZoneOffset.UTC);
@@ -49,12 +52,17 @@ class SalesRequestServiceTest {
     @BeforeEach
     void setUp() {
         service = new SalesRequestService(
-                salesRequestRepository, customerRepository, userRepository, salesOrderService, clock);
+                salesRequestRepository,
+                customerRepository,
+                userRepository,
+                salesOrderService,
+                businessCodeService,
+                clock);
     }
 
     @Test
     void create_persistsNewRequest() {
-        when(salesRequestRepository.findCodesByPrefix("YC-2026-")).thenReturn(List.of());
+        when(businessCodeService.nextSalesRequestCode()).thenReturn("YC-2026-0001");
         when(salesRequestRepository.save(any(SalesRequest.class))).thenAnswer(inv -> {
             SalesRequest r = inv.getArgument(0);
             setId(r, 1L);

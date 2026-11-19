@@ -1,12 +1,14 @@
 package com.hbsisms.feature.payment.payos;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hbsisms.common.exception.ApiException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
@@ -59,6 +61,45 @@ class PayosClientMockTest {
         assertThat(result.checkoutUrl()).isEqualTo("https://pay.payos.vn/web/xyz");
         assertThat(result.qrCode()).isEqualTo("000201");
         assertThat(result.paymentLinkId()).isEqualTo("plid");
+        server.verify();
+    }
+
+    @Test
+    void createPaymentRequest_http400_throwsBadRequest() {
+        // PayOS_createForCheckout UTCID07: PayOS từ chối (HTTP 400) → 400 "PayOS từ chối tạo link: HTTP 400"
+        server.expect(requestTo("https://api-merchant.payos.vn/v2/payment-requests"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators
+                        .withStatus(org.springframework.http.HttpStatus.BAD_REQUEST)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"code\":\"20\",\"desc\":\"Invalid\"}"));
+
+        assertThatThrownBy(() -> client.createPaymentRequest(130001L, 2000, "TEST", InstantEpoch.nowPlus15()))
+                .isInstanceOf(ApiException.class)
+                .hasMessage("PayOS từ chối tạo link: HTTP 400")
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(org.springframework.http.HttpStatus.BAD_REQUEST);
+        server.verify();
+    }
+
+    @Test
+    void createPaymentRequest_connectionError_throwsBadGateway() {
+        // PayOS_createForCheckout UTCID08: lỗi kết nối → 502 "Không gọi được PayOS: ..."
+        server.expect(requestTo("https://api-merchant.payos.vn/v2/payment-requests"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(request -> {
+                    throw new java.io.IOException("Connection refused");
+                });
+
+        assertThatThrownBy(() -> client.createPaymentRequest(130001L, 2000, "TEST", InstantEpoch.nowPlus15()))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(org.springframework.http.HttpStatus.BAD_GATEWAY);
+                    assertThat(api.getMessage())
+                            .startsWith("Không gọi được PayOS: ")
+                            .contains("Connection refused");
+                });
         server.verify();
     }
 

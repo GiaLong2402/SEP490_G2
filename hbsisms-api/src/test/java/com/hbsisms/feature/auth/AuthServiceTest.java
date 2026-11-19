@@ -197,6 +197,27 @@ class AuthServiceTest {
         assertThat(response.user().roleCode()).isEqualTo("admin");
     }
 
+    /** Report 5.1 UTCID07: customer (cust01) may use password login when passwordLoginAllRoles=true. */
+    @Test
+    void login_customer_whenPasswordLoginAllRoles_succeeds() {
+        passwordLoginAllRoles = true;
+        authService = newAuthService();
+        AppRole customerRole = TestFixtures.role((short) 5, DefaultRoles.CUSTOMER, Set.of());
+        AppUser customer = TestFixtures.staff(30L, "cust01", customerRole);
+        customer.setUserType(com.hbsisms.feature.user.UserType.CUSTOMER);
+        when(userRepository.findByUsername("cust01")).thenReturn(Optional.of(customer));
+        when(passwordEncoder.matches("secret123", "hash-cust01")).thenReturn(true);
+        when(tokenService.issue(customer)).thenReturn(new IssuedToken("jwt-cust", NOW.plusSeconds(60)));
+
+        LoginResponse response = authService.login(new LoginRequest("cust01", "secret123"));
+
+        assertThat(response.token()).isEqualTo("jwt-cust");
+        assertThat(response.user().username()).isEqualTo("cust01");
+        assertThat(response.user().roleCode()).isEqualTo("customer");
+        verify(userRepository).updateLastLoginAt(30L, NOW);
+        verify(loginAttempts).recordSuccess("cust01");
+    }
+
     @Test
     void logout_incrementsTokenVersionAtomically() {
         authService.logout(7L);

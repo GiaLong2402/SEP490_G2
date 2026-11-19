@@ -149,6 +149,7 @@ class OrderAllocationServiceTest {
                 .thenReturn(List.of(stockRow));
         when(stockRepository.findById(50L)).thenReturn(Optional.of(stockRow));
         when(stockService.hold(any())).thenThrow(ApiException.conflict("Không đủ tồn kho"));
+        when(appConfigService.salesUnpaidHoldHours()).thenReturn(24);
 
         SalesOrder order = order(7L, SaleChannel.COUNTER, PaymentStatus.UNPAID, 3);
         int held = service.holdForOrder(order, 1L, true);
@@ -203,6 +204,72 @@ class OrderAllocationServiceTest {
         assertThat(order.getAllocationStatus()).isEqualTo(AllocationStatus.NONE);
         assertThat(order.getHoldExpiresAt()).isNull();
         verify(stockService).release(any());
+    }
+
+    @Test
+    void holdForOrder_alreadyHeld_isIdempotentAndReturnsExistingTotal() {
+        when(stockLedgerRepository.findByRefTypeAndRefIdForAllocation("sales_order", 7L))
+                .thenReturn(List.of(ledger(LedgerEntryType.HOLD, -5)));
+
+        SalesOrder order = order(7L, SaleChannel.WEB, PaymentStatus.UNPAID, 5);
+        int held = service.holdForOrder(order, 1L, true);
+
+        assertThat(held).isEqualTo(5);
+        verify(stockRepository, never()).findFefoCandidates(any(), any());
+        verify(stockService, never()).hold(any());
+        verify(salesOrderRepository, never()).save(any());
+    }
+
+    @Test
+    void holdForOrder_noAllowOutstanding_fullStock_holdsFullAndSetsFull() {
+        when(stockLedgerRepository.findByRefTypeAndRefIdForAllocation("sales_order", 7L))
+                .thenReturn(List.of());
+        when(stockRepository.findFefoCandidates(eq(1L), any(LocalDate.class)))
+                .thenReturn(List.of(stockRow));
+        when(stockRepository.findById(50L)).thenReturn(Optional.of(stockRow));
+        when(appConfigService.salesUnpaidHoldHours()).thenReturn(24);
+
+        SalesOrder order = order(7L, SaleChannel.COUNTER, PaymentStatus.UNPAID, 5);
+        int held = service.holdForOrder(order, 1L, false);
+
+        assertThat(held).isEqualTo(5);
+        assertThat(order.getAllocationStatus()).isEqualTo(AllocationStatus.FULL);
+        assertThat(order.getLines().get(0).getOutstandingQty()).isZero();
+        // Inter3 T6: Sales unpaid giữ theo giờ (24h), không còn vô hạn.
+        assertThat(order.getHoldExpiresAt()).isEqualTo(Instant.parse("2026-11-10T10:00:00Z"));
+        verify(stockService).hold(any());
+        verify(salesOrderRepository).save(order);
+    }
+
+    @Test
+    void releaseForOrder_noHolds_returnsZeroAndDoesNotCallStockService() {
+        when(stockLedgerRepository.findByRefTypeAndRefIdForAllocation("sales_order", 7L))
+                .thenReturn(List.of());
+
+        SalesOrder order = order(7L, SaleChannel.WEB, PaymentStatus.UNPAID, 5);
+        int released = service.releaseForOrder(order, 1L, "hủy");
+
+        assertThat(released).isZero();
+        assertThat(order.getAllocationStatus()).isEqualTo(AllocationStatus.NONE);
+        verify(stockService, never()).release(any());
+    }
+
+    @Test
+    void releaseForOrder_whenStockHeldInsufficient_propagatesConflict() {
+        when(stockLedgerRepository.findByRefTypeAndRefIdForAllocation("sales_order", 7L))
+                .thenReturn(List.of(ledger(LedgerEntryType.HOLD, -5)));
+        when(stockService.release(any())).thenThrow(ApiException.conflict("Không đủ tồn đang giữ"));
+
+        SalesOrder order = order(7L, SaleChannel.WEB, PaymentStatus.UNPAID, 5);
+
+        assertThatThrownBy(() -> service.releaseForOrder(order, 1L, "hủy"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus().value()).isEqualTo(409);
+                    assertThat(api.getMessage()).isEqualTo("Không đủ tồn đang giữ");
+                });
+        verify(salesOrderRepository, never()).save(any());
     }
 
     @Test

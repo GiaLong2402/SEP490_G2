@@ -13,13 +13,12 @@ import com.hbsisms.feature.sales.dto.SalesRequestFeasibilityRequest;
 import com.hbsisms.feature.sales.dto.SalesRequestInputRequest;
 import com.hbsisms.feature.sales.dto.SalesRequestRejectRequest;
 import com.hbsisms.feature.sales.dto.SalesRequestResponse;
+import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.util.Locale;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +32,7 @@ public class SalesRequestService {
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
     private final SalesOrderService salesOrderService;
+    private final BusinessCodeService businessCodeService;
     private final Clock clock;
 
     public SalesRequestService(
@@ -40,11 +40,13 @@ public class SalesRequestService {
             CustomerRepository customerRepository,
             UserRepository userRepository,
             SalesOrderService salesOrderService,
+            BusinessCodeService businessCodeService,
             Clock clock) {
         this.salesRequestRepository = salesRequestRepository;
         this.customerRepository = customerRepository;
         this.userRepository = userRepository;
         this.salesOrderService = salesOrderService;
+        this.businessCodeService = businessCodeService;
         this.clock = clock;
     }
 
@@ -218,21 +220,7 @@ public class SalesRequestService {
     }
 
     private String nextCode() {
-        String year = LocalDate.now(clock).format(DateTimeFormatter.ofPattern("yyyy"));
-        String prefix = "YC-" + year + "-";
-        int next = salesRequestRepository.findCodesByPrefix(prefix).stream()
-                .map(code -> code.substring(prefix.length()))
-                .map(digits -> {
-                    try {
-                        return Integer.parseInt(digits);
-                    } catch (NumberFormatException ex) {
-                        return 0;
-                    }
-                })
-                .max(Integer::compareTo)
-                .orElse(0)
-                + 1;
-        return prefix + String.format(Locale.ROOT, "%04d", next);
+        return businessCodeService.nextSalesRequestCode();
     }
 
     private static RequestStatus parseStatus(String raw) {

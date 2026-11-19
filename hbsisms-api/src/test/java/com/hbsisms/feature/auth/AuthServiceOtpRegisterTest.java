@@ -182,6 +182,87 @@ class AuthServiceOtpRegisterTest {
         verify(userRepository, never()).save(any());
     }
 
+    /** Report 5.1 UTCID05/13: email already used by another user -> 409 "Email dup@mail.com đã tồn tại". */
+    @Test
+    void registerWithOtp_duplicateEmail_returns409() {
+        when(userRepository.findByEmail("dup@mail.com"))
+                .thenReturn(Optional.of(TestFixtures.staff(2L, "other", customerRole)));
+
+        assertThatThrownBy(() -> authService.registerWithOtp(new OtpRegisterRequest("tok", "A", "dup@mail.com")))
+                .isInstanceOf(ApiException.class)
+                .hasMessage("Email dup@mail.com đã tồn tại")
+                .extracting("status")
+                .isEqualTo(HttpStatus.CONFLICT);
+        verify(userRepository, never()).save(any());
+        verify(customerRepository, never()).save(any());
+        verify(tokenService, never()).issue(any());
+    }
+
+    /** Report 5.1 UTCID06/12: customer role missing -> 400 "Thiếu role customer trong hệ thống". */
+    @Test
+    void registerWithOtp_customerRoleMissing_returns400() {
+        when(roleRepository.findByCode(DefaultRoles.CUSTOMER)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.registerWithOtp(new OtpRegisterRequest("tok", "A", null)))
+                .isInstanceOf(ApiException.class)
+                .hasMessage("Thiếu role customer trong hệ thống")
+                .extracting("status")
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(userRepository, never()).save(any());
+        verify(customerRepository, never()).save(any());
+        verify(tokenService, never()).issue(any());
+    }
+
+    /** Report 5.1 UTCID07: new customer WITH email a@mail.com -> LoginResponse; email persisted on user and B2C profile. */
+    @Test
+    void registerWithOtp_newCustomerWithEmail_persistsEmailOnUserAndCustomer() {
+        when(userRepository.findByEmail("a@mail.com")).thenReturn(Optional.empty());
+        when(customerRepository.findFirstByPhoneAndAccountUserIsNullOrderByIdAsc(PHONE))
+                .thenReturn(Optional.empty());
+        when(customerRepository.findCodesByPrefix("KH-")).thenReturn(List.of());
+        when(customerRepository.save(any(Customer.class))).thenAnswer(inv -> {
+            Customer c = inv.getArgument(0);
+            ReflectionTestUtils.setField(c, "id", 91L);
+            return c;
+        });
+
+        LoginResponse response =
+                authService.registerWithOtp(new OtpRegisterRequest("tok", "Nguyễn Văn A", "a@mail.com"));
+
+        assertThat(response.token()).isEqualTo("jwt-cust");
+        assertThat(response.user().roleCode()).isEqualTo("customer");
+        ArgumentCaptor<AppUser> userCaptor = ArgumentCaptor.forClass(AppUser.class);
+        verify(userRepository).save(userCaptor.capture());
+        assertThat(userCaptor.getValue().getEmail()).isEqualTo("a@mail.com");
+        assertThat(userCaptor.getValue().getUserType()).isEqualTo(UserType.CUSTOMER);
+        ArgumentCaptor<Customer> customerCaptor = ArgumentCaptor.forClass(Customer.class);
+        verify(customerRepository).save(customerCaptor.capture());
+        assertThat(customerCaptor.getValue().getEmail()).isEqualTo("a@mail.com");
+        verify(userRepository).findByEmail("a@mail.com");
+    }
+
+    /** Report 5.1 UTCID11: new customer with null email -> LoginResponse; no email lookup, email stays null. */
+    @Test
+    void registerWithOtp_newCustomerNullEmail_createsUserWithoutEmail() {
+        when(customerRepository.findFirstByPhoneAndAccountUserIsNullOrderByIdAsc(PHONE))
+                .thenReturn(Optional.empty());
+        when(customerRepository.findCodesByPrefix("KH-")).thenReturn(List.of());
+        when(customerRepository.save(any(Customer.class))).thenAnswer(inv -> {
+            Customer c = inv.getArgument(0);
+            ReflectionTestUtils.setField(c, "id", 92L);
+            return c;
+        });
+
+        LoginResponse response = authService.registerWithOtp(new OtpRegisterRequest("tok", "Nguyễn Văn A", null));
+
+        assertThat(response.token()).isEqualTo("jwt-cust");
+        ArgumentCaptor<AppUser> userCaptor = ArgumentCaptor.forClass(AppUser.class);
+        verify(userRepository).save(userCaptor.capture());
+        assertThat(userCaptor.getValue().getEmail()).isNull();
+        verify(userRepository, never()).findByEmail(any());
+        verify(auditLogService).record(eq(50L), eq("register"), eq("customer"), eq(92L), any());
+    }
+
     @Test
     void registerWithOtp_firebaseAlreadyLinked_returns409() {
         when(authIdentityRepository.findByProviderAndProviderUid(AuthIdentity.PROVIDER_FIREBASE, UID))
