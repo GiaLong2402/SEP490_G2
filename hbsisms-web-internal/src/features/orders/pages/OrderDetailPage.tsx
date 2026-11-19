@@ -122,7 +122,7 @@ export default function OrderDetailPage() {
     { key: 'total', header: 'Thành tiền', align: 'right', cell: (l) => <span className="num font-medium">{money(l.lineTotal)}</span> },
   ];
   const deliveryColumns: Column<OrderDeliveryView>[] = [
-    { key: 'leg', header: 'Đợt', cell: (d) => <div><div className="font-medium">{d.legLabel}</div><div className="num text-ink-faint">{d.code}</div></div> },
+    { key: 'leg', header: 'Giao hàng', cell: (d) => <div><div className="font-medium">{d.legLabel ?? 'Trọn đơn'}</div><div className="num text-ink-faint">{d.code}</div></div> },
     { key: 'when', header: 'Lịch giao', cell: (d) => <span className="whitespace-nowrap">{date(d.scheduledDate)}{d.timeWindow ? ` · ${d.timeWindow}` : ''}</span> },
     { key: 'who', header: 'Người giao', cell: (d) => d.assigneeName ?? d.carrier ?? fulfillmentLabels[d.fulfillmentMethod] },
     { key: 'qty', header: 'Khay', align: 'right', cell: (d) => <span className="num">{num((d.items ?? []).reduce((s, i) => s + i.qtyKhay, 0))}</span> },
@@ -210,7 +210,7 @@ export default function OrderDetailPage() {
             {order.canCancel && <Button variant="danger" icon={<XCircle size={14} />} onClick={() => setCancelling(true)}>Hủy đơn</Button>}
             {canReturn && <LinkButton to={`/returns?orderId=${order.id}`} icon={<RotateCcw size={14} />}>Trả hàng</LinkButton>}
             {canPay && <Button icon={<CreditCard size={14} />} onClick={() => setPaymentOpen(true)}>Ghi nhận thanh toán</Button>}
-            {canDeliver && <Button variant="primary" icon={<Truck size={14} />} onClick={() => setDeliveryOpen(true)}>Tạo đợt giao</Button>}
+            {canDeliver && <Button variant="primary" icon={<Truck size={14} />} onClick={() => setDeliveryOpen(true)}>Tạo giao hàng</Button>}
             {canCompleteCounter && (
               <Button variant="primary" icon={<CheckCircle2 size={14} />} loading={completeCounter.isPending} onClick={() => completeCounter.mutate()}>
                 Hoàn tất quầy
@@ -270,8 +270,8 @@ export default function OrderDetailPage() {
               }
             />
           </Card>
-          <Card title="Các đợt giao" flush>
-            <DataTable columns={deliveryColumns} rows={order.deliveries} rowKey={(d) => d.id} emptyText="Chưa có đợt giao nào" />
+          <Card title="Giao hàng" flush>
+            <DataTable columns={deliveryColumns} rows={order.deliveries} rowKey={(d) => d.id} emptyText="Chưa tạo giao hàng (một lần, trọn đơn)" />
           </Card>
           <Card title="Thanh toán / hoàn tiền" flush actions={<span className="text-small text-ink-muted">Đã thu <span className="num text-ink">{money(order.paidAmount)}</span> / {money(order.total)}</span>}>
             {order.payments.length === 0 ? (

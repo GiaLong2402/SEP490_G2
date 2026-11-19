@@ -259,7 +259,7 @@ public class OrderExportService {
             case CONFIRMED -> "Đã xác nhận";
             case PREPARING -> "Đang chuẩn bị";
             case TO_SHIP -> "Chờ giao";
-            case PARTIAL -> "Giao một phần";
+            case PARTIAL -> "Chờ giao";
             case DELIVERED -> "Đã giao";
             case COMPLETED -> "Hoàn tất";
             case CANCELLED -> "Đã hủy";
@@ -274,7 +274,7 @@ public class OrderExportService {
             case UNPAID -> "Chưa thu";
             case WAITING -> "Chờ PayOS";
             case PAID -> "Đã thu";
-            case PARTIAL -> "Thu một phần";
+            case PARTIAL -> "Chưa thu";
             case DEBT -> "Công nợ";
             case DIFF -> "Lệch tiền";
             case REFUND_PENDING -> "Chờ hoàn tiền";

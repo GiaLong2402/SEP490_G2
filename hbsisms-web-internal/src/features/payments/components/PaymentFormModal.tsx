@@ -42,7 +42,11 @@ export function PaymentFormModal({ open, onClose, customerId, customerName, orde
   }, [open, limit, defaultMethod]);
 
   const value = Number(amount);
-  const valid = value > 0 && value <= limit;
+  /** Thu theo đơn: một lần đủ phần còn lại. Thu công nợ khách (không gắn đơn) vẫn cho nhập số. */
+  const orderFullPay = order != null;
+  const valid = orderFullPay
+    ? value > 0 && value === limit
+    : value > 0 && value <= limit;
   const create = useAction(() => paymentsApi.create({ customerId, orderId: order?.id ?? null, method, amount: value, reference: reference.trim() || null, note: null }), {
     success: (p) => `Đã ghi nhận ${money(p.amount)} (${p.code})`,
     onDone: () => {
@@ -66,8 +70,22 @@ export function PaymentFormModal({ open, onClose, customerId, customerName, orde
         <p className="text-ink-muted">
           {customerName}
           {order ? ` · đơn ${order.code}` : ' · thu công nợ'}. Còn phải thu <span className="num font-semibold text-ink">{money(limit)}</span>.
+          {orderFullPay ? ' Thu đủ một lần.' : ''}
         </p>
-        <Field label="Số tiền (₫)" required error={touched && !valid ? `Nhập số tiền từ 1 đến ${money(limit)}` : undefined}><Input type="number" min={1} max={limit} value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
+        <Field
+          label="Số tiền (₫)"
+          required
+          error={touched && !valid ? (orderFullPay ? `Phải thu đủ ${money(limit)}` : `Nhập số tiền từ 1 đến ${money(limit)}`) : undefined}
+        >
+          <Input
+            type="number"
+            min={1}
+            max={limit}
+            value={amount}
+            readOnly={orderFullPay}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </Field>
         <Field label="Phương thức" required>
           <Select value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)}>
             {METHODS.map((m) => <option key={m} value={m}>{paymentMethodLabels[m]}</option>)}

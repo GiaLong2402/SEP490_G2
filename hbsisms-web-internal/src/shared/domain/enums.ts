@@ -53,7 +53,10 @@ export const staffOrderTypeLabels: Record<string, string> = Object.fromEntries(
 export type OrderState = 'pending' | 'confirmed' | 'preparing' | 'to_ship' | 'partial' | 'delivered' | 'completed' | 'cancelled';
 export const orderStateMeta: Meta<OrderState> = {
   pending: { label: 'Chờ xác nhận', tone: 'amber' }, confirmed: { label: 'Đã xác nhận', tone: 'blue' }, preparing: { label: 'Đang chuẩn bị', tone: 'blue' },
-  to_ship: { label: 'Chờ giao', tone: 'blue' }, partial: { label: 'Giao một phần', tone: 'amber' }, delivered: { label: 'Đã giao', tone: 'green' },
+  to_ship: { label: 'Chờ giao', tone: 'blue' },
+  // Legacy: giao dở — UI không còn “giao một phần”, hiện gần Chờ giao.
+  partial: { label: 'Chờ giao', tone: 'blue' },
+  delivered: { label: 'Đã giao', tone: 'green' },
   completed: { label: 'Hoàn tất', tone: 'green' }, cancelled: { label: 'Đã hủy', tone: 'neutral' },
 };
 
@@ -65,18 +68,30 @@ export const paymentMethodLabels: Record<PaymentMethod, string> = {
 export type PaymentStatus = 'unpaid' | 'waiting' | 'paid' | 'partial' | 'debt' | 'diff' | 'refund_pending' | 'refunded';
 export const paymentStatusMeta: Meta<PaymentStatus> = {
   unpaid: { label: 'Chưa thu', tone: 'neutral' }, waiting: { label: 'Chờ thanh toán', tone: 'amber' }, paid: { label: 'Đã thu', tone: 'green' },
-  partial: { label: 'Thu một phần', tone: 'amber' }, debt: { label: 'Công nợ', tone: 'blue' }, diff: { label: 'Lệch tiền', tone: 'red' },
+  // Legacy DB vẫn có partial; UI không còn “thu một phần” — hiện như chưa thu đủ.
+  partial: { label: 'Chưa thu', tone: 'neutral' }, debt: { label: 'Công nợ', tone: 'blue' }, diff: { label: 'Lệch tiền', tone: 'red' },
   refund_pending: { label: 'Chờ hoàn tiền', tone: 'amber' }, refunded: { label: 'Đã hoàn', tone: 'neutral' },
 };
 /**
- * Filter danh sách đơn: bỏ `diff` (enum có sẵn nhưng BE hiện không gán).
- * Giữ waiting/debt/refund_* vì vẫn phát sinh từ web, POS công nợ, hủy/hoàn.
+ * Filter danh sách đơn: bỏ `diff` (BE ít gán) và `partial` (không thu một phần nữa).
+ * Giữ waiting/debt/refund_* vì vẫn phát sinh từ web, nợ cũ, hủy/hoàn.
  */
 export const orderListPaymentStatuses: PaymentStatus[] = [
-  'unpaid', 'waiting', 'paid', 'partial', 'debt', 'refund_pending', 'refunded',
+  'unpaid', 'waiting', 'paid', 'debt', 'refund_pending', 'refunded',
 ];
 export const orderListPaymentStatusMeta: Record<string, { label: string; tone: Tone }> = Object.fromEntries(
   orderListPaymentStatuses.map((s) => [s, paymentStatusMeta[s]]),
+);
+
+/**
+ * Filter trạng thái đơn: bỏ `partial` (giao một lần — không tách đợt).
+ * Enum gốc vẫn giữ để hiển thị dữ liệu cũ nếu có.
+ */
+export const orderListOrderStates: OrderState[] = [
+  'pending', 'confirmed', 'preparing', 'to_ship', 'delivered', 'completed', 'cancelled',
+];
+export const orderListOrderStateMeta: Record<string, { label: string; tone: Tone }> = Object.fromEntries(
+  orderListOrderStates.map((s) => [s, orderStateMeta[s]]),
 );
 
 export type AllocationStatus = 'none' | 'incoming' | 'held' | 'full';

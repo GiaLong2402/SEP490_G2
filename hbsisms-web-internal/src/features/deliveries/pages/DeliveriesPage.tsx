@@ -57,7 +57,7 @@ export default function DeliveriesPage() {
 
   return (
     <>
-      <PageHeader title="Giao hàng" subtitle="Lịch giao, phân công và cập nhật trạng thái từng đợt" />
+      <PageHeader title="Giao hàng" subtitle="Lịch giao, phân công và cập nhật trạng thái (một lần / đơn)" />
       <Card flush>
         <FilterBar
           actions={
@@ -71,7 +71,7 @@ export default function DeliveriesPage() {
           <FilterSelect label="Trạng thái" value={list.filters.state} onChange={(v) => list.setFilter('state', v)}>{enumOptions(deliveryStateMeta)}</FilterSelect>
           <Input aria-label="Ngày giao" type="date" className="!w-[150px]" value={list.filters.date} onChange={(e) => list.setFilter('date', e.target.value)} />
         </FilterBar>
-        <DataTable columns={columns} rows={data?.items} rowKey={(d) => d.id} loading={isLoading} error={error} onRetry={refetch} emptyText="Không có đợt giao phù hợp" />
+        <DataTable columns={columns} rows={data?.items} rowKey={(d) => d.id} loading={isLoading} error={error} onRetry={refetch} emptyText="Không có giao hàng phù hợp" />
         {data && <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onChange={list.setPage} />}
       </Card>
     </>

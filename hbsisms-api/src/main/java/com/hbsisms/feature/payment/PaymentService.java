@@ -156,8 +156,12 @@ public class PaymentService {
             // Inter 3 dòng 8: không ghi thu tay khi đang có link PayOS chờ thanh toán.
             assertNoPendingPayosLink(order.getId());
             BigDecimal outstanding = order.getTotal().subtract(netPaid(order.getId()));
-            if (amount.compareTo(outstanding) > 0) {
-                throw ApiException.conflict("Số tiền vượt quá phần còn lại của đơn");
+            if (outstanding.compareTo(ZERO) <= 0) {
+                throw ApiException.conflict("Đơn đã thu đủ");
+            }
+            // Thu theo đơn: một lần đủ phần còn lại (không thu dở → partial).
+            if (amount.compareTo(outstanding) != 0) {
+                throw ApiException.conflict("Phải thu đủ phần còn lại của đơn (" + outstanding.toPlainString() + ")");
             }
         }
 

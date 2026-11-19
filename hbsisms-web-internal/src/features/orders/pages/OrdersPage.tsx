@@ -6,6 +6,7 @@ import {
   allocationStatusMeta,
   fulfillmentLabels,
   orderListAllocationStatusMeta,
+  orderListOrderStateMeta,
   orderListPaymentStatusMeta,
   orderListSaleChannelLabels,
   orderStateMeta,
@@ -229,7 +230,7 @@ export default function OrdersPage() {
             placeholder="Tìm mã đơn, tên, SĐT, mã khách…"
           />
           {activeTab === 'all' && (
-            <FilterSelect label="Trạng thái" value={list.filters.state} onChange={(v) => list.setFilter('state', v)}>{enumOptions(orderStateMeta)}</FilterSelect>
+            <FilterSelect label="Trạng thái" value={list.filters.state} onChange={(v) => list.setFilter('state', v)}>{enumOptions(orderListOrderStateMeta)}</FilterSelect>
           )}
           <FilterSelect label="Loại đơn" value={list.filters.orderType} onChange={(v) => list.setFilter('orderType', v)}>{enumOptions(orderTypeLabels)}</FilterSelect>
           <FilterSelect label="Thanh toán" value={list.filters.paymentStatus} onChange={(v) => list.setFilter('paymentStatus', v)}>{enumOptions(orderListPaymentStatusMeta)}</FilterSelect>

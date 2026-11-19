@@ -163,7 +163,7 @@ export default function OrderFormPage() {
     if (fulfillment === 'pickup') setWalkInMapOpen(false);
   }, [fulfillment]);
 
-  // Shop tự giao + tiền mặt = thu khi giao → COD.
+  // Shop tự giao + tiền mặt → COD; đến lấy + COD → tiền mặt.
   useEffect(() => {
     setPaymentMethod((prev) => normalizePaymentForFulfillment(prev, fulfillment));
   }, [fulfillment]);
@@ -516,15 +516,20 @@ export default function OrderFormPage() {
                     setPaymentMethod(normalizePaymentForFulfillment(next, fulfillment));
                   }}
                 >
-                  {SALES_PAYMENT_OPTIONS.map(([key, label]) => (
-                    <option key={key} value={key} disabled={fulfillment === 'shop_delivery' && key === 'cash'}>
-                      {label}{fulfillment === 'shop_delivery' && key === 'cod' ? ' (thu khi giao)' : ''}
-                    </option>
-                  ))}
+                  {SALES_PAYMENT_OPTIONS.map(([key, label]) => {
+                    const disabled =
+                      (fulfillment === 'shop_delivery' && key === 'cash')
+                      || (fulfillment === 'pickup' && key === 'cod');
+                    return (
+                      <option key={key} value={key} disabled={disabled}>
+                        {label}{key === 'cod' ? ' (thu khi giao)' : ''}
+                      </option>
+                    );
+                  })}
                 </Select>
               </Field>
-              {fulfillment === 'shop_delivery' && effectivePaymentMethod === 'cod' && (
-                <p className="-mt-1 text-small text-ink-muted">Shop tự giao + thu tiền mặt khi giao được ghi nhận là COD.</p>
+              {fulfillment === 'pickup' && (
+                <p className="-mt-1 text-small text-ink-muted">Khách đến lấy — thu tại quầy (tiền mặt / chuyển khoản), không dùng COD.</p>
               )}
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Chiết khấu (₫)">

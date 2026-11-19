@@ -39,7 +39,9 @@ mock('POST', '/payments', ({ body, userId }) => {
     if (order.state === 'cancelled') fail(409, 'Đơn đã hủy');
     if (order.paymentMethod === 'credit_net' && order.state === 'pending') fail(409, 'Đơn công nợ chưa được xác nhận, chưa phát sinh nợ');
     const paid = db.payments.filter((p) => p.orderId === order.id && p.status === 'success').reduce((s, p) => s + (p.direction === 'in' ? p.amount : -p.amount), 0);
-    if (amount > order.total - paid) fail(409, 'Số tiền vượt quá phần còn lại của đơn');
+    const outstanding = order.total - paid;
+    if (outstanding <= 0) fail(409, 'Đơn đã thu đủ');
+    if (amount !== outstanding) fail(409, `Phải thu đủ phần còn lại của đơn (${outstanding})`);
   } else {
     if (!customer) fail(400, 'Vui lòng chọn khách hàng');
     if (amount > customer.currentDebt) fail(409, 'Số tiền vượt quá công nợ hiện tại');

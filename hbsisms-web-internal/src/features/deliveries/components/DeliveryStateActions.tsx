@@ -23,7 +23,7 @@ type CodCollectContext = {
   orderCode: string;
 };
 
-/** Nút chuyển trạng thái đợt giao, dùng ở cả danh sách giao hàng và chi tiết đơn. */
+/** Nút chuyển trạng thái giao hàng, dùng ở cả danh sách giao hàng và chi tiết đơn. */
 export function DeliveryStateActions({
   delivery,
   orderState,
@@ -38,7 +38,7 @@ export function DeliveryStateActions({
   const [failing, setFailing] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const update = useAction((body: { state: DeliveryState; note?: string }) => deliveriesApi.update(delivery.id, body), {
-    success: 'Đã cập nhật đợt giao',
+    success: 'Đã cập nhật giao hàng',
     onDone: () => {
       setFailing(false);
       setPaymentOpen(false);
