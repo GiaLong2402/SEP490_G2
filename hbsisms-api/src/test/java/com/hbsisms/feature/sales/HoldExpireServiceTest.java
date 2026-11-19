@@ -2,6 +2,7 @@ package com.hbsisms.feature.sales;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -27,6 +28,8 @@ class HoldExpireServiceTest {
     @Mock
     private PayosOrderExpireHandler payosOrderExpireHandler;
     @Mock
+    private OrderEventRepository orderEventRepository;
+    @Mock
     private AppConfigService appConfigService;
 
     /** Job chỉ lấy đơn quá giờ giữ hàng + 2 phút ân hạn. */
@@ -34,8 +37,13 @@ class HoldExpireServiceTest {
 
     private HoldExpireService newService() {
         when(appConfigService.paymentGraceMinutes()).thenReturn(2);
+        when(appConfigService.salesHoldWarnMinutes()).thenReturn(0);
         return new HoldExpireService(
-                salesOrderRepository, payosOrderExpireHandler, appConfigService, Clock.fixed(NOW, ZoneOffset.UTC));
+                salesOrderRepository,
+                orderEventRepository,
+                payosOrderExpireHandler,
+                appConfigService,
+                Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test
@@ -72,12 +80,73 @@ class HoldExpireServiceTest {
     }
 
     @Test
+    void run_handlerReturnsFalse_processedZero() {
+        SalesOrder header = new SalesOrder();
+        setId(header, 3L);
+        when(salesOrderRepository.findExpiredHolds(CUTOFF)).thenReturn(List.of(header));
+        when(salesOrderRepository.findWithDetailsById(3L)).thenReturn(Optional.of(header));
+        when(payosOrderExpireHandler.expireIfNeeded(header)).thenReturn(false);
+
+        HoldExpireService service = newService();
+
+        assertThat(service.run().releasedOrders()).isZero();
+        verify(payosOrderExpireHandler).expireIfNeeded(header);
+    }
+
+    @Test
+    void run_twoExpiredOrdersBothResolved_processedTwo() {
+        SalesOrder a = new SalesOrder();
+        setId(a, 1L);
+        SalesOrder b = new SalesOrder();
+        setId(b, 2L);
+        when(salesOrderRepository.findExpiredHolds(CUTOFF)).thenReturn(List.of(a, b));
+        when(salesOrderRepository.findWithDetailsById(1L)).thenReturn(Optional.of(a));
+        when(salesOrderRepository.findWithDetailsById(2L)).thenReturn(Optional.of(b));
+        when(payosOrderExpireHandler.expireIfNeeded(a)).thenReturn(true);
+        when(payosOrderExpireHandler.expireIfNeeded(b)).thenReturn(true);
+
+        HoldExpireService service = newService();
+
+        assertThat(service.run().releasedOrders()).isEqualTo(2);
+    }
+
+    @Test
+    void run_noExpiredOrders_processedZeroAndHandlerNotCalled() {
+        when(salesOrderRepository.findExpiredHolds(CUTOFF)).thenReturn(List.of());
+
+        HoldExpireService service = newService();
+
+        assertThat(service.run().releasedOrders()).isZero();
+        verify(payosOrderExpireHandler, never()).expireIfNeeded(any());
+        verify(salesOrderRepository, never()).findWithDetailsById(any());
+    }
+
+    @Test
+    void run_detailsMissing_fallsBackToHeader() {
+        SalesOrder header = new SalesOrder();
+        setId(header, 4L);
+        when(salesOrderRepository.findExpiredHolds(CUTOFF)).thenReturn(List.of(header));
+        when(salesOrderRepository.findWithDetailsById(4L)).thenReturn(Optional.empty());
+        when(payosOrderExpireHandler.expireIfNeeded(header)).thenReturn(true);
+
+        HoldExpireService service = newService();
+
+        assertThat(service.run().releasedOrders()).isEqualTo(1);
+        verify(payosOrderExpireHandler).expireIfNeeded(header);
+    }
+
+    @Test
     void run_usesCutoffNowMinusGrace() {
         // Ân hạn đọc từ app_config (không cố định 2 phút): đổi 5 phút → chỉ quét đơn quá giờ giữ hàng 5 phút
         when(appConfigService.paymentGraceMinutes()).thenReturn(5);
+        when(appConfigService.salesHoldWarnMinutes()).thenReturn(0);
         when(salesOrderRepository.findExpiredHolds(any())).thenReturn(List.of());
         HoldExpireService service = new HoldExpireService(
-                salesOrderRepository, payosOrderExpireHandler, appConfigService, Clock.fixed(NOW, ZoneOffset.UTC));
+                salesOrderRepository,
+                orderEventRepository,
+                payosOrderExpireHandler,
+                appConfigService,
+                Clock.fixed(NOW, ZoneOffset.UTC));
 
         assertThat(service.run().releasedOrders()).isZero();
 

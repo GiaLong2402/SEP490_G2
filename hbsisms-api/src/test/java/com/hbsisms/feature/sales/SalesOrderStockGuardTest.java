@@ -3,6 +3,7 @@ package com.hbsisms.feature.sales;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -26,7 +27,9 @@ import com.hbsisms.feature.payment.CustomerDebtLedgerRepository;
 import com.hbsisms.feature.payment.PaymentMethod;
 import com.hbsisms.feature.payment.PaymentRepository;
 import com.hbsisms.feature.sales.dto.OrderInputRequest;
+import com.hbsisms.feature.system.AppConfigService;
 import com.hbsisms.feature.system.AuditLogService;
+import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.UserRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -76,6 +79,10 @@ class SalesOrderStockGuardTest {
     private PayosLinkCanceller payosLinkCanceller;
     @Mock
     private AuditLogService auditLogService;
+    @Mock
+    private BusinessCodeService businessCodeService;
+    @Mock
+    private AppConfigService appConfigService;
 
     private SalesOrderService service;
 
@@ -98,7 +105,12 @@ class SalesOrderStockGuardTest {
                 auditLogService,
                 orderAllocationService,
                 payosLinkCanceller,
+                businessCodeService,
+                appConfigService,
                 Clock.fixed(Instant.parse("2026-11-11T00:00:00Z"), ZoneOffset.UTC));
+
+        lenient().when(businessCodeService.nextSalesOrderCode()).thenReturn("SO-2026-0001");
+        lenient().when(appConfigService.orderDiscountApprovePct()).thenReturn(5);
     }
 
     @Test

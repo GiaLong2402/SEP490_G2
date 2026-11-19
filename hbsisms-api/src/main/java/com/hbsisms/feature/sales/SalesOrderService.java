@@ -46,7 +46,9 @@ import com.hbsisms.feature.sales.dto.OrderReceiptLineResponse;
 import com.hbsisms.feature.sales.dto.OrderReceiptResponse;
 import com.hbsisms.feature.sales.dto.PaymentViewResponse;
 import com.hbsisms.feature.sales.dto.ShipAddressInput;
+import com.hbsisms.feature.system.AppConfigService;
 import com.hbsisms.feature.system.AuditLogService;
+import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
 import java.math.BigDecimal;
@@ -54,7 +56,6 @@ import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -106,6 +107,8 @@ public class SalesOrderService {
     private final AuditLogService auditLogService;
     private final OrderAllocationService orderAllocationService;
     private final PayosLinkCanceller payosLinkCanceller;
+    private final BusinessCodeService businessCodeService;
+    private final AppConfigService appConfigService;
     private final Clock clock;
 
     public SalesOrderService(
@@ -125,6 +128,8 @@ public class SalesOrderService {
             AuditLogService auditLogService,
             OrderAllocationService orderAllocationService,
             PayosLinkCanceller payosLinkCanceller,
+            BusinessCodeService businessCodeService,
+            AppConfigService appConfigService,
             Clock clock) {
         this.salesOrderRepository = salesOrderRepository;
         this.orderEventRepository = orderEventRepository;
@@ -142,6 +147,8 @@ public class SalesOrderService {
         this.auditLogService = auditLogService;
         this.orderAllocationService = orderAllocationService;
         this.payosLinkCanceller = payosLinkCanceller;
+        this.businessCodeService = businessCodeService;
+        this.appConfigService = appConfigService;
         this.clock = clock;
     }
 
@@ -216,12 +223,20 @@ public class SalesOrderService {
                 moneyOrZero(request.discountTotal()),
                 request.lines()));
 
-        // Sales nội bộ: thiếu tồn → không tạo đơn / không HOLD (khác luồng request đặt trước).
-        assertSufficientStock(priced);
+        // Sales nội bộ: thiếu tồn → không tạo đơn / không HOLD.
+        // Từ yêu cầu đã khả thi (allowOutstandingShortage): bỏ assert — hold phần có + outstanding phần thiếu.
+        if (!allowOutstandingShortage) {
+            assertSufficientStock(priced);
+        }
 
         Instant now = Instant.now(clock);
         SalesOrder order = new SalesOrder();
-        order.setCode(nextOrderCode());
+        BigDecimal discountTotal = moneyOrZero(request.discountTotal());
+        if (discountTotal.compareTo(priced.subtotal()) > 0) {
+            throw ApiException.badRequest("Giảm giá không được lớn hơn tạm tính");
+        }
+
+        order.setCode(businessCodeService.nextSalesOrderCode());
         order.setCustomer(customer);
         order.setCustomerName(customerName);
         order.setOrderType(request.orderType());
@@ -234,7 +249,7 @@ public class SalesOrderService {
         order.setShipAddress(shipAddress);
         order.setState(OrderState.PENDING);
         order.setSubtotal(priced.subtotal());
-        order.setDiscountTotal(moneyOrZero(request.discountTotal()));
+        order.setDiscountTotal(discountTotal);
         order.setShippingFee(moneyOrZero(request.shippingFee()));
         order.setTotal(priced.total());
         order.setVoucherCode(Strings.trimToNull(request.voucherCode()));
@@ -264,6 +279,17 @@ public class SalesOrderService {
 
         salesOrderRepository.save(order);
         addEvent(order, "created", "Tạo đơn", placedBy);
+
+        // Giảm giá / giá tay vượt ngưỡng → chờ Chủ duyệt, chưa hold / chưa PayOS.
+        if (!allowOutstandingShortage && requiresPriceApproval(priced, discountTotal)) {
+            createPriceOverrideApproval(order, placedBy, priced, discountTotal);
+            Map<String, Object> auditDetail = new HashMap<>();
+            auditDetail.put("total", order.getTotal());
+            auditDetail.put("awaitingPriceApproval", true);
+            auditLogService.record(actorId, "create", "sales_order", order.getId(), auditDetail);
+            return getDetail(order.getId());
+        }
+
         confirmOrder(order, placedBy, allowOutstandingShortage);
 
         Map<String, Object> auditDetail = new HashMap<>();
@@ -274,27 +300,48 @@ public class SalesOrderService {
     }
 
     /**
-     * Chủ duyệt/từ chối vượt hạn mức — gọi từ {@link com.hbsisms.feature.approval.ApprovalService}.
+     * Chủ duyệt/từ chối vượt hạn mức hoặc giảm giá / giá tay — gọi từ {@link com.hbsisms.feature.approval.ApprovalService}.
      */
     @Transactional
     public void applyOverLimitDecision(Long orderId, boolean approved, AppUser actor, String note) {
+        applyOrderApprovalDecision(orderId, approved, actor, note, ApprovalType.OVER_LIMIT_ORDER);
+    }
+
+    /** Duyệt giảm giá / sửa giá tay trên đơn. */
+    @Transactional
+    public void applyPriceOverrideDecision(Long orderId, boolean approved, AppUser actor, String note) {
+        applyOrderApprovalDecision(orderId, approved, actor, note, ApprovalType.ORDER_PRICE_OVERRIDE);
+    }
+
+    private void applyOrderApprovalDecision(
+            Long orderId, boolean approved, AppUser actor, String note, ApprovalType expectedType) {
+        salesOrderRepository.findByIdForUpdate(orderId);
         SalesOrder order = salesOrderRepository
                 .findWithDetailsById(orderId)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy đơn hàng"));
-        if (order.getState() == OrderState.CANCELLED) {
-            throw ApiException.conflict("Đơn đã hủy");
+        if (order.getState() == OrderState.CANCELLED || order.getState() == OrderState.EXPIRED) {
+            throw ApiException.conflict("Đơn đã hủy hoặc hết hạn");
         }
         if (order.getApprovedBy() != null || order.getState() != OrderState.PENDING) {
-            throw ApiException.conflict("Đơn không còn chờ duyệt vượt hạn mức");
+            throw ApiException.conflict("Đơn không còn chờ duyệt");
+        }
+        if (actor != null
+                && order.getPlacedBy() != null
+                && actor.getId() != null
+                && actor.getId().equals(order.getPlacedBy().getId())) {
+            throw ApiException.conflict("Người duyệt phải khác người tạo đơn");
         }
 
+        String label = expectedType == ApprovalType.ORDER_PRICE_OVERRIDE
+                ? "giảm giá / giá tay"
+                : "vượt hạn mức";
         String suffix = Strings.trimToNull(note) == null ? "" : ": " + note.trim();
         if (approved) {
             order.setApprovedBy(actor);
-            addEvent(order, "approved", "Chủ cửa hàng duyệt vượt hạn mức" + suffix, actor);
+            addEvent(order, "approved", "Chủ cửa hàng duyệt " + label + suffix, actor);
             confirmOrder(order, actor, false);
         } else {
-            cancelOrderInternal(order, "Từ chối duyệt vượt hạn mức" + suffix, actor, false);
+            cancelOrderInternal(order, "Từ chối duyệt " + label + suffix, actor, false);
         }
     }
 
@@ -491,6 +538,8 @@ public class SalesOrderService {
 
     @Transactional
     public void transition(Long orderId, OrderState target, Long actorId) {
+        // Khóa hàng đơn (FOR UPDATE) trong cùng transaction để tránh đổi trạng thái đồng thời.
+        salesOrderRepository.findByIdForUpdate(orderId);
         SalesOrder order = salesOrderRepository
                 .findWithDetailsById(orderId)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy đơn hàng"));
@@ -529,6 +578,8 @@ public class SalesOrderService {
         if (why == null) {
             throw ApiException.badRequest("Vui lòng nhập lý do hủy");
         }
+        // Khóa hàng đơn (FOR UPDATE) trong cùng transaction để tránh hủy/đổi trạng thái đồng thời.
+        salesOrderRepository.findByIdForUpdate(orderId);
         SalesOrder order = salesOrderRepository
                 .findWithDetailsById(orderId)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy đơn hàng"));
@@ -563,8 +614,12 @@ public class SalesOrderService {
         if (state == OrderState.DELIVERED
                 || state == OrderState.COMPLETED
                 || state == OrderState.CANCELLED
-                || state == OrderState.PARTIAL) {
-            throw ApiException.conflict("Đơn đã giao hoặc đã hủy, không thể hủy");
+                || state == OrderState.EXPIRED
+                || state == OrderState.PARTIAL
+                || state == OrderState.PREPARING
+                || state == OrderState.TO_SHIP) {
+            throw ApiException.conflict(
+                    "Đơn đã xuất kho, đang giao hoặc đã kết thúc — không hủy thẳng, dùng phiếu trả hàng (RET)");
         }
 
         boolean wasDebt = order.getPaymentStatus() == PaymentStatus.DEBT;
@@ -581,6 +636,7 @@ public class SalesOrderService {
         order.setState(OrderState.CANCELLED);
         if (hadPaid) {
             order.setPaymentStatus(PaymentStatus.REFUND_PENDING);
+            markPaymentsNeedRefund(order);
         } else {
             order.setPaymentStatus(PaymentStatus.UNPAID);
         }
@@ -863,7 +919,7 @@ public class SalesOrderService {
 
         Instant now = Instant.now(clock);
         SalesOrder order = new SalesOrder();
-        order.setCode(nextOrderCode());
+        order.setCode(businessCodeService.nextSalesOrderCode());
         order.setCustomer(customer);
         order.setCustomerName(customer.getName());
         order.setOrderType(orderType);
@@ -1036,7 +1092,10 @@ public class SalesOrderService {
                 && order.getState() != OrderState.DELIVERED
                 && order.getState() != OrderState.COMPLETED
                 && order.getState() != OrderState.CANCELLED
-                && order.getState() != OrderState.PARTIAL;
+                && order.getState() != OrderState.EXPIRED
+                && order.getState() != OrderState.PARTIAL
+                && order.getState() != OrderState.PREPARING
+                && order.getState() != OrderState.TO_SHIP;
 
         OrderListItemResponse header = OrderListItemResponse.from(order);
         Customer customer = order.getCustomer();
@@ -1085,22 +1144,51 @@ public class SalesOrderService {
                 canCancel);
     }
 
-    private String nextOrderCode() {
-        String year = LocalDate.now(clock).format(DateTimeFormatter.ofPattern("yyyy"));
-        String prefix = "SO-" + year + "-";
-        int next = salesOrderRepository.findCodesByPrefix(prefix).stream()
-                .map(code -> code.substring(prefix.length()))
-                .map(digits -> {
-                    try {
-                        return Integer.parseInt(digits);
-                    } catch (NumberFormatException ex) {
-                        return 0;
-                    }
-                })
-                .max(Integer::compareTo)
-                .orElse(0)
-                + 1;
-        return prefix + String.format(Locale.ROOT, "%04d", next);
+    private boolean requiresPriceApproval(PricingResultResponse priced, BigDecimal discountTotal) {
+        BigDecimal subtotal = priced.subtotal() == null ? ZERO : priced.subtotal();
+        if (subtotal.compareTo(ZERO) > 0 && discountTotal.compareTo(ZERO) > 0) {
+            BigDecimal pct = discountTotal
+                    .multiply(BigDecimal.valueOf(100))
+                    .divide(subtotal, 2, RoundingMode.HALF_UP);
+            if (pct.compareTo(BigDecimal.valueOf(appConfigService.orderDiscountApprovePct())) > 0) {
+                return true;
+            }
+        }
+        return priced.lines().stream().anyMatch(line -> line.priceBasis() == PriceBasis.MANUAL);
+    }
+
+    private void createPriceOverrideApproval(
+            SalesOrder order, AppUser requestedBy, PricingResultResponse priced, BigDecimal discountTotal) {
+        ApprovalTask task = new ApprovalTask();
+        task.setApprovalType(ApprovalType.ORDER_PRICE_OVERRIDE);
+        task.setRefType(REF_TYPE);
+        task.setRefId(order.getId());
+        task.setTitle("Duyệt giảm giá / giá tay đơn " + order.getCode());
+        task.setStatus(ApprovalStatus.PENDING);
+        task.setRequestedBy(requestedBy);
+        task.setNote("discount="
+                + discountTotal
+                + "; subtotal="
+                + priced.subtotal()
+                + "; ngưỡng%="
+                + appConfigService.orderDiscountApprovePct());
+        approvalTaskRepository.save(task);
+        addEvent(order, "awaiting_price_approval", "Chờ Chủ duyệt giảm giá / giá tay", requestedBy);
+        salesOrderRepository.save(order);
+    }
+
+    private void markPaymentsNeedRefund(SalesOrder order) {
+        for (Payment payment : paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(order.getId())) {
+            if (payment.getDirection() != PayDirection.IN || payment.getStatus() != PayTxnStatus.SUCCESS) {
+                continue;
+            }
+            Map<String, Object> raw = payment.getRawPayload() == null
+                    ? new HashMap<>()
+                    : new HashMap<>(payment.getRawPayload());
+            raw.put("needsRefund", true);
+            payment.setRawPayload(raw);
+            paymentRepository.save(payment);
+        }
     }
 
     private static OrderState parseState(String raw) {

@@ -1,5 +1,6 @@
 package com.hbsisms.feature.sales;
 
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -8,6 +9,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -16,6 +18,11 @@ public interface SalesOrderRepository
         extends JpaRepository<SalesOrder, Long>, JpaSpecificationExecutor<SalesOrder> {
 
     Optional<SalesOrder> findByCode(String code);
+
+    /** Khóa ghi bi quan (pessimistic) (SELECT ... FOR UPDATE) — gọi trong transaction trước khi đọc chi tiết/đổi trạng thái. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select o from SalesOrder o where o.id = :id")
+    Optional<SalesOrder> findByIdForUpdate(@Param("id") Long id);
 
     Optional<SalesOrder> findFirstBySourceQuote_Id(Long quoteId);
 
@@ -52,12 +59,28 @@ public interface SalesOrderRepository
     @Query("select o.code from SalesOrder o where o.code like concat(:prefix, '%')")
     List<String> findCodesByPrefix(@Param("prefix") String prefix);
 
-    /** Đơn online còn hold và đã quá hạn — dùng cho job hết hạn thanh toán. */
+    /** Đơn còn hold và đã quá hạn — dùng cho job hết hạn thanh toán / giữ Sales. */
     @Query("""
             select o from SalesOrder o
             where o.holdExpiresAt is not null
               and o.holdExpiresAt < :now
               and o.state <> com.hbsisms.feature.sales.OrderState.CANCELLED
+              and o.state <> com.hbsisms.feature.sales.OrderState.EXPIRED
             """)
     List<SalesOrder> findExpiredHolds(@Param("now") Instant now);
+
+    /** Đơn Sales sắp hết hạn giữ — báo trước (event). */
+    @Query("""
+            select o from SalesOrder o
+            where o.holdExpiresAt is not null
+              and o.holdExpiresAt > :now
+              and o.holdExpiresAt <= :warnBefore
+              and o.state <> com.hbsisms.feature.sales.OrderState.CANCELLED
+              and o.state <> com.hbsisms.feature.sales.OrderState.EXPIRED
+              and o.paymentStatus in (
+                    com.hbsisms.feature.payment.PaymentStatus.UNPAID,
+                    com.hbsisms.feature.payment.PaymentStatus.WAITING)
+            """)
+    List<SalesOrder> findHoldsNeedingWarn(
+            @Param("now") Instant now, @Param("warnBefore") Instant warnBefore);
 }

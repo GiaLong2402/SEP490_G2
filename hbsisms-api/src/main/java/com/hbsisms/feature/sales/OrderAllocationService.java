@@ -353,16 +353,22 @@ public class OrderAllocationService {
     }
 
     private void applyHoldExpiry(SalesOrder order) {
-        // Online + chưa Paid/Debt → hết hạn giữ theo app_config.
-        boolean online = order.getChannel() == SaleChannel.WEB || order.getChannel() == SaleChannel.APP;
+        // Chưa Paid/Debt + đã hold → hết hạn giữ theo app_config.
         boolean unpaid = order.getPaymentStatus() == PaymentStatus.UNPAID
                 || order.getPaymentStatus() == PaymentStatus.WAITING;
-        if (online && unpaid && order.getAllocationStatus() != AllocationStatus.NONE) {
+        if (!unpaid || order.getAllocationStatus() == AllocationStatus.NONE) {
+            order.setHoldExpiresAt(null);
+            return;
+        }
+        boolean online = order.getChannel() == SaleChannel.WEB || order.getChannel() == SaleChannel.APP;
+        if (online) {
             int minutes = appConfigService.paymentHoldMinutes();
             order.setHoldExpiresAt(Instant.now(clock).plusSeconds(minutes * 60L));
-        } else {
-            order.setHoldExpiresAt(null);
+            return;
         }
+        // Sales: quầy / điện thoại / Zalo / Facebook — giữ theo giờ Chủ chốt.
+        int hours = appConfigService.salesUnpaidHoldHours();
+        order.setHoldExpiresAt(Instant.now(clock).plusSeconds(hours * 3600L));
     }
 
     record HoldKey(long variantId, long lotId, long locationId) {}

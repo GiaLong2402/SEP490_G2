@@ -13,6 +13,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -33,6 +34,10 @@ public class ApprovalTask {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Setter(lombok.AccessLevel.NONE)
     private Long id;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -37,6 +38,7 @@ import com.hbsisms.feature.storefront.dto.CheckoutRequest;
 import com.hbsisms.feature.storefront.dto.CheckoutResponse;
 import com.hbsisms.feature.storefront.dto.ShortageItem;
 import com.hbsisms.feature.system.AppConfigService;
+import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.UserRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -90,6 +92,8 @@ class CheckoutServiceTest {
     private AppConfigService appConfigService;
     @Mock
     private PayosLinkService payosLinkService;
+    @Mock
+    private BusinessCodeService businessCodeService;
 
     private CheckoutService checkoutService;
 
@@ -111,7 +115,11 @@ class CheckoutServiceTest {
                 userRepository,
                 appConfigService,
                 payosLinkService,
+                businessCodeService,
                 CLOCK);
+
+        lenient().when(businessCodeService.nextSalesOrderCode()).thenReturn("SO-2026-0001");
+        lenient().when(businessCodeService.nextDeliveryCode()).thenReturn("DL-2026-0001");
     }
 
     @Test
@@ -187,7 +195,6 @@ class CheckoutServiceTest {
                 .thenReturn(new ResolvedPrice(new BigDecimal("189000.00"), PriceBasis.LIST));
         when(appConfigService.paymentHoldMinutes()).thenReturn(30);
         when(userRepository.findById(1L)).thenReturn(Optional.empty());
-        when(salesOrderRepository.findCodesByPrefix("SO-2026-")).thenReturn(List.of());
         when(salesOrderRepository.save(any(SalesOrder.class))).thenAnswer(inv -> {
             SalesOrder order = inv.getArgument(0);
             if (order.getId() == null) {
@@ -242,6 +249,200 @@ class CheckoutServiceTest {
         assertThatThrownBy(() -> checkoutService.checkout(1L, customer(3L), "k", request, null))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 1 — CheckoutService_checkout (UTCID02,05,07-10,12,14,15)
+    // ------------------------------------------------------------------
+
+    /** UTCID02 (and UTCID15): PICKUP success — order is pickup, no ship address, shipping fee 0. */
+    @Test
+    void checkout_pickupSuccess_createsPickupOrderAndDelivery() {
+        ProductVariant variant = sellableVariant(20L, 10L);
+        Customer customer = customer(3L);
+        OrderDetailResponse detail = orderDetail(55L, "SO-2026-0001");
+        Payment payment = payosPayment();
+        CheckoutPaymentResponse payBlock =
+                new CheckoutPaymentResponse(7L, new BigDecimal("189000"), "https://pay.example/ok", "qr", NOW);
+
+        when(idempotencyRepository.findByUserIdAndIdemKey(1L, "pickup-key")).thenReturn(Optional.empty());
+        when(productVariantRepository.findWithProductById(20L)).thenReturn(Optional.of(variant));
+        when(stockRepository.sumAvailableByVariantExcludingExpired(20L, LocalDate.of(2026, 11, 12)))
+                .thenReturn(10L);
+        when(priceResolver.resolve(3L, 20L, 2))
+                .thenReturn(new ResolvedPrice(new BigDecimal("189000.00"), PriceBasis.LIST));
+        when(appConfigService.paymentHoldMinutes()).thenReturn(30);
+        when(userRepository.findById(1L)).thenReturn(Optional.empty());
+        when(salesOrderRepository.save(any(SalesOrder.class))).thenAnswer(inv -> {
+            SalesOrder order = inv.getArgument(0);
+            if (order.getId() == null) {
+                ReflectionTestUtils.setField(order, "id", 55L);
+            }
+            return order;
+        });
+        when(orderAllocationService.holdForOrder(any(SalesOrder.class), eq(1L))).thenReturn(1);
+        when(salesOrderService.getDetail(55L)).thenReturn(detail);
+        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(55L)).thenReturn(List.of(payment));
+        when(payosLinkService.toCheckoutPayment(eq(payment), any())).thenReturn(payBlock);
+
+        CheckoutResponse response =
+                checkoutService.checkout(1L, customer, "pickup-key", pickupRequest(20L, 2), null);
+
+        assertThat(response.order().id()).isEqualTo(55L);
+        assertThat(response.payment().checkoutUrl()).isEqualTo("https://pay.example/ok");
+
+        ArgumentCaptor<SalesOrder> orderCaptor = ArgumentCaptor.forClass(SalesOrder.class);
+        verify(salesOrderRepository, org.mockito.Mockito.atLeastOnce()).save(orderCaptor.capture());
+        SalesOrder saved = orderCaptor.getAllValues().get(0);
+        assertThat(saved.getFulfillmentMethod()).isEqualTo(FulfillmentMethod.PICKUP);
+        assertThat(saved.getShipAddress()).isNull();
+        assertThat(saved.getPaymentMethod()).isEqualTo(PaymentMethod.PAYOS);
+        assertThat(saved.getShippingFee()).isEqualByComparingTo("0");
+        assertThat(saved.getSubtotal()).isEqualByComparingTo("378000.00");
+        assertThat(saved.getTotal()).isEqualByComparingTo("378000.00");
+        verify(customerAddressRepository, never()).findByIdAndCustomerId(any(), any());
+        verify(appConfigService, never()).shippingFeeDelivery();
+        verify(orderAllocationService).holdForOrder(any(SalesOrder.class), eq(1L));
+        verify(payosLinkService).createForCheckout(any(SalesOrder.class), eq(customer), any(Instant.class));
+    }
+
+    /** UTCID05: idempotency key longer than 100 chars → 400. */
+    @Test
+    void checkout_idempotencyKeyTooLong_rejects() {
+        String key = "k".repeat(101);
+
+        assertApi(
+                () -> checkoutService.checkout(1L, customer(3L), key, pickupRequest(20L, 1), null),
+                HttpStatus.BAD_REQUEST,
+                "Idempotency-Key tối đa 100 ký tự");
+        verify(idempotencyRepository, never()).findByUserIdAndIdemKey(any(), any());
+        verify(salesOrderRepository, never()).save(any());
+    }
+
+    /** UTCID07: paymentMethod CASH → 400. */
+    @Test
+    void checkout_paymentMethodCash_rejects() {
+        when(idempotencyRepository.findByUserIdAndIdemKey(1L, "k")).thenReturn(Optional.empty());
+        CheckoutRequest request = new CheckoutRequest(
+                FulfillmentMethod.PICKUP,
+                null,
+                LocalDate.of(2026, 11, 13),
+                "08:00-10:00",
+                null,
+                PaymentMethod.CASH,
+                List.of(new CheckoutLineRequest(20L, 1)));
+
+        assertApi(
+                () -> checkoutService.checkout(1L, customer(3L), "k", request, null),
+                HttpStatus.BAD_REQUEST,
+                "Checkout B2C hiện chỉ hỗ trợ PAYOS");
+        verify(salesOrderRepository, never()).save(any());
+    }
+
+    /** UTCID08: SHOP_DELIVERY without shipAddressId → 400. */
+    @Test
+    void checkout_shopDeliveryWithoutAddress_rejects() {
+        when(idempotencyRepository.findByUserIdAndIdemKey(1L, "k")).thenReturn(Optional.empty());
+        CheckoutRequest request = new CheckoutRequest(
+                FulfillmentMethod.SHOP_DELIVERY,
+                null,
+                LocalDate.of(2026, 11, 13),
+                "08:00-10:00",
+                null,
+                PaymentMethod.PAYOS,
+                List.of(new CheckoutLineRequest(20L, 1)));
+
+        assertApi(
+                () -> checkoutService.checkout(1L, customer(3L), "k", request, null),
+                HttpStatus.BAD_REQUEST,
+                "Vui lòng chọn địa chỉ giao hàng");
+        verify(salesOrderRepository, never()).save(any());
+    }
+
+    /** UTCID09: PARTNER_DELIVERY → 400. */
+    @Test
+    void checkout_partnerDelivery_rejects() {
+        when(idempotencyRepository.findByUserIdAndIdemKey(1L, "k")).thenReturn(Optional.empty());
+        CheckoutRequest request = new CheckoutRequest(
+                FulfillmentMethod.PARTNER_DELIVERY,
+                null,
+                LocalDate.of(2026, 11, 13),
+                "08:00-10:00",
+                null,
+                PaymentMethod.PAYOS,
+                List.of(new CheckoutLineRequest(20L, 1)));
+
+        assertApi(
+                () -> checkoutService.checkout(1L, customer(3L), "k", request, null),
+                HttpStatus.BAD_REQUEST,
+                "Cách nhận hàng không hỗ trợ trên web khách");
+        verify(salesOrderRepository, never()).save(any());
+    }
+
+    /** UTCID10: requestedDate null → 400. */
+    @Test
+    void checkout_requestedDateNull_rejects() {
+        when(idempotencyRepository.findByUserIdAndIdemKey(1L, "k")).thenReturn(Optional.empty());
+        CheckoutRequest request = new CheckoutRequest(
+                FulfillmentMethod.PICKUP,
+                null,
+                null,
+                "08:00-10:00",
+                null,
+                PaymentMethod.PAYOS,
+                List.of(new CheckoutLineRequest(20L, 1)));
+
+        assertApi(
+                () -> checkoutService.checkout(1L, customer(3L), "k", request, null),
+                HttpStatus.BAD_REQUEST,
+                "Ngày nhận hàng là bắt buộc");
+        verify(salesOrderRepository, never()).save(any());
+    }
+
+    /** UTCID12: timeWindow not in allowed set → 400. */
+    @Test
+    void checkout_invalidTimeWindow_rejects() {
+        when(idempotencyRepository.findByUserIdAndIdemKey(1L, "k")).thenReturn(Optional.empty());
+        CheckoutRequest request = new CheckoutRequest(
+                FulfillmentMethod.PICKUP,
+                null,
+                LocalDate.of(2026, 11, 13),
+                "99:00-100:00",
+                null,
+                PaymentMethod.PAYOS,
+                List.of(new CheckoutLineRequest(20L, 1)));
+
+        assertApi(
+                () -> checkoutService.checkout(1L, customer(3L), "k", request, null),
+                HttpStatus.BAD_REQUEST,
+                "Khung giờ không hợp lệ");
+        verify(salesOrderRepository, never()).save(any());
+    }
+
+    /** UTCID14: cart line references an unpublished product → 400. */
+    @Test
+    void checkout_unpublishedProduct_rejects() {
+        ProductVariant variant = sellableVariant(20L, 10L);
+        variant.getProduct().setPublished(false);
+        when(idempotencyRepository.findByUserIdAndIdemKey(1L, "k")).thenReturn(Optional.empty());
+        when(productVariantRepository.findWithProductById(20L)).thenReturn(Optional.of(variant));
+
+        assertApi(
+                () -> checkoutService.checkout(1L, customer(3L), "k", pickupRequest(20L, 1), null),
+                HttpStatus.BAD_REQUEST,
+                "Sản phẩm chưa được đăng bán công khai");
+        verify(stockRepository, never()).sumAvailableByVariantExcludingExpired(any(), any());
+        verify(salesOrderRepository, never()).save(any());
+        verify(orderAllocationService, never()).holdForOrder(any(), any());
+    }
+
+    private static void assertApi(
+            org.assertj.core.api.ThrowableAssert.ThrowingCallable call, HttpStatus status, String message) {
+        assertThatThrownBy(call).isInstanceOf(ApiException.class).satisfies(ex -> {
+            ApiException api = (ApiException) ex;
+            assertThat(api.getStatus()).isEqualTo(status);
+            assertThat(api.getMessage()).isEqualTo(message);
+        });
     }
 
     private static CheckoutRequest pickupRequest(long variantId, int qty) {

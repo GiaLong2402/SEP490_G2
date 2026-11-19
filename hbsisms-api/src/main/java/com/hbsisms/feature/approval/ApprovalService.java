@@ -72,6 +72,12 @@ public class ApprovalService {
                 .findById(actorUserId)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy người dùng"));
 
+        if (task.getRequestedBy() != null
+                && task.getRequestedBy().getId() != null
+                && task.getRequestedBy().getId().equals(actorUserId)) {
+            throw ApiException.conflict("Người duyệt phải khác người tạo yêu cầu duyệt");
+        }
+
         boolean approved = request.decision() == ApprovalStatus.APPROVED;
         if (CustomerPriceService.REF_TYPE_CUSTOMER_PRICE.equals(task.getRefType())) {
             applyCustomerPrice(task.getRefId(), approved, actor);
@@ -80,7 +86,11 @@ public class ApprovalService {
         } else if (DamageReportService.REF_TYPE.equals(task.getRefType())) {
             damageReportService.applyDecision(task.getRefId(), approved, actor, request.note());
         } else if (SalesOrderService.REF_TYPE.equals(task.getRefType())) {
-            salesOrderService.applyOverLimitDecision(task.getRefId(), approved, actor, request.note());
+            if (task.getApprovalType() == ApprovalType.ORDER_PRICE_OVERRIDE) {
+                salesOrderService.applyPriceOverrideDecision(task.getRefId(), approved, actor, request.note());
+            } else {
+                salesOrderService.applyOverLimitDecision(task.getRefId(), approved, actor, request.note());
+            }
         } else {
             throw ApiException.badRequest(
                     "Loại duyệt \"" + task.getRefType() + "\" chưa được hỗ trợ trên API");

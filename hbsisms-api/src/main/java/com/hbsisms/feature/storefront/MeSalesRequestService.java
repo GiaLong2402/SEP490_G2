@@ -12,11 +12,9 @@ import com.hbsisms.feature.sales.SalesRequestRepository;
 import com.hbsisms.feature.sales.SalesRequestService;
 import com.hbsisms.feature.sales.dto.SalesRequestInputRequest;
 import com.hbsisms.feature.storefront.dto.MeSalesRequestResponse;
+import com.hbsisms.feature.system.BusinessCodeService;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.util.Locale;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,10 +26,15 @@ public class MeSalesRequestService {
     private static final Sort LIST_SORT = Sort.by(Sort.Direction.DESC, "receivedAt", "id");
 
     private final SalesRequestRepository salesRequestRepository;
+    private final BusinessCodeService businessCodeService;
     private final Clock clock;
 
-    public MeSalesRequestService(SalesRequestRepository salesRequestRepository, Clock clock) {
+    public MeSalesRequestService(
+            SalesRequestRepository salesRequestRepository,
+            BusinessCodeService businessCodeService,
+            Clock clock) {
         this.salesRequestRepository = salesRequestRepository;
+        this.businessCodeService = businessCodeService;
         this.clock = clock;
     }
 
@@ -67,7 +70,7 @@ public class MeSalesRequestService {
         validateQty(request.requestedQty(), request.availableQty());
 
         SalesRequest row = new SalesRequest();
-        row.setCode(nextCode());
+        row.setCode(businessCodeService.nextSalesRequestCode());
         row.setCustomer(customer);
         row.setCustomerName(customer.getName());
         row.setChannel(SaleChannel.WEB);
@@ -92,21 +95,4 @@ public class MeSalesRequestService {
         }
     }
 
-    private String nextCode() {
-        String year = LocalDate.now(clock).format(DateTimeFormatter.ofPattern("yyyy"));
-        String prefix = "YC-" + year + "-";
-        int next = salesRequestRepository.findCodesByPrefix(prefix).stream()
-                .map(code -> code.substring(prefix.length()))
-                .map(digits -> {
-                    try {
-                        return Integer.parseInt(digits);
-                    } catch (NumberFormatException ex) {
-                        return 0;
-                    }
-                })
-                .max(Integer::compareTo)
-                .orElse(0)
-                + 1;
-        return prefix + String.format(Locale.ROOT, "%04d", next);
-    }
 }

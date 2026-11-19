@@ -120,12 +120,14 @@ class StockServiceTest {
     @Test
     void hold_rejectsNonPositiveQty() {
         assertBadRequest(() -> stockService.hold(mutation(0)));
+        assertBadRequest(() -> stockService.hold(mutation(-1)));
         verify(stockLedgerRepository, never()).save(any());
     }
 
     @Test
     void release_rejectsNonPositiveQty() {
         assertBadRequest(() -> stockService.release(mutation(0)));
+        assertBadRequest(() -> stockService.release(mutation(-1)));
         verify(stockLedgerRepository, never()).save(any());
     }
 
@@ -311,10 +313,47 @@ class StockServiceTest {
 
         assertThatThrownBy(() -> stockService.hold(mutation(5)))
                 .isInstanceOf(ApiException.class)
-                .extracting(ex -> ((ApiException) ex).getStatus())
-                .isEqualTo(HttpStatus.CONFLICT);
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(api.getMessage()).isEqualTo("Không đủ tồn kho");
+                });
         verify(stockLedgerRepository, never()).save(any());
         verify(stockRepository, never()).adjustQtyHeld(anyLong(), anyInt());
+    }
+
+    @Test
+    void hold_notFoundWhenStockMissing() {
+        when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 10L, 100L))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> stockService.hold(mutation(2)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+                    assertThat(api.getMessage()).isEqualTo("Không tìm thấy dòng tồn");
+                });
+        verify(stockRepository, never()).adjustQtyAvailable(anyLong(), anyInt());
+        verify(stockRepository, never()).adjustQtyHeld(anyLong(), anyInt());
+        verify(stockLedgerRepository, never()).save(any());
+    }
+
+    @Test
+    void release_notFoundWhenStockMissing() {
+        when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 10L, 100L))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> stockService.release(mutation(2)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+                    assertThat(api.getMessage()).isEqualTo("Không tìm thấy dòng tồn");
+                });
+        verify(stockRepository, never()).adjustQtyHeld(anyLong(), anyInt());
+        verify(stockRepository, never()).adjustQtyAvailable(anyLong(), anyInt());
+        verify(stockLedgerRepository, never()).save(any());
     }
 
     @Test
@@ -743,8 +782,11 @@ class StockServiceTest {
     private void assertBadRequest(Runnable action) {
         assertThatThrownBy(action::run)
                 .isInstanceOf(ApiException.class)
-                .extracting(ex -> ((ApiException) ex).getStatus())
-                .isEqualTo(HttpStatus.BAD_REQUEST);
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(api.getMessage()).isEqualTo("Số lượng phải là số nguyên dương");
+                });
     }
 
     private Stock stock(long id, int available) {
