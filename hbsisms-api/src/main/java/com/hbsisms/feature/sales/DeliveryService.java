@@ -3,21 +3,30 @@ package com.hbsisms.feature.sales;
 import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.common.text.Strings;
 import com.hbsisms.feature.payment.PaymentStatus;
+import com.hbsisms.common.web.PageRequests;
+import com.hbsisms.common.web.PageResponse;
+import com.hbsisms.feature.sales.dto.DeliveryListItemResponse;
 import com.hbsisms.feature.sales.dto.DeliveryUpdateRequest;
 import com.hbsisms.feature.system.AuditLogService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Cập nhật đợt giao: bắt đầu giao / đã giao / thất bại / gán tài xế.
+ * Cập nhật đợt giao: bắt đầu giao / đã giao / thất bại / gán tài xế (lấy tại quầy: khách đã nhận / không đến).
  * Đồng bộ trạng thái đơn theo tổng khay đã giao ({@code partial} / {@code delivered}).
  */
 @Service
@@ -26,6 +35,22 @@ public class DeliveryService {
     private static final Map<DeliveryState, Set<DeliveryState>> ALLOWED = Map.of(
             DeliveryState.READY, EnumSet.of(DeliveryState.GOING),
             DeliveryState.GOING, EnumSet.of(DeliveryState.DELIVERED, DeliveryState.FAILED));
+
+    /** Khách lấy tại quầy: không có bước "đang giao" — sẵn sàng → khách đã nhận / khách không đến. */
+    private static final Map<DeliveryState, Set<DeliveryState>> ALLOWED_PICKUP = Map.of(
+            DeliveryState.READY, EnumSet.of(DeliveryState.DELIVERED, DeliveryState.FAILED));
+
+    /** Mặc định: ngày giao mới nhất trước; cùng ngày thì khung giờ sớm trước (chưa có khung giờ xếp cuối); rồi id mới trước. */
+    private static final Sort LIST_SORT_NEWEST = Sort.by(
+            Sort.Order.desc("scheduledDate"),
+            Sort.Order.asc("timeWindow"),
+            Sort.Order.desc("id"));
+
+    /** {@code sort=asc}: ngày giao cũ nhất trước; cùng ngày thì khung giờ sớm trước; rồi id cũ trước. */
+    private static final Sort LIST_SORT_OLDEST = Sort.by(
+            Sort.Order.asc("scheduledDate"),
+            Sort.Order.asc("timeWindow"),
+            Sort.Order.asc("id"));
 
     private final DeliveryRepository deliveryRepository;
     private final SalesOrderRepository salesOrderRepository;
@@ -53,6 +78,54 @@ public class DeliveryService {
         this.userRepository = userRepository;
         this.auditLogService = auditLogService;
         this.clock = clock;
+    }
+
+    /** Danh sách đợt giao cho màn Giao hàng (web nội bộ). */
+    @Transactional(readOnly = true)
+    public PageResponse<DeliveryListItemResponse> search(
+            String q,
+            String state,
+            String date,
+            Long assignedTo,
+            String timeWindow,
+            String fulfillmentMethod,
+            String sort,
+            int page,
+            int pageSize) {
+        Sort listSort = "asc".equalsIgnoreCase(sort == null ? "" : sort.trim())
+                ? LIST_SORT_OLDEST
+                : LIST_SORT_NEWEST;
+        Page<Delivery> deliveries = deliveryRepository.findAll(
+                DeliverySpecifications.search(
+                        q,
+                        parseState(state),
+                        parseDate(date),
+                        assignedTo,
+                        timeWindow,
+                        parseFulfillmentMethod(fulfillmentMethod)),
+                PageRequests.of(page, pageSize, listSort));
+        Map<Long, Integer> orderKhay = orderKhayForWholeOrderLegs(deliveries.getContent());
+        return PageResponse.from(deliveries.map(
+                delivery -> DeliveryListItemResponse.from(delivery, orderKhay.get(delivery.getOrder().getId()))));
+    }
+
+    /**
+     * Đợt giao "Trọn đơn" (checkout tạo, {@code items} rỗng) giao cả đơn → tổng khay lấy từ các dòng đơn.
+     * Gom 1 query cho cả trang.
+     */
+    private Map<Long, Integer> orderKhayForWholeOrderLegs(List<Delivery> deliveries) {
+        Set<Long> orderIds = deliveries.stream()
+                .filter(delivery -> delivery.getItems().isEmpty())
+                .map(delivery -> delivery.getOrder().getId())
+                .collect(Collectors.toSet());
+        if (orderIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Integer> totals = new HashMap<>();
+        for (Object[] row : deliveryRepository.sumQtyKhayByOrderIds(orderIds)) {
+            totals.put((Long) row[0], row[1] == null ? 0 : ((Number) row[1]).intValue());
+        }
+        return totals;
     }
 
     @Transactional
@@ -106,7 +179,8 @@ public class DeliveryService {
     private void applyState(
             Delivery delivery, DeliveryState target, String note, AppUser actor, Long actorId) {
         DeliveryState current = delivery.getState();
-        Set<DeliveryState> allowed = ALLOWED.getOrDefault(current, Set.of());
+        boolean pickup = delivery.getFulfillmentMethod() == FulfillmentMethod.PICKUP;
+        Set<DeliveryState> allowed = (pickup ? ALLOWED_PICKUP : ALLOWED).getOrDefault(current, Set.of());
         if (!allowed.contains(target)) {
             throw ApiException.conflict("Không thể chuyển đợt giao sang trạng thái này");
         }
@@ -133,10 +207,10 @@ public class DeliveryService {
             addEvent(order, "delivery", "Bắt đầu giao " + leg, actor);
         } else if (target == DeliveryState.FAILED) {
             String reason = note == null ? "" : ": " + note;
-            addEvent(order, "delivery", "Giao thất bại " + leg + reason, actor);
+            addEvent(order, "delivery", (pickup ? "Khách không đến lấy " : "Giao thất bại ") + leg + reason, actor);
         } else if (target == DeliveryState.DELIVERED) {
             delivery.setDeliveredAt(Instant.now(clock));
-            addEvent(order, "delivery", "Đã giao " + leg, actor);
+            addEvent(order, "delivery", (pickup ? "Khách đã nhận " : "Đã giao ") + leg, actor);
             syncOrderAfterDelivery(order, actor, actorId);
         }
 
@@ -196,5 +270,39 @@ public class DeliveryService {
         event.setDescription(description);
         event.setCreatedBy(actor);
         orderEventRepository.save(event);
+    }
+
+    private static DeliveryState parseState(String raw) {
+        if (Strings.trimToNull(raw) == null) {
+            return null;
+        }
+        try {
+            return DeliveryState.fromCode(raw);
+        } catch (IllegalArgumentException ex) {
+            throw ApiException.badRequest(ex.getMessage());
+        }
+    }
+
+    private static FulfillmentMethod parseFulfillmentMethod(String raw) {
+        if (Strings.trimToNull(raw) == null) {
+            return null;
+        }
+        try {
+            return FulfillmentMethod.fromCode(raw);
+        } catch (IllegalArgumentException ex) {
+            throw ApiException.badRequest(ex.getMessage());
+        }
+    }
+
+    private static LocalDate parseDate(String raw) {
+        String value = Strings.trimToNull(raw);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(value);
+        } catch (DateTimeParseException ex) {
+            throw ApiException.badRequest("Ngày giao không hợp lệ (định dạng yyyy-MM-dd): " + raw);
+        }
     }
 }
