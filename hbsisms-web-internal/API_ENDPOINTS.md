@@ -7,9 +7,9 @@ Tổng cộng 97 endpoint, sinh từ `src/features/*/mock.ts`. Kiểu dữ liệ
 
 | Phương thức | Đường dẫn |
 |---|---|
-| GET | `/admin/users` | response có `isCourier` |
-| POST | `/admin/users` | body có `isCourier` (mặc định false) |
-| PUT | `/admin/users/:id` | body có `isCourier` |
+| GET | `/admin/users` | `position` = `"Giao hàng"` → người giao |
+| POST | `/admin/users` | body `position`: `null` (Không) hoặc `"Giao hàng"` (dropdown Chức vụ) |
+| PUT | `/admin/users/:id` | body `position` như POST; BE chuẩn hóa "giao hang"/"GIAO HÀNG" → `"Giao hàng"` |
 | GET | `/admin/roles` |
 | PUT | `/admin/roles/:id` |
 | GET | `/admin/config` |
@@ -70,8 +70,8 @@ Contract FE: `features/deliveries/api.ts`. **Cường (Inter 3):** `GET /deliver
 
 | Phương thức | Đường dẫn | Ghi chú |
 |---|---|---|
-| GET | `/deliveries/couriers` | Cường — `{ id, fullName, position }[]`; user `isCourier=true` + active |
-| GET | `/deliveries` | Long — chưa BE |
+| GET | `/deliveries/couriers` | Cường — `{ id, fullName, position }[]`; user active + `position = "Giao hàng"` (không dùng cờ riêng) |
+| GET | `/deliveries` | Long — đã có BE (lọc, sort `asc`, tổng khay) |
 | POST | `/deliveries` | Long — chưa BE |
 | PATCH | `/deliveries/:id` | state/assign; **DELIVERED → OUT theo đợt** (`refType=delivery`) |
 
