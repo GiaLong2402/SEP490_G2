@@ -72,11 +72,7 @@ public class ApprovalService {
                 .findById(actorUserId)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy người dùng"));
 
-        if (task.getRequestedBy() != null
-                && task.getRequestedBy().getId() != null
-                && task.getRequestedBy().getId().equals(actorUserId)) {
-            throw ApiException.conflict("Người duyệt phải khác người tạo yêu cầu duyệt");
-        }
+        // Chỉ admin/owner (quyền approve) vào được đây; được tự duyệt yêu cầu do chính mình tạo.
 
         boolean approved = request.decision() == ApprovalStatus.APPROVED;
         if (CustomerPriceService.REF_TYPE_CUSTOMER_PRICE.equals(task.getRefType())) {

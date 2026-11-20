@@ -385,12 +385,7 @@ public class SalesOrderService {
         if (order.getApprovedBy() != null || order.getState() != OrderState.PENDING) {
             throw ApiException.conflict("Đơn không còn chờ duyệt");
         }
-        if (actor != null
-                && order.getPlacedBy() != null
-                && actor.getId() != null
-                && actor.getId().equals(order.getPlacedBy().getId())) {
-            throw ApiException.conflict("Người duyệt phải khác người tạo đơn");
-        }
+        // Chỉ admin/owner (quyền approve) gọi được; được tự duyệt đơn do chính mình tạo.
 
         String label = expectedType == ApprovalType.ORDER_PRICE_OVERRIDE
                 ? "giảm giá / giá tay"
