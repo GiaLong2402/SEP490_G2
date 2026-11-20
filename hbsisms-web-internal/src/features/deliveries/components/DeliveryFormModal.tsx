@@ -6,6 +6,7 @@ import { num, todayISO } from '@/shared/lib/format';
 import { Button, Field, Input, Modal, Select } from '@/shared/ui';
 import { deliveriesApi } from '../api';
 import { useCouriers } from '../hooks';
+import { DELIVERY_TIME_WINDOWS } from '../timeWindows';
 
 export interface DeliveryOrderContext {
   id: ID;
@@ -32,7 +33,7 @@ export function DeliveryFormModal({ open, order, onClose }: { open: boolean; ord
       .reduce((sum, i) => sum + i.qtyKhay, 0);
 
   const [scheduledDate, setScheduledDate] = useState(todayISO());
-  const [timeWindow, setTimeWindow] = useState('08:00 – 11:00');
+  const [timeWindow, setTimeWindow] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
   const [carrier, setCarrier] = useState('');
   const [touched, setTouched] = useState(false);
@@ -48,6 +49,7 @@ export function DeliveryFormModal({ open, order, onClose }: { open: boolean; ord
     if (!open) return;
     setTouched(false);
     setScheduledDate(todayISO());
+    setTimeWindow('');
     setAssignedTo('');
     setCarrier('');
   }, [open]);
@@ -99,10 +101,13 @@ export function DeliveryFormModal({ open, order, onClose }: { open: boolean; ord
               <p className="flex h-[34px] items-center text-body text-ink">{fulfillmentLabels[method]}</p>
             </Field>
             <Field label="Ngày giao" required error={touched && !scheduledDate ? 'Vui lòng chọn ngày' : undefined}>
-              <Input type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} />
+              <Input type="date" min={todayISO()} value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} />
             </Field>
             <Field label="Khung giờ">
-              <Input value={timeWindow} onChange={(e) => setTimeWindow(e.target.value)} />
+              <Select value={timeWindow} onChange={(e) => setTimeWindow(e.target.value)}>
+                <option value="">Chưa chọn</option>
+                {DELIVERY_TIME_WINDOWS.map((w) => <option key={w} value={w}>{w}</option>)}
+              </Select>
             </Field>
             {method === 'shop_delivery' && (
               <Field label="Nhân viên giao" className="sm:col-span-3">

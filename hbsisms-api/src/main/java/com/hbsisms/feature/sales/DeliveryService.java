@@ -2,17 +2,23 @@ package com.hbsisms.feature.sales;
 
 import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.common.text.Strings;
+import com.hbsisms.feature.customer.CustomerAddress;
+import com.hbsisms.feature.customer.CustomerAddressRepository;
 import com.hbsisms.feature.payment.PaymentStatus;
 import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
+import com.hbsisms.feature.sales.dto.DeliveryCreateRequest;
 import com.hbsisms.feature.sales.dto.DeliveryListItemResponse;
 import com.hbsisms.feature.sales.dto.DeliveryUpdateRequest;
 import com.hbsisms.feature.system.AuditLogService;
+import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.AppUser;
+import com.hbsisms.feature.user.Couriers;
 import com.hbsisms.feature.user.UserRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -26,7 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Cập nhật đợt giao: bắt đầu giao / đã giao / thất bại / gán tài xế (lấy tại quầy: khách đã nhận / không đến).
+ * Tạo giao hàng (mọi đơn có giao hàng, kể cả đơn Sales tạo) — một đơn giao một lần, trọn đơn. Cập nhật đợt giao: bắt đầu giao / đã giao / thất bại / gán tài xế (lấy tại quầy: khách đã nhận / không đến).
  * Đồng bộ trạng thái đơn theo tổng khay đã giao ({@code partial} / {@code delivered}).
  */
 @Service
@@ -52,12 +58,22 @@ public class DeliveryService {
             Sort.Order.asc("timeWindow"),
             Sort.Order.asc("id"));
 
+    /** Inter 3 dòng 20: chỉ tạo đợt giao khi đơn Chờ giao / Giao một phần. */
+    private static final Set<OrderState> CREATABLE_ORDER_STATES = EnumSet.of(OrderState.TO_SHIP, OrderState.PARTIAL);
+
+    /** Nhãn chuyến giao — mỗi đơn giao một lần, trọn đơn (giống checkout web). */
+    static final String WHOLE_ORDER_LABEL = "Trọn đơn";
+
+    private static final DateTimeFormatter EVENT_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
     private final DeliveryRepository deliveryRepository;
     private final SalesOrderRepository salesOrderRepository;
     private final SalesOrderLineRepository salesOrderLineRepository;
     private final OrderEventRepository orderEventRepository;
     private final OrderAllocationService orderAllocationService;
     private final UserRepository userRepository;
+    private final CustomerAddressRepository customerAddressRepository;
+    private final BusinessCodeService businessCodeService;
     private final AuditLogService auditLogService;
     private final Clock clock;
 
@@ -68,6 +84,8 @@ public class DeliveryService {
             OrderEventRepository orderEventRepository,
             OrderAllocationService orderAllocationService,
             UserRepository userRepository,
+            CustomerAddressRepository customerAddressRepository,
+            BusinessCodeService businessCodeService,
             AuditLogService auditLogService,
             Clock clock) {
         this.deliveryRepository = deliveryRepository;
@@ -76,6 +94,8 @@ public class DeliveryService {
         this.orderEventRepository = orderEventRepository;
         this.orderAllocationService = orderAllocationService;
         this.userRepository = userRepository;
+        this.customerAddressRepository = customerAddressRepository;
+        this.businessCodeService = businessCodeService;
         this.auditLogService = auditLogService;
         this.clock = clock;
     }
@@ -126,6 +146,176 @@ public class DeliveryService {
             totals.put((Long) row[0], row[1] == null ? 0 : ((Number) row[1]).intValue());
         }
         return totals;
+    }
+
+    /**
+     * Tạo giao hàng cho đơn (web nội bộ, nút "Tạo giao hàng" ở chi tiết đơn) — áp dụng cả đơn Sales tạo /
+     * từ yêu cầu / từ báo giá (checkout web tự có đợt "Trọn đơn").
+     * <ul>
+     *   <li>Đơn Chờ giao / Giao một phần; đơn vượt hạn mức phải được Chủ duyệt.</li>
+     *   <li>Ngày giao bắt buộc, không ở quá khứ; khung giờ (nếu có) thuộc {@link DeliveryTimeWindows}.</li>
+     *   <li>Giao tận nơi / đối tác: cần địa chỉ (mặc định địa chỉ trên đơn) thuộc đúng khách của đơn;
+     *       khoảng cách / trong bán kính chép từ địa chỉ (đã tính bằng Goong lúc lưu địa chỉ).</li>
+     *   <li>Người giao chỉ cho cửa hàng tự giao, phải là {@link Couriers người giao}.</li>
+     *   <li>Một đơn giao một lần, trọn đơn: đơn đã có chuyến chưa thất bại → 409; chuyến trước thất bại
+     *       thì được tạo chuyến mới (giao lại). Mỗi dòng phải giao đủ số khay đặt.</li>
+     *   <li>Mã chuyến giao theo dãy chung {@code DL-<năm>-<số>} ({@link BusinessCodeService}).</li>
+     * </ul>
+     * Khóa dòng đơn trong lúc kiểm tra để 2 người tạo cùng lúc không ra 2 chuyến.
+     */
+    @Transactional
+    public DeliveryListItemResponse create(DeliveryCreateRequest request, Long actorId) {
+        if (request == null || request.orderId() == null) {
+            throw ApiException.badRequest("Thiếu đơn hàng");
+        }
+        SalesOrder order = salesOrderRepository
+                .findByIdForUpdate(request.orderId())
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy đơn hàng"));
+        if (order.isOverLimit() && order.getApprovedBy() == null) {
+            throw ApiException.conflict("Đơn vượt hạn mức, cần Chủ cửa hàng duyệt trước");
+        }
+        if (!CREATABLE_ORDER_STATES.contains(order.getState())) {
+            throw ApiException.conflict("Chỉ tạo đợt giao khi đơn ở trạng thái Chờ giao hoặc Giao một phần");
+        }
+
+        FulfillmentMethod method = request.fulfillmentMethod() != null
+                ? request.fulfillmentMethod()
+                : order.getFulfillmentMethod();
+
+        LocalDate scheduledDate = parseDate(request.scheduledDate());
+        if (scheduledDate == null) {
+            throw ApiException.badRequest("Vui lòng chọn ngày giao");
+        }
+        if (scheduledDate.isBefore(LocalDate.now(clock))) {
+            throw ApiException.badRequest("Ngày giao không được ở quá khứ");
+        }
+        String timeWindow = Strings.trimToNull(request.timeWindow());
+        if (timeWindow != null && !DeliveryTimeWindows.isValid(timeWindow)) {
+            throw ApiException.badRequest(
+                    "Khung giờ không hợp lệ (chọn " + String.join(", ", DeliveryTimeWindows.ALL) + ")");
+        }
+
+        CustomerAddress address = method == FulfillmentMethod.PICKUP ? null : resolveAddress(order, request.addressId());
+        AppUser courier = resolveCourier(method, request.assignedTo());
+
+        List<Delivery> existing = deliveryRepository.findByOrder_IdOrderByIdAsc(order.getId());
+        if (existing.stream().anyMatch(d -> d.getState() != DeliveryState.FAILED)) {
+            throw ApiException.conflict(
+                    "Đơn đã có chuyến giao — mỗi đơn giao một lần (trọn đơn), chỉ tạo lại khi chuyến trước thất bại");
+        }
+        int attempt = existing.size() + 1;
+        List<SalesOrderLine> lines = salesOrderLineRepository.findByOrder_IdOrderByIdAsc(order.getId());
+        List<DeliveryItem> items = wholeOrderItems(lines, request.items());
+        String legLabel = WHOLE_ORDER_LABEL;
+
+        Delivery delivery = new Delivery();
+        delivery.setOrder(order);
+        delivery.setCode(businessCodeService.nextDeliveryCode());
+        delivery.setLegLabel(legLabel);
+        delivery.setScheduledDate(scheduledDate);
+        delivery.setTimeWindow(timeWindow);
+        delivery.setFulfillmentMethod(method);
+        delivery.setAddress(address);
+        delivery.setInRadius(address == null || address.isInDeliveryRadius());
+        delivery.setDistanceKm(address == null ? null : address.getDistanceKm());
+        delivery.setAssignedTo(courier);
+        delivery.setCarrier(method == FulfillmentMethod.PARTNER_DELIVERY ? Strings.trimToNull(request.carrier()) : null);
+        delivery.setItems(items);
+        delivery.setState(DeliveryState.READY);
+        delivery.setNote(Strings.trimToNull(request.note()));
+        Delivery saved = deliveryRepository.save(delivery);
+
+        int qtyKhay = items.stream().mapToInt(DeliveryItem::qtyKhay).sum();
+        AppUser actor = actorId == null ? null : userRepository.findById(actorId).orElse(null);
+        addEvent(order, "delivery", "Tạo giao hàng " + legLabel
+                + (attempt > 1 ? " (giao lại lần " + attempt + ")" : "")
+                + " · " + scheduledDate.format(EVENT_DATE)
+                + (timeWindow == null ? "" : " " + timeWindow) + " · " + qtyKhay + " khay", actor);
+
+        Map<String, Object> detail = new HashMap<>();
+        detail.put("orderId", order.getId());
+        detail.put("legLabel", legLabel);
+        detail.put("attempt", attempt);
+        detail.put("scheduledDate", scheduledDate.toString());
+        detail.put("fulfillmentMethod", method.code());
+        detail.put("qtyKhay", qtyKhay);
+        auditLogService.record(actorId, "create", "delivery", saved.getId(), detail);
+
+        return DeliveryListItemResponse.from(saved, null);
+    }
+
+    /** Địa chỉ giao: gửi lên hoặc địa chỉ trên đơn; phải thuộc đúng khách của đơn. */
+    private CustomerAddress resolveAddress(SalesOrder order, Long requestedAddressId) {
+        Long addressId = requestedAddressId != null
+                ? requestedAddressId
+                : (order.getShipAddress() == null ? null : order.getShipAddress().getId());
+        if (addressId == null) {
+            throw ApiException.badRequest("Đợt giao tận nơi cần địa chỉ giao hàng");
+        }
+        CustomerAddress address = customerAddressRepository
+                .findById(addressId)
+                .orElseThrow(() -> ApiException.badRequest("Không tìm thấy địa chỉ giao hàng"));
+        Long orderCustomerId = order.getCustomer() == null ? null : order.getCustomer().getId();
+        Long addressCustomerId = address.getCustomer() == null ? null : address.getCustomer().getId();
+        if (orderCustomerId == null || !orderCustomerId.equals(addressCustomerId)) {
+            throw ApiException.badRequest("Địa chỉ không thuộc khách của đơn");
+        }
+        return address;
+    }
+
+    /** Người giao (không bắt buộc lúc tạo): chỉ cho cửa hàng tự giao, phải là người giao đang hoạt động. */
+    private AppUser resolveCourier(FulfillmentMethod method, Long assignedTo) {
+        if (assignedTo == null) {
+            return null;
+        }
+        if (method != FulfillmentMethod.SHOP_DELIVERY) {
+            throw ApiException.badRequest("Chỉ phân công nhân viên giao cho đợt cửa hàng tự giao");
+        }
+        AppUser courier = userRepository
+                .findById(assignedTo)
+                .orElseThrow(() -> ApiException.badRequest("Không tìm thấy nhân viên giao hàng"));
+        if (!Couriers.isCourier(courier)) {
+            throw ApiException.badRequest("Nhân viên này không phải người giao hàng (cần chức vụ \""
+                    + Couriers.POSITION + "\" và đang hoạt động)");
+        }
+        return courier;
+    }
+
+    /**
+     * Một đơn giao một lần, trọn đơn: mỗi dòng phải giao đủ số khay đã đặt.
+     * {@code requested} rỗng → hệ thống tự lấy đủ các dòng của đơn.
+     */
+    private static List<DeliveryItem> wholeOrderItems(List<SalesOrderLine> orderLines, List<DeliveryItem> requested) {
+        List<DeliveryItem> full = orderLines.stream()
+                .filter(line -> line.getQtyKhay() > 0)
+                .map(line -> new DeliveryItem(line.getId(), line.getQtyKhay()))
+                .toList();
+        if (full.isEmpty()) {
+            throw ApiException.conflict("Đơn không có khay nào để giao");
+        }
+        if (requested == null || requested.isEmpty()) {
+            return full;
+        }
+        Set<Long> orderLineIds = orderLines.stream().map(SalesOrderLine::getId).collect(Collectors.toSet());
+        Map<Long, Integer> got = new HashMap<>();
+        for (DeliveryItem item : requested) {
+            if (item == null || item.orderLineId() == null) {
+                throw ApiException.badRequest("Thiếu dòng hàng trong chuyến giao");
+            }
+            if (!orderLineIds.contains(item.orderLineId())) {
+                throw ApiException.badRequest("Dòng hàng không thuộc đơn này");
+            }
+            if (got.put(item.orderLineId(), item.qtyKhay()) != null) {
+                throw ApiException.badRequest("Dòng hàng bị lặp trong chuyến giao");
+            }
+        }
+        for (SalesOrderLine line : orderLines) {
+            if (got.getOrDefault(line.getId(), 0) != line.getQtyKhay()) {
+                throw ApiException.conflict("Mỗi đơn giao một lần, trọn đơn — dòng #" + line.getId()
+                        + " phải giao đủ " + line.getQtyKhay() + " khay");
+            }
+        }
+        return full;
     }
 
     @Transactional

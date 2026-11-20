@@ -8,10 +8,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.hbsisms.common.exception.ApiException;
+import com.hbsisms.feature.customer.CustomerAddressRepository;
 import com.hbsisms.feature.payment.PaymentMethod;
 import com.hbsisms.feature.payment.PaymentStatus;
 import com.hbsisms.feature.sales.dto.DeliveryUpdateRequest;
 import com.hbsisms.feature.system.AuditLogService;
+import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
 import java.time.Clock;
@@ -42,6 +44,10 @@ class DeliveryServiceTest {
     @Mock
     private UserRepository userRepository;
     @Mock
+    private CustomerAddressRepository customerAddressRepository;
+    @Mock
+    private BusinessCodeService businessCodeService;
+    @Mock
     private AuditLogService auditLogService;
 
     private DeliveryService service;
@@ -57,6 +63,8 @@ class DeliveryServiceTest {
                 orderEventRepository,
                 orderAllocationService,
                 userRepository,
+                customerAddressRepository,
+                businessCodeService,
                 auditLogService,
                 clock);
         actor = new AppUser();

@@ -72,7 +72,8 @@ export default function OrderDetailPage() {
   if (error || !order) return <ErrorState error={error} onRetry={refetch} />;
 
   const orderedKhay = order.lines.reduce((s, l) => s + l.qtyKhay, 0);
-  const scheduledKhay = order.deliveries.filter((d) => d.state !== 'failed').reduce((s, d) => s + (d.items ?? []).reduce((a, i) => a + i.qtyKhay, 0), 0);
+  // Đợt "Trọn đơn" (checkout web) có items rỗng = đã xếp lịch cả đơn.
+  const scheduledKhay = order.deliveries.filter((d) => d.state !== 'failed').reduce((s, d) => s + ((d.items ?? []).length === 0 ? orderedKhay : (d.items ?? []).reduce((a, i) => a + i.qtyKhay, 0)), 0);
   const canDeliver = ['to_ship', 'partial'].includes(order.state) && scheduledKhay < orderedKhay;
   const outstanding = order.total - order.paidAmount;
   // Inter 3 dòng 8: thu = orders|debt; chặn khi đang có link PayOS chờ thanh toán.
