@@ -4,6 +4,8 @@ import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.common.text.Strings;
 import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
+import com.hbsisms.feature.auth.AuthIdentity;
+import com.hbsisms.feature.auth.AuthIdentityRepository;
 import com.hbsisms.feature.role.AppRole;
 import com.hbsisms.feature.role.RoleService;
 import com.hbsisms.feature.user.dto.UserRequest;
@@ -31,11 +33,17 @@ public class UserService {
     private final UserRepository userRepository;
     private final RoleService roleService;
     private final PasswordEncoder passwordEncoder;
+    private final AuthIdentityRepository authIdentityRepository;
 
-    public UserService(UserRepository userRepository, RoleService roleService, PasswordEncoder passwordEncoder) {
+    public UserService(
+            UserRepository userRepository,
+            RoleService roleService,
+            PasswordEncoder passwordEncoder,
+            AuthIdentityRepository authIdentityRepository) {
         this.userRepository = userRepository;
         this.roleService = roleService;
         this.passwordEncoder = passwordEncoder;
+        this.authIdentityRepository = authIdentityRepository;
     }
 
     public PageResponse<UserResponse> searchStaff(String keyword, Short roleId, int page, int pageSize) {
@@ -115,8 +123,11 @@ public class UserService {
         user.setFullName(request.fullName().trim());
         user.setPhone(phone);
         if (phoneChanged) {
-            // New login phone must be re-verified via OTP (task 1).
+            // OTP lần sau map theo SĐT mới — gỡ Firebase UID gắn user cũ (tránh dính tài khoản trước).
             user.setPhoneVerifiedAt(null);
+            if (currentId != null) {
+                authIdentityRepository.deleteByUser_IdAndProvider(currentId, AuthIdentity.PROVIDER_FIREBASE);
+            }
         }
         user.setPosition(normalizePosition(request.position()));
         user.setEmployeeCode(employeeCode);

@@ -12,4 +12,7 @@ public interface AuthIdentityRepository extends JpaRepository<AuthIdentity, Long
     boolean existsByUser_IdAndProvider(Long userId, String provider);
 
     Optional<AuthIdentity> findByUser_IdAndProvider(Long userId, String provider);
+
+    /** Admin đổi SĐT staff → gỡ link Firebase cũ để OTP map lại theo phone mới. */
+    void deleteByUser_IdAndProvider(Long userId, String provider);
 }

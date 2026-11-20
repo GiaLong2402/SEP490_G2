@@ -169,163 +169,217 @@ export default function LoginPage() {
     setOtpError(null);
   };
 
+  const tabClass = (active: boolean) =>
+    [
+      'flex-1 rounded-md px-3 py-2 text-small font-medium transition-colors',
+      active
+        ? 'bg-card text-ink shadow-sm'
+        : 'text-ink-muted hover:text-ink',
+    ].join(' ');
+
   return (
-    <main className="flex min-h-full items-center justify-center bg-sidebar p-4">
+    <main className="flex min-h-full flex-col md:flex-row">
       <div id="recaptcha-container" />
-      <div className="w-full max-w-[380px] rounded-lg bg-card p-6 shadow-pop">
-        <div className="mb-5 flex items-center gap-2.5">
-          <span className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-white">
-            <Fish size={22} aria-hidden />
+
+      {/* Brand panel */}
+      <section
+        className="login-brand relative flex shrink-0 flex-col justify-center overflow-hidden px-6 py-10 text-white md:min-h-full md:w-[48%] md:px-12 md:py-12 lg:w-[46%] lg:px-16"
+        aria-label="Thương hiệu"
+      >
+        <div className="login-brand-grid pointer-events-none absolute inset-0" aria-hidden />
+        <div className="login-brand-orb login-brand-orb--a" aria-hidden />
+        <div className="login-brand-orb login-brand-orb--b" aria-hidden />
+        <svg className="login-brand-wave" viewBox="0 0 800 180" preserveAspectRatio="none" aria-hidden>
+          <path
+            fill="rgba(255,255,255,0.06)"
+            d="M0 80 C 120 20, 220 140, 360 90 C 500 40, 620 130, 800 70 L 800 180 L 0 180 Z"
+          />
+          <path
+            fill="rgba(4, 31, 42, 0.35)"
+            d="M0 110 C 160 60, 280 150, 420 105 C 560 60, 680 140, 800 100 L 800 180 L 0 180 Z"
+          />
+        </svg>
+
+        <div className="login-fade-up relative z-[1]">
+          <span className="inline-flex items-center gap-2 rounded-md bg-white/10 px-2.5 py-1 text-[11px] font-medium tracking-[0.12em] text-white/80 ring-1 ring-inset ring-white/15">
+            HBSISMS
           </span>
-          <div>
-            <h1 className="text-h1">Hải sản Hòa Bình</h1>
-            <p className="text-small text-ink-muted">Hệ thống quản lý kho và bán hàng</p>
+        </div>
+
+        <div className="login-fade-up-delay relative z-[1] max-w-md py-10 md:py-0">
+          <span className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/12 ring-1 ring-inset ring-white/30 md:mb-8 md:h-[4.5rem] md:w-[4.5rem]">
+            <Fish size={34} className="md:h-11 md:w-11" strokeWidth={1.6} aria-hidden />
+          </span>
+          <h1 className="login-brand-title text-[2rem] md:text-[2.55rem] lg:text-[2.9rem]">
+            Hải sản
+            <br className="hidden sm:block" />
+            {' '}
+            Hòa Bình
+          </h1>
+          <p className="mt-4 max-w-[22rem] text-[14px] leading-relaxed text-white/75 md:mt-5 md:text-[15.5px]">
+            Hệ thống quản lý kho và bán hàng nội bộ — lạnh, tồn, đơn, giao.
+          </p>
+        </div>
+
+      </section>
+
+      {/* Form panel */}
+      <section className="login-form-panel relative flex flex-1 items-center justify-center px-4 py-12 md:px-12 lg:px-16">
+        <div className="login-fade-up-delay login-form-card w-full max-w-[400px] px-7 py-8 md:max-w-[428px] md:px-9 md:py-9">
+          <header className="mb-6">
+            <h2 className="login-brand-title text-[1.3rem] text-ink md:text-[1.45rem]">Đăng nhập</h2>
+          </header>
+
+          <div
+            className="mb-6 flex gap-1 rounded-xl bg-[#e8f1f5] p-1"
+            role="tablist"
+            aria-label="Hình thức đăng nhập"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'otp'}
+              className={tabClass(mode === 'otp')}
+              onClick={() => switchMode('otp')}
+            >
+              OTP (SĐT)
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'password'}
+              className={tabClass(mode === 'password')}
+              onClick={() => switchMode('password')}
+            >
+              Mật khẩu
+            </button>
           </div>
-        </div>
 
-        <div className="mb-4 flex gap-1 rounded-md bg-sidebar p-1" role="tablist" aria-label="Hình thức đăng nhập">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'otp'}
-            className={`flex-1 rounded px-3 py-2 text-small font-medium ${mode === 'otp' ? 'bg-card text-ink shadow-sm' : 'text-ink-muted'}`}
-            onClick={() => switchMode('otp')}
-          >
-            OTP (SĐT)
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'password'}
-            className={`flex-1 rounded px-3 py-2 text-small font-medium ${mode === 'password' ? 'bg-card text-ink shadow-sm' : 'text-ink-muted'}`}
-            onClick={() => switchMode('password')}
-          >
-            Mật khẩu
-          </button>
-        </div>
-
-        {mode === 'otp' ? (
-          otpStep === 'phone' ? (
-            <form onSubmit={submitPhone} noValidate className="space-y-3">
-              {otpError && <Alert tone="danger">{otpError}</Alert>}
-              {isMockMode && (
-                <Alert tone="warning">
-                  OTP cần API thật (`VITE_API_MODE=http`). Chế độ mock chỉ dùng tab Mật khẩu.
-                </Alert>
-              )}
-              <Field label="Số điện thoại" required>
-                <Input
-                  autoFocus
-                  inputMode="numeric"
-                  autoComplete="tel"
-                  placeholder="0901234567"
-                  value={phone}
-                  onChange={(e) => {
-                    setPhone(e.target.value.replace(/\D/g, '').slice(0, 10));
-                    if (otpError) setOtpError(null);
-                  }}
-                />
-              </Field>
-              <Button type="submit" variant="primary" loading={otpBusy} className="w-full" disabled={isMockMode}>
-                Nhận mã OTP
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={submitOtp} noValidate className="space-y-3">
-              {otpError && <Alert tone="danger">{otpError}</Alert>}
-              <p className="text-small text-ink-muted">
-                {otpMode === 'firebase'
-                  ? `Mã đã gửi tới ${phone}.`
-                  : `Stub: nhập bất kỳ 6 số cho ${phone}.`}{' '}
-                <button type="button" className="text-primary hover:underline" onClick={backToPhone}>
-                  Nhập lại số
-                </button>
-              </p>
-              <OtpCodeInput
-                value={otpCode}
-                resetKey={otpResetKey}
-                disabled={otpBusy}
-                onChange={(code) => {
-                  setOtpCode(code);
-                  if (otpError) setOtpError(null);
-                }}
-              />
-              <Button type="submit" variant="primary" loading={otpBusy} className="w-full">
-                Xác nhận
-              </Button>
-              <p className="text-center text-small text-ink-muted">
-                {resendLeft > 0 ? (
-                  <span>
-                    Nhận lại mã ({String(Math.floor(resendLeft / 60)).padStart(2, '0')}:
-                    {String(resendLeft % 60).padStart(2, '0')})
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    className="text-primary hover:underline disabled:opacity-50"
-                    onClick={resendOtp}
+          <div key={`${mode}-${otpStep}`} className="login-fade-up">
+            {mode === 'otp' ? (
+              otpStep === 'phone' ? (
+                <form onSubmit={submitPhone} noValidate className="space-y-4">
+                  {otpError && <Alert tone="danger">{otpError}</Alert>}
+                  {isMockMode && (
+                    <Alert tone="warning">
+                      OTP cần API thật (`VITE_API_MODE=http`). Chế độ mock chỉ dùng tab Mật khẩu.
+                    </Alert>
+                  )}
+                  <Field label="Số điện thoại" required>
+                    <Input
+                      autoFocus
+                      inputMode="numeric"
+                      autoComplete="tel"
+                      placeholder="0901234567"
+                      value={phone}
+                      onChange={(e) => {
+                        setPhone(e.target.value.replace(/\D/g, '').slice(0, 10));
+                        if (otpError) setOtpError(null);
+                      }}
+                    />
+                  </Field>
+                  <Button type="submit" variant="primary" loading={otpBusy} className="login-submit w-full" disabled={isMockMode}>
+                    Nhận mã OTP
+                  </Button>
+                </form>
+              ) : (
+                <form onSubmit={submitOtp} noValidate className="space-y-4">
+                  {otpError && <Alert tone="danger">{otpError}</Alert>}
+                  <p className="text-small text-ink-muted">
+                    {otpMode === 'firebase'
+                      ? `Mã đã gửi tới ${phone}.`
+                      : `Stub: nhập bất kỳ 6 số cho ${phone}.`}{' '}
+                    <button type="button" className="font-medium text-primary hover:underline" onClick={backToPhone}>
+                      Nhập lại số
+                    </button>
+                  </p>
+                  <OtpCodeInput
+                    value={otpCode}
+                    resetKey={otpResetKey}
                     disabled={otpBusy}
-                  >
-                    Nhận lại mã
-                  </button>
-                )}
-              </p>
-            </form>
-          )
-        ) : (
-          <form onSubmit={submitPassword} noValidate className="space-y-3">
-            {passwordError && <Alert tone="danger">{passwordError}</Alert>}
-            <Field
-              label="Tên đăng nhập"
-              required
-              error={passwordTouched && !username.trim() ? 'Vui lòng nhập tên đăng nhập' : undefined}
-            >
-              <Input
-                autoFocus
-                autoComplete="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-              />
-            </Field>
-            <Field
-              label="Mật khẩu"
-              required
-              error={passwordTouched && !password ? 'Vui lòng nhập mật khẩu' : undefined}
-            >
-              <Input
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </Field>
-            <Button type="submit" variant="primary" loading={passwordBusy} className="w-full">
-              Đăng nhập
-            </Button>
-          </form>
-        )}
-
-        {isMockMode && mode === 'password' && (
-          <div className="mt-5 border-t border-line pt-4">
-            <p className="mb-2 text-small text-ink-muted">Chế độ demo, chọn tài khoản theo vai trò:</p>
-            <div className="flex flex-wrap gap-1.5">
-              {DEMO_ACCOUNTS.map(([name, label]) => (
-                <button
-                  key={name}
-                  type="button"
-                  className="rounded-full border border-field px-2.5 py-1 text-small text-ink-muted hover:border-primary hover:text-primary"
-                  onClick={() => {
-                    setUsername(name);
-                    setPassword('demo123');
-                  }}
+                    onChange={(code) => {
+                      setOtpCode(code);
+                      if (otpError) setOtpError(null);
+                    }}
+                  />
+                  <Button type="submit" variant="primary" loading={otpBusy} className="login-submit w-full">
+                    Xác nhận
+                  </Button>
+                  <p className="text-center text-small text-ink-muted">
+                    {resendLeft > 0 ? (
+                      <span>
+                        Nhận lại mã ({String(Math.floor(resendLeft / 60)).padStart(2, '0')}:
+                        {String(resendLeft % 60).padStart(2, '0')})
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="font-medium text-primary hover:underline disabled:opacity-50"
+                        onClick={resendOtp}
+                        disabled={otpBusy}
+                      >
+                        Nhận lại mã
+                      </button>
+                    )}
+                  </p>
+                </form>
+              )
+            ) : (
+              <form onSubmit={submitPassword} noValidate className="space-y-4">
+                {passwordError && <Alert tone="danger">{passwordError}</Alert>}
+                <Field
+                  label="Tên đăng nhập"
+                  required
+                  error={passwordTouched && !username.trim() ? 'Vui lòng nhập tên đăng nhập' : undefined}
                 >
-                  {label}
-                </button>
-              ))}
-            </div>
+                  <Input
+                    autoFocus
+                    autoComplete="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                  />
+                </Field>
+                <Field
+                  label="Mật khẩu"
+                  required
+                  error={passwordTouched && !password ? 'Vui lòng nhập mật khẩu' : undefined}
+                >
+                  <Input
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </Field>
+                <Button type="submit" variant="primary" loading={passwordBusy} className="login-submit w-full">
+                  Đăng nhập
+                </Button>
+              </form>
+            )}
           </div>
-        )}
-      </div>
+
+          {isMockMode && mode === 'password' && (
+            <div className="mt-6 border-t border-line pt-5">
+              <p className="mb-2.5 text-small text-ink-muted">Chế độ demo — chọn vai trò:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {DEMO_ACCOUNTS.map(([name, label]) => (
+                  <button
+                    key={name}
+                    type="button"
+                    className="rounded-md border border-field bg-[#f4f8fa] px-2.5 py-1 text-small text-ink-muted transition-colors hover:border-primary hover:bg-primary-soft hover:text-primary"
+                    onClick={() => {
+                      setUsername(name);
+                      setPassword('demo123');
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
     </main>
   );
 }

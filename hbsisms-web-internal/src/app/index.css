@@ -85,6 +85,126 @@
   dialog::backdrop { background: transparent; }
 }
 
+/* Login — brand + form (scoped) */
+.login-brand {
+  background:
+    radial-gradient(ellipse 100% 70% at 0% 100%, rgba(14, 116, 144, 0.65), transparent 55%),
+    radial-gradient(ellipse 60% 45% at 100% 0%, rgba(255, 255, 255, 0.1), transparent 50%),
+    linear-gradient(148deg, #041f2a 0%, #063a4c 28%, var(--sidebar) 58%, #0b6e8a 100%);
+}
+.login-brand-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: radial-gradient(ellipse 90% 80% at 30% 40%, #000 20%, transparent 75%);
+}
+.login-brand-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(2px);
+  pointer-events: none;
+  opacity: 0.55;
+}
+.login-brand-orb--a {
+  width: 280px;
+  height: 280px;
+  top: -80px;
+  right: -60px;
+  background: radial-gradient(circle, rgba(228, 241, 245, 0.22), transparent 68%);
+  animation: login-drift 14s ease-in-out infinite alternate;
+}
+.login-brand-orb--b {
+  width: 220px;
+  height: 220px;
+  bottom: 12%;
+  left: -70px;
+  background: radial-gradient(circle, rgba(11, 110, 138, 0.55), transparent 70%);
+  animation: login-drift 18s ease-in-out infinite alternate-reverse;
+}
+.login-brand-wave {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: min(34%, 220px);
+  pointer-events: none;
+  opacity: 0.9;
+}
+.login-brand-title {
+  font-family: 'Be Vietnam Pro', Inter, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+}
+.login-form-panel {
+  background:
+    radial-gradient(ellipse 80% 50% at 100% 0%, rgba(11, 110, 138, 0.07), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 0% 100%, rgba(8, 72, 95, 0.05), transparent 50%),
+    linear-gradient(165deg, #e8f1f5 0%, var(--canvas) 45%, #f8fbfc 100%);
+}
+.login-form-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(183, 201, 209, 0.7);
+  border-radius: 16px;
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 1px 2px rgba(8, 72, 95, 0.04),
+    0 18px 40px rgba(8, 72, 95, 0.08);
+}
+.login-form-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 18px;
+  bottom: 18px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--primary), #08485f);
+  opacity: 0.85;
+}
+.login-form-card .field-control {
+  height: 42px;
+  border-radius: 10px;
+  border-color: #b0c4cd;
+  background: #f7fafb;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.login-form-card .field-control:hover:not(:disabled):not(:focus) {
+  border-color: #8fadb9;
+}
+.login-form-card .field-control:focus {
+  border-color: var(--primary);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(11, 110, 138, 0.14);
+}
+.login-form-card .login-submit {
+  height: 42px !important;
+  border-radius: 10px !important;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.login-form-card .login-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+@keyframes login-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes login-drift {
+  from { transform: translate(0, 0); }
+  to { transform: translate(-18px, 14px); }
+}
+.login-fade-up {
+  animation: login-fade-up 0.5s ease-out both;
+}
+.login-fade-up-delay {
+  animation: login-fade-up 0.55s ease-out 0.1s both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
