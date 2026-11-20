@@ -263,6 +263,7 @@ public class OrderExportService {
             case DELIVERED -> "Đã giao";
             case COMPLETED -> "Hoàn tất";
             case CANCELLED -> "Đã hủy";
+            case EXPIRED -> "Hết hạn";
         };
     }
 
