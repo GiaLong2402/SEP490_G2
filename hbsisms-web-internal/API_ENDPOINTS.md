@@ -72,7 +72,7 @@ Contract FE: `features/deliveries/api.ts`. **Cường (Inter 3):** `GET /deliver
 |---|---|---|
 | GET | `/deliveries/couriers` | Cường — `{ id, fullName, position }[]`; user active + `position = "Giao hàng"` (không dùng cờ riêng) |
 | GET | `/deliveries` | Long — đã có BE (lọc, sort `asc`, tổng khay) |
-| POST | `/deliveries` | Long — chưa BE |
+| POST | `/deliveries` | Long — **201** + `DeliveryListItem`. Đơn Chờ giao / Giao một phần; ngày ≥ hôm nay; `timeWindow` ∈ 4 khung (`08:00-10:00`…`16:00-18:00`); giao tận nơi cần địa chỉ thuộc khách; `assignedTo` chỉ shop_delivery + chức vụ "Giao hàng"; một đơn giao một lần, trọn đơn: đã có chuyến chưa thất bại → 409, thất bại thì tạo lại được (giao lại); `items` phải đủ khay mọi dòng (bỏ trống = BE tự lấy đủ). BE tự đặt `legLabel` = "Trọn đơn", mã `DL-<năm>-<số>` (dãy chung), khoảng cách |
 | PATCH | `/deliveries/:id` | state/assign; **DELIVERED → OUT theo đợt** (`refType=delivery`) |
 
 ## inventory

@@ -18,6 +18,7 @@ import com.hbsisms.feature.payment.PaymentStatus;
 import com.hbsisms.feature.payment.payos.PayosLinkService;
 import com.hbsisms.feature.sales.AllocationStatus;
 import com.hbsisms.feature.sales.Delivery;
+import com.hbsisms.feature.sales.DeliveryTimeWindows;
 import com.hbsisms.feature.sales.DeliveryRepository;
 import com.hbsisms.feature.sales.DeliveryState;
 import com.hbsisms.feature.sales.FulfillmentMethod;
@@ -47,7 +48,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,9 +55,6 @@ import org.springframework.transaction.annotation.Transactional;
 /** Inter 2 #27 — B2C checkout: stock check, ONLINE_B2C order, FEFO hold; PayOS link via #33. */
 @Service
 public class CheckoutService {
-
-    private static final Set<String> TIME_WINDOWS =
-            Set.of("08:00-10:00", "10:00-12:00", "14:00-16:00", "16:00-18:00");
 
     private static final BigDecimal ZERO = BigDecimal.ZERO;
 
@@ -288,7 +285,7 @@ public class CheckoutService {
             throw ApiException.badRequest("Ngày nhận hàng không được trong quá khứ");
         }
         String window = Strings.trimToNull(request.timeWindow());
-        if (window == null || !TIME_WINDOWS.contains(window)) {
+        if (!DeliveryTimeWindows.isValid(window)) {
             throw ApiException.badRequest("Khung giờ không hợp lệ");
         }
     }

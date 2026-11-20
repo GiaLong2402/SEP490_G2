@@ -2,6 +2,7 @@ package com.hbsisms.feature.sales;
 
 import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
+import com.hbsisms.feature.sales.dto.DeliveryCreateRequest;
 import com.hbsisms.feature.sales.dto.DeliveryListItemResponse;
 import com.hbsisms.feature.sales.dto.DeliveryUpdateRequest;
 import com.hbsisms.security.AuthUser;
@@ -11,6 +12,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -18,7 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Delivery legs: danh sách, cập nhật trạng thái / phân công (FE {@code /deliveries}). */
+/** Delivery legs: danh sách, tạo đợt, cập nhật trạng thái / phân công (FE {@code /deliveries}). */
 @RestController
 @RequestMapping("/deliveries")
 @PreAuthorize("hasAnyAuthority('orders', 'inventory')")
@@ -47,6 +49,15 @@ public class DeliveryController {
             @RequestParam(defaultValue = "" + PageRequests.DEFAULT_PAGE_SIZE) int pageSize) {
         return deliveryService.search(
                 q, state, date, assignedTo, timeWindow, fulfillmentMethod, sort, page, pageSize);
+    }
+
+    /** Tạo đợt giao cho đơn Chờ giao / Giao một phần (mọi đơn, kể cả đơn Sales tạo). */
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public DeliveryListItemResponse create(
+            @RequestBody DeliveryCreateRequest request,
+            @AuthenticationPrincipal AuthUser actor) {
+        return deliveryService.create(request, actor == null ? null : actor.id());
     }
 
     @PatchMapping("/{id}")

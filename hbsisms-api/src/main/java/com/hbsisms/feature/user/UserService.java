@@ -124,7 +124,7 @@ public class UserService {
         user.setActive(request.isActive());
     }
 
-    static final String COURIER_POSITION = "Giao hàng";
+    static final String COURIER_POSITION = Couriers.POSITION;
 
     /** "giao hang", "GIAO HÀNG"… → "Giao hàng" (danh sách người giao so khớp đúng chữ này); còn lại giữ nguyên. */
     static String normalizePosition(String raw) {
