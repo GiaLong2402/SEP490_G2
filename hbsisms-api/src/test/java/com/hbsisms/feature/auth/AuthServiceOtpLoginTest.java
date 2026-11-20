@@ -3,15 +3,21 @@ package com.hbsisms.feature.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseAuthException;
+import com.google.firebase.auth.FirebaseToken;
 import com.hbsisms.TestFixtures;
 import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.feature.auth.dto.LoginResponse;
 import com.hbsisms.feature.auth.dto.OtpLoginRequest;
 import com.hbsisms.feature.auth.firebase.FirebaseTokenVerifier;
+import com.hbsisms.feature.auth.firebase.FirebaseAdminTokenVerifier;
+import com.hbsisms.feature.auth.firebase.StubFirebaseTokenVerifier;
 import com.hbsisms.feature.auth.firebase.VerifiedFirebaseToken;
 import com.hbsisms.feature.customer.CustomerRepository;
 import com.hbsisms.feature.role.AppRole;
@@ -28,6 +34,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -185,6 +192,94 @@ class AuthServiceOtpLoginTest {
                 .isInstanceOf(ApiException.class)
                 .extracting("status")
                 .isEqualTo(HttpStatus.CONFLICT);
+        verify(tokenService, never()).issue(any());
+    }
+
+    // ---- Report 5.1 Phase1: UTCID06-09 (token verification failures surfaced through AuthService) ----
+
+    /** UTCID06: Stub verifier, malformed token ("invalid-token") -> 400 "idToken không hợp lệ". */
+    @Test
+    void loginWithOtp_invalidStubToken_returns400IdTokenInvalid() {
+        AuthService service = authServiceWith(new StubFirebaseTokenVerifier());
+
+        assertThatThrownBy(() -> service.loginWithOtp(new OtpLoginRequest("invalid-token")))
+                .isInstanceOf(ApiException.class)
+                .hasMessage("idToken không hợp lệ")
+                .extracting("status")
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        verifyNoLookupsOrSession();
+    }
+
+    /** UTCID07: blank idToken -> 400 "idToken không hợp lệ" (both verifier modes). */
+    @Test
+    void loginWithOtp_blankIdToken_returns400IdTokenInvalid() {
+        for (FirebaseTokenVerifier verifier : List.of(
+                new StubFirebaseTokenVerifier(), new FirebaseAdminTokenVerifier(mock(FirebaseAuth.class)))) {
+            AuthService service = authServiceWith(verifier);
+
+            assertThatThrownBy(() -> service.loginWithOtp(new OtpLoginRequest("   ")))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessage("idToken không hợp lệ")
+                    .extracting("status")
+                    .isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+        verifyNoLookupsOrSession();
+    }
+
+    /** UTCID08: Firebase Admin rejects token ("invalid-token") -> 400 "idToken Firebase không hợp lệ hoặc đã hết hạn". */
+    @Test
+    void loginWithOtp_firebaseRejectsToken_returns400InvalidOrExpired() throws Exception {
+        FirebaseAuth firebaseAuth = mock(FirebaseAuth.class);
+        when(firebaseAuth.verifyIdToken("invalid-token")).thenThrow(mock(FirebaseAuthException.class));
+        AuthService service = authServiceWith(new FirebaseAdminTokenVerifier(firebaseAuth));
+
+        assertThatThrownBy(() -> service.loginWithOtp(new OtpLoginRequest("invalid-token")))
+                .isInstanceOf(ApiException.class)
+                .hasMessage("idToken Firebase không hợp lệ hoặc đã hết hạn")
+                .extracting("status")
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        verifyNoLookupsOrSession();
+    }
+
+    /** UTCID09: valid Firebase token without phone_number claim -> 400 "Token Firebase không có số điện thoại". */
+    @Test
+    void loginWithOtp_firebaseTokenWithoutPhone_returns400NoPhone() throws Exception {
+        FirebaseAuth firebaseAuth = mock(FirebaseAuth.class);
+        FirebaseToken decoded = mock(FirebaseToken.class);
+        when(decoded.getClaims()).thenReturn(Map.of());
+        when(firebaseAuth.verifyIdToken("no-phone-token")).thenReturn(decoded);
+        AuthService service = authServiceWith(new FirebaseAdminTokenVerifier(firebaseAuth));
+
+        assertThatThrownBy(() -> service.loginWithOtp(new OtpLoginRequest("no-phone-token")))
+                .isInstanceOf(ApiException.class)
+                .hasMessage("Token Firebase không có số điện thoại")
+                .extracting("status")
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        verifyNoLookupsOrSession();
+    }
+
+    private AuthService authServiceWith(FirebaseTokenVerifier verifier) {
+        SecurityProperties properties = new SecurityProperties(
+                new SecurityProperties.Jwt("x".repeat(32), "test", Duration.ofHours(1)),
+                new SecurityProperties.Cors(List.of("http://localhost")),
+                new SecurityProperties.Login(5, Duration.ofMinutes(15), true));
+        return new AuthService(
+                userRepository,
+                authIdentityRepository,
+                customerRepository,
+                roleRepository,
+                auditLogService,
+                passwordEncoder,
+                tokenService,
+                loginAttempts,
+                verifier,
+                properties,
+                Clock.fixed(NOW, ZoneOffset.UTC));
+    }
+
+    private void verifyNoLookupsOrSession() {
+        verify(authIdentityRepository, never()).findByProviderAndProviderUid(any(), any());
+        verify(userRepository, never()).findWithRoleByPhone(any());
         verify(tokenService, never()).issue(any());
     }
 

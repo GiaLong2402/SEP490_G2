@@ -104,6 +104,20 @@ class PayosReturnServiceTest {
     }
 
     @Test
+    void getReturn_paymentNotFound_404() {
+        // UTCID13: không có payment với mã PayOS → 404 "Không tìm thấy thanh toán PayOS"
+        when(paymentRepository.findWithOrderCustomerByPayosOrderCode(404L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getReturn(7L, 404L))
+                .isInstanceOfSatisfying(ApiException.class, ex -> {
+                    assertThat(ex.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+                    assertThat(ex.getMessage()).isEqualTo("Không tìm thấy thanh toán PayOS");
+                });
+        verify(payosClient, never()).getPaymentRequest(anyLong());
+        verify(paymentRepository, never()).save(any());
+    }
+
+    @Test
     void getReturn_alreadySuccess_returnsPaidWithoutPayos() {
         Payment payment = ownedPayment(42L, 9L, PayTxnStatus.SUCCESS, null, 7L);
         payment.setPaidAt(NOW.minusSeconds(60));

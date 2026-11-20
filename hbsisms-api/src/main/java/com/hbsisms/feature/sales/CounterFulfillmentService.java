@@ -41,6 +41,8 @@ public class CounterFulfillmentService {
 
     @Transactional
     public OrderDetailResponse completeAtCounter(Long orderId, Long actorId) {
+        // Khóa hàng đơn (FOR UPDATE) trong cùng transaction để tránh xuất kho/hoàn tất đồng thời.
+        salesOrderRepository.findByIdForUpdate(orderId);
         SalesOrder order = salesOrderRepository
                 .findWithDetailsById(orderId)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy đơn hàng"));

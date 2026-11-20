@@ -166,6 +166,39 @@ class PayosWebhookServiceTest {
     }
 
     @Test
+    void handle_amountOver_5000VsExpected3000_marksPaidAndRecordsOverpaid() {
+        // UTCID15: khách chuyển 5.000đ, đơn cần 3.000đ → markPaid + recordOverpaid (thừa 2.000đ)
+        Map<String, Object> data = sampleData(130001L, 5000);
+        String sig = PayosSignature.signDataObject(data, CHECKSUM);
+        Payment payment = pendingPayment(130001L, new BigDecimal("3000"));
+        when(paymentRepository.findWithOrderCustomerByPayosOrderCode(130001L)).thenReturn(Optional.of(payment));
+
+        service.handle(new PayosWebhookEnvelope("00", "success", true, data, sig));
+
+        assertThat(payment.getStatus()).isEqualTo(PayTxnStatus.SUCCESS);
+        assertThat(payment.getOrder().getPaymentStatus()).isEqualTo(PaymentStatus.PAID);
+        assertThat(payment.getAmount()).isEqualByComparingTo("5000");
+        assertThat(payment.getReconcileFlag()).isEqualTo(PaymentReconcileFlag.OVER);
+        assertThat(payment.getNote()).contains("5.000đ").contains("3.000đ").contains("thừa 2.000đ");
+        verify(ownerNotifier, times(1)).notifyOwners(eq("payment_overpaid"), anyString(), anyString(), anyString());
+        verify(latePaymentHandler, never()).handleLatePaid(any(), any(), any());
+    }
+
+    @Test
+    void handle_badSignature_exactMessage401() {
+        // UTCID14: 401 "Chữ ký PayOS không hợp lệ"
+        Map<String, Object> data = sampleData(130001L, 10000);
+
+        assertThatThrownBy(() -> service.handle(new PayosWebhookEnvelope("00", "success", true, data, "bad-sig")))
+                .isInstanceOfSatisfying(ApiException.class, ex -> {
+                    assertThat(ex.getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED);
+                    assertThat(ex.getMessage()).isEqualTo("Chữ ký PayOS không hợp lệ");
+                });
+        verify(paymentRepository, never()).findWithOrderCustomerByPayosOrderCode(any());
+        verify(paymentRepository, never()).save(any());
+    }
+
+    @Test
     void handle_overpaidWebhookAfterAlreadyPaid_flagsOverOnce() {
         // Web hỏi PayOS xác nhận trước (ghi theo tiền đơn), webhook tới sau mang số tiền thật
         Map<String, Object> data = sampleData(130001L, 12000);

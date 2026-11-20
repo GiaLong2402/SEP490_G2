@@ -60,6 +60,8 @@ class PaymentServiceTest {
     private UserRepository userRepository;
     @Mock
     private AuditLogService auditLogService;
+    @Mock
+    private com.hbsisms.feature.system.BusinessCodeService businessCodeService;
 
     private PaymentService service;
     private final Clock clock = Clock.fixed(Instant.parse("2026-11-09T10:00:00Z"), ZoneOffset.UTC);
@@ -78,7 +80,11 @@ class PaymentServiceTest {
                 orderEventRepository,
                 userRepository,
                 auditLogService,
+                businessCodeService,
                 clock);
+        org.mockito.Mockito.lenient()
+                .when(businessCodeService.nextPaymentCode())
+                .thenReturn("TT-0001");
 
         customer = new Customer();
         setId(customer, 1L);
@@ -150,7 +156,6 @@ class PaymentServiceTest {
         when(paymentRepository.sumSuccessfulInByOrderId(6L))
                 .thenReturn(BigDecimal.ZERO.setScale(2))
                 .thenReturn(new BigDecimal("100000.00"));
-        when(paymentRepository.findCodesByPrefix("TT-")).thenReturn(java.util.List.of());
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
             Payment p = inv.getArgument(0);
             setId(p, ids.incrementAndGet());
@@ -320,7 +325,6 @@ class PaymentServiceTest {
         when(paymentRepository.sumSuccessfulRefundByOrderId(30L))
                 .thenReturn(ZERO)
                 .thenReturn(new BigDecimal("100000.00"));
-        when(paymentRepository.findCodesByPrefix("TT-")).thenReturn(List.of());
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
             Payment p = inv.getArgument(0);
             if (p.getId() == null) {
@@ -373,7 +377,6 @@ class PaymentServiceTest {
         when(paymentRepository.sumSuccessfulRefundByOrderId(40L))
                 .thenReturn(ZERO)
                 .thenReturn(new BigDecimal("8000.00"));
-        when(paymentRepository.findCodesByPrefix("TT-")).thenReturn(List.of());
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
             Payment p = inv.getArgument(0);
             if (p.getId() == null) {
@@ -441,7 +444,6 @@ class PaymentServiceTest {
         when(paymentRepository.sumSuccessfulRefundByOrderId(33L))
                 .thenReturn(ZERO)
                 .thenReturn(new BigDecimal("50000.00"));
-        when(paymentRepository.findCodesByPrefix("TT-")).thenReturn(List.of());
         when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(33L)).thenReturn(List.of());
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
             Payment p = inv.getArgument(0);

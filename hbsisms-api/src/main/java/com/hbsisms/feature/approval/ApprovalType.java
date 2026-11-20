@@ -8,6 +8,8 @@ import java.util.Locale;
 /** What an approval task is about. */
 public enum ApprovalType {
     OVER_LIMIT_ORDER,
+    /** Giảm giá / sửa giá tay trên đơn Sales — chờ Chủ duyệt trước khi hold. */
+    ORDER_PRICE_OVERRIDE,
     DAMAGE_REPORT,
     PRICE_LIST,
     STOCKTAKE,

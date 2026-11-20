@@ -92,8 +92,59 @@ class CounterFulfillmentServiceTest {
 
         assertThatThrownBy(() -> service.completeAtCounter(9L, 1L))
                 .isInstanceOf(ApiException.class)
-                .extracting(ex -> ((ApiException) ex).getStatus())
-                .isEqualTo(HttpStatus.CONFLICT);
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(api.getMessage()).isEqualTo("Đơn chưa thu đủ — không thể hoàn tất tại quầy");
+                });
+        verify(orderAllocationService, never()).issueOutHeldForOrder(any(), anyLong());
+    }
+
+    @Test
+    void completeAtCounter_orderNotFound_returns404() {
+        when(salesOrderRepository.findWithDetailsById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.completeAtCounter(999L, 1L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+                    assertThat(api.getMessage()).isEqualTo("Không tìm thấy đơn hàng");
+                });
+        verify(orderAllocationService, never()).issueOutHeldForOrder(any(), anyLong());
+    }
+
+    @Test
+    void completeAtCounter_cancelledOrder_returns409() {
+        SalesOrder order = paidOrder(9L, OrderState.CANCELLED);
+        when(salesOrderRepository.findWithDetailsById(9L)).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.completeAtCounter(9L, 1L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(api.getMessage()).isEqualTo("Đơn đã hủy");
+                });
+        verify(orderAllocationService, never()).issueOutHeldForOrder(any(), anyLong());
+        verify(salesOrderRepository, never()).save(any());
+    }
+
+    @Test
+    void completeAtCounter_pendingButPaid_returns409NotConfirmed() {
+        SalesOrder order = paidOrder(9L, OrderState.PENDING);
+        when(salesOrderRepository.findWithDetailsById(9L)).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.completeAtCounter(9L, 1L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(api.getMessage()).isEqualTo("Đơn chưa xác nhận");
+                });
+        assertThat(order.getState()).isEqualTo(OrderState.PENDING);
+        verify(orderAllocationService, never()).issueOutHeldForOrder(any(), anyLong());
+        verify(salesOrderRepository, never()).save(any());
     }
 
     private SalesOrder paidOrder(long id, OrderState state) {

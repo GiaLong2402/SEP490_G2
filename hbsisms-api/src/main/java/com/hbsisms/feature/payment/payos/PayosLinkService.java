@@ -13,6 +13,7 @@ import com.hbsisms.feature.sales.SalesOrder;
 import com.hbsisms.feature.sales.SalesOrderService;
 import com.hbsisms.feature.storefront.dto.CheckoutPaymentResponse;
 import com.hbsisms.feature.system.AppConfigService;
+import com.hbsisms.feature.system.BusinessCodeService;
 import java.time.Clock;
 import java.time.Instant;
 import org.springframework.http.HttpStatus;
@@ -28,6 +29,7 @@ public class PayosLinkService {
     private final PaymentRepository paymentRepository;
     private final SalesOrderService salesOrderService;
     private final AppConfigService appConfigService;
+    private final BusinessCodeService businessCodeService;
     private final Clock clock;
 
     public PayosLinkService(
@@ -36,12 +38,14 @@ public class PayosLinkService {
             PaymentRepository paymentRepository,
             SalesOrderService salesOrderService,
             AppConfigService appConfigService,
+            BusinessCodeService businessCodeService,
             Clock clock) {
         this.properties = properties;
         this.payosClient = payosClient;
         this.paymentRepository = paymentRepository;
         this.salesOrderService = salesOrderService;
         this.appConfigService = appConfigService;
+        this.businessCodeService = businessCodeService;
         this.clock = clock;
     }
 
@@ -61,7 +65,7 @@ public class PayosLinkService {
             throw ApiException.badRequest("Số tiền thanh toán phải lớn hơn 0");
         }
 
-        long orderCode = paymentRepository.maxPayosOrderCode() + 1;
+        long orderCode = businessCodeService.nextPayosOrderCode();
         String description = shortDescription(order.getCode());
         // Link PayOS sống thêm thời gian ân hạn: khách quét QR sát giờ vẫn kịp chuyển khoản.
         // Khách vẫn chỉ thấy đếm ngược tới holdExpires (web che QR khi còn 10 giây).

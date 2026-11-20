@@ -38,16 +38,15 @@ import com.hbsisms.feature.storefront.dto.CheckoutRequest;
 import com.hbsisms.feature.storefront.dto.CheckoutResponse;
 import com.hbsisms.feature.storefront.dto.ShortageItem;
 import com.hbsisms.feature.system.AppConfigService;
+import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -77,6 +76,7 @@ public class CheckoutService {
     private final UserRepository userRepository;
     private final AppConfigService appConfigService;
     private final PayosLinkService payosLinkService;
+    private final BusinessCodeService businessCodeService;
     private final Clock clock;
 
     public CheckoutService(
@@ -95,6 +95,7 @@ public class CheckoutService {
             UserRepository userRepository,
             AppConfigService appConfigService,
             PayosLinkService payosLinkService,
+            BusinessCodeService businessCodeService,
             Clock clock) {
         this.idempotencyRepository = idempotencyRepository;
         this.customerAddressRepository = customerAddressRepository;
@@ -111,6 +112,7 @@ public class CheckoutService {
         this.userRepository = userRepository;
         this.appConfigService = appConfigService;
         this.payosLinkService = payosLinkService;
+        this.businessCodeService = businessCodeService;
         this.clock = clock;
     }
 
@@ -169,7 +171,7 @@ public class CheckoutService {
         }
 
         SalesOrder order = new SalesOrder();
-        order.setCode(nextOrderCode());
+        order.setCode(businessCodeService.nextSalesOrderCode());
         order.setCustomer(customer);
         order.setOrderType(OrderType.ONLINE_B2C);
         order.setChannel(SaleChannel.WEB);
@@ -213,7 +215,7 @@ public class CheckoutService {
         addEvent(order, "created", "Tạo đơn online — chờ thanh toán PayOS", placedBy);
 
         Delivery delivery = new Delivery();
-        delivery.setCode("DL-" + order.getCode());
+        delivery.setCode(businessCodeService.nextDeliveryCode());
         delivery.setOrder(order);
         delivery.setLegLabel("Trọn đơn");
         delivery.setScheduledDate(request.requestedDate());
@@ -325,24 +327,6 @@ public class CheckoutService {
         event.setDescription(description);
         event.setCreatedBy(actor);
         orderEventRepository.save(event);
-    }
-
-    private String nextOrderCode() {
-        String year = LocalDate.now(clock).format(DateTimeFormatter.ofPattern("yyyy"));
-        String prefix = "SO-" + year + "-";
-        int next = salesOrderRepository.findCodesByPrefix(prefix).stream()
-                .map(code -> code.substring(prefix.length()))
-                .map(digits -> {
-                    try {
-                        return Integer.parseInt(digits);
-                    } catch (NumberFormatException ex) {
-                        return 0;
-                    }
-                })
-                .max(Integer::compareTo)
-                .orElse(0)
-                + 1;
-        return prefix + String.format(Locale.ROOT, "%04d", next);
     }
 
     private record PreparedLine(

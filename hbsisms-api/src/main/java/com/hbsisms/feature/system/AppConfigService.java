@@ -12,6 +12,9 @@ public class AppConfigService {
     public static final String EXPIRY_WARNING_DAYS = "expiry_warning_days";
     public static final String PAYMENT_HOLD_MINUTES = "payment_hold_minutes";
     public static final String SHIPPING_FEE_DELIVERY = "shipping_fee_delivery";
+    public static final String ORDER_DISCOUNT_APPROVE_PCT = "order_discount_approve_pct";
+    public static final String SALES_UNPAID_HOLD_HOURS = "sales_unpaid_hold_hours";
+    public static final String SALES_HOLD_WARN_MINUTES = "sales_hold_warn_minutes";
 
     public static final int DEFAULT_LOW_STOCK_THRESHOLD = 15;
     public static final int DEFAULT_EXPIRY_WARNING_DAYS = 5;
@@ -19,6 +22,9 @@ public class AppConfigService {
     public static final int DEFAULT_SHIPPING_FEE_DELIVERY = 20000;
     public static final String PAYMENT_GRACE_MINUTES = "payment_grace_minutes";
     public static final int DEFAULT_PAYMENT_GRACE_MINUTES = 2;
+    public static final int DEFAULT_ORDER_DISCOUNT_APPROVE_PCT = 5;
+    public static final int DEFAULT_SALES_UNPAID_HOLD_HOURS = 24;
+    public static final int DEFAULT_SALES_HOLD_WARN_MINUTES = 60;
 
     private final AppConfigRepository appConfigRepository;
 
@@ -50,6 +56,21 @@ public class AppConfigService {
     /** Phí giao tận nơi (VND) cho đơn online B2C, mặc định 20.000. Nhận tại cửa hàng = 0. */
     public int shippingFeeDelivery() {
         return Math.max(0, getInt(SHIPPING_FEE_DELIVERY, DEFAULT_SHIPPING_FEE_DELIVERY));
+    }
+
+    /** % giảm giá trên tạm tính vượt ngưỡng → cần Chủ duyệt (mặc định 5). */
+    public int orderDiscountApprovePct() {
+        return Math.max(0, getInt(ORDER_DISCOUNT_APPROVE_PCT, DEFAULT_ORDER_DISCOUNT_APPROVE_PCT));
+    }
+
+    /** Số giờ giữ hàng đơn Sales (quầy/điện thoại/Zalo) chưa thanh toán (mặc định 24). */
+    public int salesUnpaidHoldHours() {
+        return Math.max(1, getInt(SALES_UNPAID_HOLD_HOURS, DEFAULT_SALES_UNPAID_HOLD_HOURS));
+    }
+
+    /** Báo Sales trước khi hết hạn giữ (phút, mặc định 60). */
+    public int salesHoldWarnMinutes() {
+        return Math.max(0, getInt(SALES_HOLD_WARN_MINUTES, DEFAULT_SALES_HOLD_WARN_MINUTES));
     }
 
     public int getInt(String key, int defaultValue) {

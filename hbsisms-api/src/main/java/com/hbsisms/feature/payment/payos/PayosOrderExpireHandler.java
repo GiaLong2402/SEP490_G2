@@ -71,7 +71,7 @@ public class PayosOrderExpireHandler {
         if (order == null || order.getId() == null) {
             return false;
         }
-        if (order.getState() == OrderState.CANCELLED) {
+        if (order.getState() == OrderState.CANCELLED || order.getState() == OrderState.EXPIRED) {
             return true;
         }
         if (order.getPaymentStatus() == PaymentStatus.PAID || order.getPaymentStatus() == PaymentStatus.DEBT) {
@@ -131,10 +131,16 @@ public class PayosOrderExpireHandler {
             }
         }
 
-        String note = "Hết hạn thanh toán (" + appConfigService.paymentHoldMinutes() + " phút)";
+        boolean salesChannel = order.getChannel() != null
+                && order.getChannel() != com.hbsisms.feature.sales.SaleChannel.WEB
+                && order.getChannel() != com.hbsisms.feature.sales.SaleChannel.APP;
+        String note = salesChannel
+                ? "Hết hạn giữ hàng Sales (" + appConfigService.salesUnpaidHoldHours() + " giờ)"
+                : "Hết hạn thanh toán (" + appConfigService.paymentHoldMinutes() + " phút)";
         orderAllocationService.releaseForOrder(order, null, note);
 
-        order.setState(OrderState.CANCELLED);
+        // Online PayOS: CANCELLED (giữ hành vi cũ). Sales unpaid: EXPIRED.
+        order.setState(salesChannel ? OrderState.EXPIRED : OrderState.CANCELLED);
         order.setPaymentStatus(PaymentStatus.UNPAID);
         order.setHoldExpiresAt(null);
         salesOrderRepository.save(order);
