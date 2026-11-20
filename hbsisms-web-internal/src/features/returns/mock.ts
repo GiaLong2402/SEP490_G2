@@ -121,19 +121,9 @@ mock('POST', '/returns', ({ body, userId }) => {
   return toItem(row);
 });
 
-function isQuarantineLoc(l: { zone: string | null }) {
-  const z = (l.zone ?? '')
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase();
-  return z.includes('quarantine') || z.includes('cach ly') || z.includes('hang tra');
-}
-
 mock('GET', '/returns/:id/inspect-defaults', ({ params }) => {
   const row = db.returns.find((r) => r.id === Number(params.id));
   if (!row) fail(404, 'Không tìm thấy phiếu trả');
-  const quarantineAll = db.locations.filter(isQuarantineLoc);
-  const quarantine = quarantineAll[0] ?? null;
   const lines = (row.items ?? []).map((item) => {
     const out = [...db.ledger]
       .reverse()
@@ -142,37 +132,31 @@ mock('GET', '/returns/:id/inspect-defaults', ({ params }) => {
     const locationId = out?.locationId ?? stock?.locationId ?? null;
     const loc = locationId == null ? null : db.locations.find((l) => l.id === locationId);
     const label = loc ? [locationCode(loc.id), loc.zone].filter(Boolean).join(' · ') : null;
-    const lineQ = loc
-      ? (quarantineAll.find((q) => q.warehouseId === loc.warehouseId) ?? null)
-      : quarantine;
     return {
       variantId: item.variantId,
       lotId: item.lotId ?? out?.lotId ?? stock?.lotId ?? null,
       shippedLocationId: locationId,
       shippedLocationLabel: label,
-      quarantineLocationId: lineQ?.id ?? null,
-      quarantineLocationLabel: lineQ
-        ? [locationCode(lineQ.id), lineQ.zone].filter(Boolean).join(' · ')
-        : null,
+      quarantineLocationId: null,
+      quarantineLocationLabel: null,
     };
   });
   return {
-    quarantineLocationId: quarantine?.id ?? null,
-    quarantineLabel: quarantine ? [locationCode(quarantine.id), quarantine.zone].filter(Boolean).join(' · ') : null,
+    quarantineLocationId: null,
+    quarantineLabel: null,
     lines,
   };
 });
 
 const ALLOWED: Record<string, string[]> = { pending: ['received', 'rejected'], received: ['refunded'] };
 
-function applyStockIn(variantId: number, locationId: number | null, qty: number, quarantine: boolean, refId: number, note: string, userId: number | null) {
+function applyStockIn(variantId: number, locationId: number | null, qty: number, refId: number, note: string, userId: number | null) {
   let stock = locationId != null
     ? db.stock.filter((s) => s.variantId === variantId && s.locationId === locationId).sort((a, b) => b.lotId - a.lotId)[0]
     : undefined;
   if (!stock) stock = db.stock.filter((s) => s.variantId === variantId).sort((a, b) => b.lotId - a.lotId)[0];
   if (!stock) return;
-  if (quarantine) stock.qtyQuarantine += qty;
-  else stock.qtyAvailable += qty;
+  stock.qtyAvailable += qty;
   appendLedger({
     variantId,
     lotId: stock.lotId,
@@ -201,23 +185,21 @@ mock('PATCH', '/returns/:id/status', ({ params, body, userId }) => {
       for (const line of inspections) {
         if (line.qty <= 0) continue;
         const left = remaining.get(line.variantId) ?? 0;
-        if (line.qty > left) fail(409, 'Số lượng kiểm vượt quá phiếu trả');
+        if (line.qty > left) fail(409, 'Số lượng nhận vượt quá phiếu trả');
         remaining.set(line.variantId, left - line.qty);
         applyStockIn(
           line.variantId,
           line.locationId ?? null,
           line.qty,
-          !line.passed,
           row.id,
-          line.passed ? `Nhập lại hàng trả — ${row.code}` : `Đưa vào khu hàng trả — ${row.code}`,
+          `Nhập lại hàng trả — ${row.code}`,
           userId,
         );
       }
-      if ([...remaining.values()].some((q) => q > 0)) fail(400, 'Chưa kiểm đủ số lượng trên phiếu trả');
+      if ([...remaining.values()].some((q) => q > 0)) fail(400, 'Chưa nhận đủ số lượng trên phiếu trả');
     } else {
-      // Không gửi inspections → mặc định cách ly toàn bộ.
       row.items?.forEach((item) => {
-        applyStockIn(item.variantId, null, item.qty, true, row.id, `Hàng trả về, khu hàng trả — ${row.code}`, userId);
+        applyStockIn(item.variantId, null, item.qty, row.id, `Nhập lại hàng trả — ${row.code}`, userId);
       });
     }
   }
@@ -231,6 +213,6 @@ mock('PATCH', '/returns/:id/status', ({ params, body, userId }) => {
       db.payments.push({ id, code: nextCode('TT', db.payments), orderId: row.orderId, customerId: row.customerId, method: order?.paymentMethod ?? 'cash', direction: 'refund', amount: row.amount, status: 'success', reference: row.code, gateway: null, payosOrderCode: null, checkoutUrl: null, paidAt: new Date().toISOString(), receivedBy: userId, note: `Hoàn tiền ${row.code}` });
     }
   }
-  if (row.orderId) addOrderEvent(row.orderId, 'return', `Phiếu trả ${row.code}: ${body.status === 'received' ? 'đã nhận hàng' : body.status === 'refunded' ? 'đã hoàn tiền' : 'từ chối'}`, userId);
+  if (row.orderId) addOrderEvent(row.orderId, 'return', `Phiếu trả ${row.code}: ${body.status === 'received' ? 'đã nhận hàng' : body.status === 'refunded' ? 'đã hoàn tiền' : 'đã hủy'}`, userId);
   audit(userId, 'update', 'sales_return', row.id, { status: body.status });
 });

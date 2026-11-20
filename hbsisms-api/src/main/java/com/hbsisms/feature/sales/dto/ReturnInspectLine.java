@@ -4,8 +4,8 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 
 /**
- * Một dòng kiểm hàng khi nhận phiếu trả (task #30). {@code passed=true} → nhập lại
- * {@code locationId}; {@code false} → cách ly tại vị trí đó (hoặc vị trí cách ly mặc định).
+ * Một dòng nhận hàng khi PATCH status=received (task #30). Luôn cộng tồn khả dụng tại
+ * {@code locationId}. {@code passed} giữ tương thích FE — bị bỏ qua (không còn khu hàng trả).
  */
 public record ReturnInspectLine(
         @NotNull Long variantId,

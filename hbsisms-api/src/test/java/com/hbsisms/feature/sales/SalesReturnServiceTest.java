@@ -262,7 +262,7 @@ class SalesReturnServiceTest {
     }
 
     @Test
-    void setStatus_received_defaultQuarantinesStock() {
+    void setStatus_received_defaultReceivesStockToShelf() {
         SalesReturn row = pendingReturn(null);
         when(salesReturnRepository.findWithDetailsById(50L)).thenReturn(Optional.of(row));
         when(orderAllocationService.netHeldByLot(100L)).thenReturn(Map.of());
@@ -278,22 +278,16 @@ class SalesReturnServiceTest {
         loc.setCode("A-01");
         loc.setZone("A");
         loc.setWarehouse(warehouse);
-        com.hbsisms.feature.inventory.Location quarantine = new com.hbsisms.feature.inventory.Location();
-        ReflectionTestUtils.setField(quarantine, "id", 8L);
-        quarantine.setCode("HT-01");
-        quarantine.setZone("Khu hàng trả");
-        quarantine.setWarehouse(warehouse);
         com.hbsisms.feature.inventory.Stock stock = new com.hbsisms.feature.inventory.Stock();
         stock.setVariant(variant);
         stock.setLot(lot);
         stock.setLocation(loc);
         when(stockRepository.findByVariantIdWithLotLocation(11L)).thenReturn(List.of(stock));
-        when(locationRepository.findById(4L)).thenReturn(Optional.of(loc));
-        when(locationRepository.findAllWithWarehouse()).thenReturn(List.of(loc, quarantine));
 
         service.setStatus(50L, ReturnStatus.RECEIVED, null, 7L);
 
-        verify(stockService).quarantineReturn(any());
+        verify(stockService).receiveReturn(any());
+        verify(stockService, never()).quarantineReturn(any());
         assertThat(row.getStatus()).isEqualTo(ReturnStatus.RECEIVED);
         assertThat(row.getInspectedBy()).isEqualTo(actor);
         assertThat(row.getInspectedAt()).isEqualTo(NOW);

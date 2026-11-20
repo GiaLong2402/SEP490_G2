@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAction } from '@/shared/api/useAction';
@@ -7,22 +7,26 @@ import { date, money } from '@/shared/lib/format';
 import { Button, Card, ConfirmDialog, DataTable, Field, FilterBar, FilterSelect, Input, Modal, PageHeader, Pagination, SearchBox, StatusChip, enumOptions, useListParams, type Column } from '@/shared/ui';
 import { useToast } from '@/shared/ui/Toast';
 import { returnsApi } from '../api';
-import { ReceiveInspectModal } from '../components/ReceiveInspectModal';
 import { ReturnableOrderSearchField } from '../components/ReturnableOrderSearchField';
 import { useReturns } from '../hooks';
-import type { ReturnInspectLine, ReturnListItem, ReturnStatus, ReturnableOrder } from '../types';
+import type { ReturnListItem, ReturnStatus, ReturnableOrder } from '../types';
 
-function statusToast(status: ReturnStatus, opts?: { inspected?: boolean; receiveBackHeld?: boolean }) {
+type ConfirmTarget = {
+  id: number;
+  status: ReturnStatus;
+  code?: string;
+  /** Phiếu nhận về từ giao thất bại — toast HOLD. */
+  receiveBack?: boolean;
+};
+
+function statusToast(status: ReturnStatus, receiveBack?: boolean) {
   switch (status) {
     case 'received':
-      if (opts?.receiveBackHeld) {
-        return 'Đã nhận về: còn HOLD → chỉ nhả giữ về kệ (không vào khu hàng trả). F5 Tồn kho.';
-      }
-      return opts?.inspected
-        ? 'Đã kiểm hàng. Đạt → Khả dụng; không đạt → khu hàng trả. F5 Tồn kho để đối chiếu.'
-        : 'Đã nhận hàng. HOLD được nhả (nếu còn) hoặc mặc định vào khu hàng trả — F5 Tồn kho.';
+      return receiveBack
+        ? 'Đã nhận về — nhả HOLD (nếu còn) hoặc cộng tồn về vị trí đã xuất. F5 Tồn kho.'
+        : 'Đã nhận hàng — cộng tồn về vị trí đã xuất. F5 Tồn kho.';
     case 'rejected':
-      return 'Đã từ chối phiếu — không thay đổi tồn kho.';
+      return 'Đã hủy phiếu — không thay đổi tồn kho.';
     case 'refunded':
       return 'Đã hoàn tiền: ghi phiếu hoàn (TM/CK) hoặc giảm nợ B2B. Tồn không đổi — F5 Thanh toán / Công nợ.';
     default:
@@ -46,10 +50,7 @@ export default function ReturnsPage() {
   const [reason, setReason] = useState(receiveBack ? 'Giao thất bại — nhận hàng về' : '');
   const [quantities, setQuantities] = useState<Record<number, string>>({});
   const [touched, setTouched] = useState(false);
-  const [confirm, setConfirm] = useState<{ id: number; status: Exclude<ReturnStatus, 'received'>; code?: string } | null>(null);
-  const [inspectRow, setInspectRow] = useState<ReturnListItem | null>(null);
-  const inspectDetailedRef = useRef(false);
-  const receiveBackHeldRef = useRef(false);
+  const [confirm, setConfirm] = useState<ConfirmTarget | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [receiveLoading, setReceiveLoading] = useState(false);
 
@@ -78,7 +79,6 @@ export default function ReturnsPage() {
           setOpen(true);
           return;
         }
-        // Đã tạo phiếu rồi → mở Kiểm nếu còn Chờ nhận; đã xong thì không mở form tạo (nút hết tác dụng tạo).
         const page = await returnsApi.list({ page: 1, pageSize: 50, status: 'pending' });
         if (cancelled) return;
         const existing = page.items.find((r) => r.deliveryId === deliveryId) ?? null;
@@ -87,7 +87,7 @@ export default function ReturnsPage() {
         setOrderId(null);
         clearQuery();
         if (existing) {
-          setInspectRow(existing);
+          setConfirm({ id: existing.id, status: 'received', code: existing.code, receiveBack: true });
           return;
         }
         toast.success(`Đợt giao #${deliveryId} đã nhận về xong — xem phiếu trên danh sách (Đã nhận hàng / Hoàn tiền).`);
@@ -104,7 +104,6 @@ export default function ReturnsPage() {
     return () => {
       cancelled = true;
     };
-    // clearQuery ổn định theo URL; cố ý không đưa vào deps để tránh loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ chạy lại khi đổi deliveryId
   }, [receiveBack, deliveryId]);
 
@@ -154,22 +153,21 @@ export default function ReturnsPage() {
   );
 
   const setStatus = useAction(
-    ({ id, status, inspections }: { id: number; status: ReturnStatus; inspections?: ReturnInspectLine[] | null }) =>
-      returnsApi.setStatus(id, status, inspections),
+    ({ id, status }: { id: number; status: ReturnStatus }) => returnsApi.setStatus(id, status),
     {
-      success: () =>
-        statusToast(confirm?.status ?? 'received', {
-          inspected: inspectDetailedRef.current,
-          receiveBackHeld: receiveBackHeldRef.current,
-        }),
-      onDone: () => {
-        setConfirm(null);
-        setInspectRow(null);
-        inspectDetailedRef.current = false;
-        receiveBackHeldRef.current = false;
-      },
+      success: () => statusToast(confirm?.status ?? 'received', confirm?.receiveBack),
+      onDone: () => setConfirm(null),
     },
   );
+
+  const askReceive = (r: ReturnListItem) => {
+    setConfirm({
+      id: r.id,
+      status: 'received',
+      code: r.code,
+      receiveBack: r.deliveryId != null,
+    });
+  };
 
   const columns: Column<ReturnListItem>[] = [
     { key: 'code', header: 'Mã', cell: (r) => <span className="num">{r.code}</span> },
@@ -209,8 +207,8 @@ export default function ReturnsPage() {
         <div className="flex justify-end gap-1.5">
           {r.status === 'pending' && (
             <>
-              <Button variant="ghost" onClick={() => setConfirm({ id: r.id, status: 'rejected', code: r.code })}>Từ chối</Button>
-              <Button onClick={() => setInspectRow(r)}>Kiểm / nhận hàng</Button>
+              <Button variant="ghost" onClick={() => setConfirm({ id: r.id, status: 'rejected', code: r.code })}>Hủy phiếu</Button>
+              <Button onClick={() => askReceive(r)}>Nhận hàng</Button>
             </>
           )}
           {r.status === 'received' && (
@@ -223,23 +221,31 @@ export default function ReturnsPage() {
 
   const confirmCopy = confirm?.status === 'rejected'
     ? {
-        title: 'Từ chối phiếu trả?',
-        message: `Phiếu ${confirm.code ?? ''} sẽ bị từ chối. Tồn kho không thay đổi.`,
-        confirmLabel: 'Từ chối phiếu',
+        title: 'Hủy phiếu trả?',
+        message: `Hủy ${confirm.code ?? ''} nếu tạo nhầm hoặc khách không gửi hàng về. Tồn kho không đổi.`,
+        confirmLabel: 'Hủy phiếu',
         danger: true,
       }
-    : {
-        title: 'Xác nhận hoàn tiền?',
-        message: `Phiếu ${confirm?.code ?? ''}: ghi nhận hoàn theo giá trị phiếu (TM/CK hoặc giảm nợ nếu công nợ). Tồn kho không đổi.`,
-        confirmLabel: 'Đã hoàn tiền',
-        danger: false,
-      };
+    : confirm?.status === 'received'
+      ? {
+          title: 'Nhận hàng?',
+          message: confirm.receiveBack
+            ? `Phiếu ${confirm.code ?? ''}: còn HOLD → nhả giữ về kệ; đã xuất → cộng tồn về vị trí đã xuất.`
+            : `Phiếu ${confirm.code ?? ''}: cộng tồn khả dụng về vị trí đã xuất. Không chọn kệ khác.`,
+          confirmLabel: 'Nhận hàng',
+          danger: false,
+        }
+      : {
+          title: 'Xác nhận hoàn tiền?',
+          message: `Phiếu ${confirm?.code ?? ''}: ghi nhận hoàn theo giá trị phiếu (TM/CK hoặc giảm nợ nếu công nợ). Tồn kho không đổi.`,
+          confirmLabel: 'Đã hoàn tiền',
+          danger: false,
+        };
 
   return (
     <>
       <PageHeader
         title="Trả hàng"
-        subtitle="Chờ nhận → Kiểm (đạt=kệ đã xuất / không đạt=HT-01 cùng kho) → Hoàn tiền. Giao thất bại: Nhận về → nhả HOLD hoặc kiểm."
         actions={<Button variant="primary" icon={<Plus size={15} />} onClick={() => { resetForm(); setOpen(true); }}>Tạo phiếu trả</Button>}
       />
       <Card flush>
@@ -260,26 +266,6 @@ export default function ReturnsPage() {
         loading={setStatus.isPending}
         onClose={() => setConfirm(null)}
         onConfirm={() => confirm && setStatus.mutate({ id: confirm.id, status: confirm.status })}
-      />
-
-      <ReceiveInspectModal
-        open={!!inspectRow}
-        row={inspectRow}
-        loading={setStatus.isPending}
-        onClose={() => setInspectRow(null)}
-        onConfirmInspect={(inspections) => {
-          if (!inspectRow) return;
-          inspectDetailedRef.current = true;
-          // Demo FAIL còn HOLD: BE chỉ nhả giữ — không vào CL dù FE chọn cách ly.
-          receiveBackHeldRef.current = inspectRow.deliveryId != null;
-          setStatus.mutate({ id: inspectRow.id, status: 'received', inspections });
-        }}
-        onConfirmQuarantineAll={() => {
-          if (!inspectRow) return;
-          inspectDetailedRef.current = false;
-          receiveBackHeldRef.current = inspectRow.deliveryId != null;
-          setStatus.mutate({ id: inspectRow.id, status: 'received', inspections: null });
-        }}
       />
 
       <Modal
@@ -321,7 +307,7 @@ export default function ReturnsPage() {
             )}
           </Field>
           {receiveBack && (
-            <p className="text-small text-ink-muted">Đợt giao #{deliveryId} — phiếu gắn deliveryId, chưa đụng tồn đến khi kho kiểm / nhận hàng.</p>
+            <p className="text-small text-ink-muted">Đợt giao #{deliveryId} — phiếu gắn deliveryId, chưa đụng tồn đến khi kho nhận hàng.</p>
           )}
           <Field label="Lý do" required error={touched && !reason.trim() ? 'Vui lòng nhập lý do' : undefined}><Input value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
           {selected && (

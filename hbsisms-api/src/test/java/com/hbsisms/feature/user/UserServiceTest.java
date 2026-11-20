@@ -9,6 +9,8 @@ import static org.mockito.Mockito.when;
 
 import com.hbsisms.TestFixtures;
 import com.hbsisms.common.exception.ApiException;
+import com.hbsisms.feature.auth.AuthIdentity;
+import com.hbsisms.feature.auth.AuthIdentityRepository;
 import com.hbsisms.feature.role.AppRole;
 import com.hbsisms.feature.role.Permission;
 import com.hbsisms.feature.role.RoleService;
@@ -33,6 +35,8 @@ class UserServiceTest {
     private RoleService roleService;
     @Mock
     private PasswordEncoder passwordEncoder;
+    @Mock
+    private AuthIdentityRepository authIdentityRepository;
 
     private UserService userService;
     private AppRole adminRole;
@@ -40,7 +44,7 @@ class UserServiceTest {
 
     @BeforeEach
     void setUp() {
-        userService = new UserService(userRepository, roleService, passwordEncoder);
+        userService = new UserService(userRepository, roleService, passwordEncoder, authIdentityRepository);
         adminRole = TestFixtures.role((short) 1, "admin", Set.of(Permission.ADMIN));
         salesRole = TestFixtures.role((short) 3, "sales", Set.of(Permission.ORDERS));
     }
@@ -140,7 +144,7 @@ class UserServiceTest {
     }
 
     @Test
-    void updateStaff_phoneChange_clearsPhoneVerifiedAt() {
+    void updateStaff_phoneChange_clearsPhoneVerifiedAtAndUnlinksFirebase() {
         AppUser sales = TestFixtures.staff(5L, "mai", salesRole);
         sales.setPhone("0901234567");
         sales.setPhoneVerifiedAt(java.time.Instant.parse("2026-01-01T00:00:00Z"));
@@ -153,6 +157,21 @@ class UserServiceTest {
 
         assertThat(sales.getPhone()).isEqualTo("0909999999");
         assertThat(sales.getPhoneVerifiedAt()).isNull();
+        verify(authIdentityRepository).deleteByUser_IdAndProvider(5L, AuthIdentity.PROVIDER_FIREBASE);
+    }
+
+    @Test
+    void updateStaff_samePhone_keepsFirebaseLink() {
+        AppUser sales = TestFixtures.staff(5L, "mai", salesRole);
+        sales.setPhone("0901234567");
+        when(userRepository.findWithRoleById(5L)).thenReturn(Optional.of(sales));
+        when(roleService.getAssignableStaffRole((short) 3)).thenReturn(salesRole);
+        when(userRepository.findByUsername("mai")).thenReturn(Optional.of(sales));
+        when(userRepository.saveAndFlush(sales)).thenReturn(sales);
+
+        userService.updateStaff(5L, request("mai", null, "0901234567", (short) 3, true, null), 1L);
+
+        verify(authIdentityRepository, never()).deleteByUser_IdAndProvider(any(), any());
     }
 
     @Test

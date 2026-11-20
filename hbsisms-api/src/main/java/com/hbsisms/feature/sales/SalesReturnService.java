@@ -9,7 +9,6 @@ import com.hbsisms.feature.catalog.ProductVariantRepository;
 import com.hbsisms.feature.inventory.LedgerEntryType;
 import com.hbsisms.feature.inventory.Location;
 import com.hbsisms.feature.inventory.LocationRepository;
-import com.hbsisms.feature.inventory.QuarantineLocationSeeder;
 import com.hbsisms.feature.inventory.Stock;
 import com.hbsisms.feature.inventory.StockLedger;
 import com.hbsisms.feature.inventory.StockLedgerRepository;
@@ -51,7 +50,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Inter 3 task #29–#31 — phiếu trả, kiểm/nhận hàng, hoàn tiền (ghi payment / giảm nợ).
+ * Inter 3 task #29–#31 — phiếu trả, nhận hàng (cộng tồn), hoàn tiền (ghi payment / giảm nợ).
+ * Scope basic: không route khu hàng trả / QC đạt-không đạt.
  */
 @Service
 public class SalesReturnService {
@@ -125,7 +125,7 @@ public class SalesReturnService {
     }
 
     /**
-     * Gợi ý khi kiểm hàng: đạt → lô/vị trí đã xuất; không đạt → CL cùng kho xuất (mỗi kho một khu).
+     * Gợi ý khi nhận hàng: lô/vị trí đã xuất (cộng tồn khả dụng). Không dùng khu hàng trả.
      */
     @Transactional(readOnly = true)
     public ReturnInspectDefaultsResponse inspectDefaults(Long id) {
@@ -133,10 +133,6 @@ public class SalesReturnService {
                 .findWithDetailsById(id)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy phiếu trả"));
         Long orderId = row.getOrder() == null ? null : row.getOrder().getId();
-
-        Location fallbackQuarantine = findQuarantineLocation(null).orElse(null);
-        Long quarantineId = fallbackQuarantine == null ? null : fallbackQuarantine.getId();
-        String quarantineLabel = fallbackQuarantine == null ? null : locationLabel(fallbackQuarantine);
 
         List<ReturnInspectDefaultsResponse.Line> lines = new ArrayList<>();
         for (ReturnItem item : row.getItems()) {
@@ -148,22 +144,15 @@ public class SalesReturnService {
             }
             Long shippedLocId = shipped == null ? null : shipped.locationId();
             String shippedLabel = shippedLocId == null ? null : locationLabel(requireLocation(shippedLocId));
-            Long warehouseId = null;
-            if (shippedLocId != null) {
-                Location shippedLoc = requireLocation(shippedLocId);
-                warehouseId = shippedLoc.getWarehouse() == null ? null : shippedLoc.getWarehouse().getId();
-            }
-            // Chỉ CL cùng kho xuất — không nhảy sang kho khác (tránh KHO4 xuất / KHO2 cách ly).
-            Location lineQuarantine = findQuarantineLocation(warehouseId).orElse(null);
             lines.add(new ReturnInspectDefaultsResponse.Line(
                     item.variantId(),
                     shipped == null ? item.lotId() : shipped.lotId(),
                     shippedLocId,
                     shippedLabel,
-                    lineQuarantine == null ? null : lineQuarantine.getId(),
-                    lineQuarantine == null ? null : locationLabel(lineQuarantine)));
+                    null,
+                    null));
         }
-        return new ReturnInspectDefaultsResponse(quarantineId, quarantineLabel, lines);
+        return new ReturnInspectDefaultsResponse(null, null, lines);
     }
 
     @Transactional(readOnly = true)
@@ -339,7 +328,7 @@ public class SalesReturnService {
             String label = switch (target) {
                 case RECEIVED -> "đã nhận hàng";
                 case REFUNDED -> "đã hoàn tiền";
-                case REJECTED -> "từ chối";
+                case REJECTED -> "đã hủy";
                 default -> target.code();
             };
             addEvent(row.getOrder(), "return", "Phiếu trả " + row.getCode() + ": " + label, actor);
@@ -359,7 +348,7 @@ public class SalesReturnService {
 
     /**
      * - Giao thất bại + còn HOLD: nhả hold, không nhập kho.
-     * - Khách trả (đã OUT): inspections → nhập lại / cách ly; không có inspections → mặc định cách ly.
+     * - Khách trả (đã OUT): cộng tồn khả dụng về vị trí đã xuất (hoặc vị trí FE gửi).
      */
     private void applyReceived(SalesReturn row, List<ReturnInspectLine> inspections, Long actorId) {
         SalesOrder order = row.getOrder();
@@ -377,8 +366,7 @@ public class SalesReturnService {
                 && orderAllocationService.netHeldByLot(order.getId()).values().stream().anyMatch(q -> q > 0);
 
         if (stillHeld) {
-            // Chưa OUT: chỉ nhả HOLD về khả dụng — không nhập/cách ly (tránh nhân đôi tồn).
-            // FE có thể gửi inspections; với case này bỏ qua và chỉ RELEASE.
+            // Chưa OUT: chỉ nhả HOLD về khả dụng — không nhập thêm (tránh nhân đôi tồn).
             orderAllocationService.releaseHeldForVariants(
                     order,
                     qtyByVariant,
@@ -388,32 +376,26 @@ public class SalesReturnService {
         }
 
         if (inspections != null && !inspections.isEmpty()) {
-            applyInspections(row, inspections, actorId);
+            applyReceiveLines(row, inspections, actorId);
             return;
         }
 
-        // FE “Đã nhận hàng” không gửi chi tiết → mặc định cách ly cùng kho xuất.
+        // Không gửi chi tiết → cộng tồn về lô/vị trí đã xuất.
         for (ReturnItem item : row.getItems()) {
             StockTarget shipped = resolveStockTarget(order.getId(), item.variantId(), item.lotId(), null);
-            Location shippedLoc = requireLocation(shipped.locationId());
-            Long warehouseId =
-                    shippedLoc.getWarehouse() == null ? null : shippedLoc.getWarehouse().getId();
-            Location quarantine = findQuarantineLocation(warehouseId)
-                    .orElseThrow(() -> ApiException.badRequest(
-                            "Chưa có khu hàng trả cho kho xuất — tạo vị trí zone «Khu hàng trả» trong Kho"));
-            stockService.quarantineReturn(StockMutation.of(
+            stockService.receiveReturn(StockMutation.of(
                     shipped.variantId(),
                     shipped.lotId(),
-                    quarantine.getId(),
+                    shipped.locationId(),
                     item.qty(),
                     REF_TYPE,
                     row.getId(),
-                    "Hàng trả về, khu hàng trả — " + row.getCode(),
+                    "Nhập lại hàng trả — " + row.getCode(),
                     actorId));
         }
     }
 
-    private void applyInspections(SalesReturn row, List<ReturnInspectLine> inspections, Long actorId) {
+    private void applyReceiveLines(SalesReturn row, List<ReturnInspectLine> inspections, Long actorId) {
         Map<Long, Integer> remaining = new HashMap<>();
         for (ReturnItem item : row.getItems()) {
             remaining.merge(item.variantId(), item.qty(), Integer::sum);
@@ -424,31 +406,24 @@ public class SalesReturnService {
             }
             int left = remaining.getOrDefault(line.variantId(), 0);
             if (line.qty() > left) {
-                throw ApiException.conflict("Số lượng kiểm vượt quá phiếu trả");
+                throw ApiException.conflict("Số lượng nhận vượt quá phiếu trả");
             }
             remaining.put(line.variantId(), left - line.qty());
 
             StockTarget target = resolveStockTarget(
                     row.getOrder().getId(), line.variantId(), line.lotId(), line.locationId());
-            String note = (Boolean.TRUE.equals(line.passed()) ? "Nhập lại hàng trả — " : "Đưa vào khu hàng trả — ")
-                    + row.getCode();
-            StockMutation cmd = StockMutation.of(
+            stockService.receiveReturn(StockMutation.of(
                     target.variantId(),
                     target.lotId(),
                     target.locationId(),
                     line.qty(),
                     REF_TYPE,
                     row.getId(),
-                    note,
-                    actorId);
-            if (Boolean.TRUE.equals(line.passed())) {
-                stockService.receiveReturn(cmd);
-            } else {
-                stockService.quarantineReturn(cmd);
-            }
+                    "Nhập lại hàng trả — " + row.getCode(),
+                    actorId));
         }
         if (remaining.values().stream().anyMatch(q -> q > 0)) {
-            throw ApiException.badRequest("Chưa kiểm đủ số lượng trên phiếu trả");
+            throw ApiException.badRequest("Chưa nhận đủ số lượng trên phiếu trả");
         }
     }
 
@@ -486,30 +461,8 @@ public class SalesReturnService {
                     lotId != null ? lotId : s.getLot().getId(),
                     locationId != null ? locationId : s.getLocation().getId());
         }
-        if (locationId == null) {
-            Location quarantine = findQuarantineLocation(null)
-                    .orElseThrow(() -> ApiException.badRequest(
-                            "Không xác định được vị trí kho cho hàng trả — hãy chọn vị trí hoặc tạo khu hàng trả"));
-            locationId = quarantine.getId();
-        }
         throw ApiException.badRequest(
-                "Không tìm thấy lô tồn cho sản phẩm trả — vui lòng chọn lotId khi kiểm hàng");
-    }
-
-    /**
-     * {@code warehouseId != null} → chỉ CL đúng kho đó (không fallback kho khác).
-     * {@code warehouseId == null} → CL bất kỳ (fallback toàn shop khi chưa biết kho xuất).
-     */
-    private java.util.Optional<Location> findQuarantineLocation(Long warehouseId) {
-        List<Location> all = locationRepository.findAllWithWarehouse().stream()
-                .filter(QuarantineLocationSeeder::isQuarantineZone)
-                .toList();
-        if (warehouseId != null) {
-            return all.stream()
-                    .filter(l -> l.getWarehouse() != null && warehouseId.equals(l.getWarehouse().getId()))
-                    .findFirst();
-        }
-        return all.stream().findFirst();
+                "Không tìm thấy lô/vị trí kho cho hàng trả — vui lòng chọn vị trí khi nhận hàng");
     }
 
     private Location requireLocation(long locationId) {

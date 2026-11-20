@@ -3,8 +3,6 @@ import type { ID } from '@/shared/domain/entities';
 import type {
   ReturnableOrder,
   ReturnInput,
-  ReturnInspectDefaults,
-  ReturnInspectLine,
   ReturnListItem,
   ReturnStatus,
 } from './types';
@@ -20,11 +18,8 @@ export const returnsApi = {
       q,
       deliveryId: deliveryId ?? undefined,
     }),
-  inspectDefaults: (id: ID) => api.get<ReturnInspectDefaults>(`/returns/${id}/inspect-defaults`),
   create: (body: ReturnInput) => api.post<ReturnListItem>('/returns', body),
-  setStatus: (id: ID, status: ReturnStatus, inspections?: ReturnInspectLine[] | null) =>
-    api.patch<void>(`/returns/${id}/status`, {
-      status,
-      ...(inspections != null ? { inspections } : {}),
-    }),
+  /** `status=received` không gửi inspections → BE cộng tồn về vị trí đã xuất / nhả HOLD. */
+  setStatus: (id: ID, status: ReturnStatus) =>
+    api.patch<void>(`/returns/${id}/status`, { status }),
 };

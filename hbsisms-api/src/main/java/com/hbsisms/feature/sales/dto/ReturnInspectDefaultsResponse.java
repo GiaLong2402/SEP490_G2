@@ -3,10 +3,10 @@ package com.hbsisms.feature.sales.dto;
 import java.util.List;
 
 /**
- * Gợi ý vị trí khi NV kho kiểm phiếu trả (task #30): đạt → vị trí đã xuất; không đạt → cách ly cùng kho.
+ * Gợi ý vị trí khi NV kho nhận phiếu trả (task #30): cộng tồn về vị trí đã xuất.
+ * Trường quarantine* giữ tương thích FE cũ — luôn null (không dùng khu hàng trả).
  */
 public record ReturnInspectDefaultsResponse(
-        /** Fallback toàn shop (kho đầu có CL) — FE ưu tiên {@link Line#quarantineLocationId()}. */
         Long quarantineLocationId,
         String quarantineLabel,
         List<Line> lines) {
@@ -16,7 +16,6 @@ public record ReturnInspectDefaultsResponse(
             Long lotId,
             Long shippedLocationId,
             String shippedLocationLabel,
-            /** Khu cách ly cùng kho với vị trí đã xuất (nếu suy được). */
             Long quarantineLocationId,
             String quarantineLocationLabel) {}
 }
