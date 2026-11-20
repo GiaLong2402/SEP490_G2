@@ -118,7 +118,7 @@ class StocktakeServiceTest {
         when(locationRepository.findAllWithWarehouse()).thenReturn(List.of(location));
         when(stockRepository.findAllWithDetails()).thenReturn(List.of());
 
-        assertThatThrownBy(() -> service.create(new StocktakeInput("Kho lạnh", null), 1L))
+        assertThatThrownBy(() -> service.create(new StocktakeInput(null, "Kho lạnh", null), 1L))
                 .isInstanceOf(ApiException.class)
                 .extracting(ex -> ((ApiException) ex).getStatus())
                 .isEqualTo(HttpStatus.CONFLICT);
@@ -148,7 +148,7 @@ class StocktakeServiceTest {
                 .thenReturn(Optional.empty());
         when(warehouseRepository.count()).thenReturn(1L);
 
-        StocktakeDetailResponse detail = service.create(new StocktakeInput("Kho lạnh", null), 1L);
+        StocktakeDetailResponse detail = service.create(new StocktakeInput(null, "Kho lạnh", null), 1L);
 
         assertThat(detail.code()).isEqualTo("KK-0001");
         assertThat(detail.lines()).hasSize(1);
@@ -297,7 +297,7 @@ class StocktakeServiceTest {
         when(userRepository.findById(1L)).thenReturn(Optional.of(actor));
         when(locationRepository.findAllWithWarehouse()).thenReturn(List.of(location));
 
-        assertThatThrownBy(() -> service.create(new StocktakeInput("Khu không tồn tại", null), 1L))
+        assertThatThrownBy(() -> service.create(new StocktakeInput(null, "Khu không tồn tại", null), 1L))
                 .isInstanceOf(ApiException.class)
                 .extracting(ex -> ((ApiException) ex).getStatus())
                 .isEqualTo(HttpStatus.CONFLICT);
@@ -332,7 +332,7 @@ class StocktakeServiceTest {
                 .thenReturn(Optional.empty());
         when(warehouseRepository.count()).thenReturn(1L);
 
-        StocktakeDetailResponse detail = service.create(new StocktakeInput(null, null), 1L);
+        StocktakeDetailResponse detail = service.create(new StocktakeInput(null, null, null), 1L);
 
         assertThat(detail.scope()).isEqualTo("Toàn kho");
         ArgumentCaptor<Stocktake> captor = ArgumentCaptor.forClass(Stocktake.class);
@@ -418,7 +418,7 @@ class StocktakeServiceTest {
 
     @Test
     void create_rejectsWhenActorMissing() {
-        assertThatThrownBy(() -> service.create(new StocktakeInput("Kho lạnh", null), null))
+        assertThatThrownBy(() -> service.create(new StocktakeInput(null, "Kho lạnh", null), null))
                 .isInstanceOf(ApiException.class)
                 .extracting(ex -> ((ApiException) ex).getStatus())
                 .isEqualTo(HttpStatus.FORBIDDEN);
@@ -428,7 +428,7 @@ class StocktakeServiceTest {
     void create_rejectsWhenUserNotFound() {
         when(userRepository.findById(1L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.create(new StocktakeInput("Kho lạnh", null), 1L))
+        assertThatThrownBy(() -> service.create(new StocktakeInput(null, "Kho lạnh", null), 1L))
                 .isInstanceOf(ApiException.class)
                 .extracting(ex -> ((ApiException) ex).getStatus())
                 .isEqualTo(HttpStatus.NOT_FOUND);

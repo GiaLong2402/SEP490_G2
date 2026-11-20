@@ -1,6 +1,6 @@
 import { fail, matches, mock, paginate } from '@/shared/api/mockServer';
 import { db, nextCode, nextId } from '@/shared/mock/db';
-import { addOrderEvent, appendLedger, audit, customerName, postDebtEntry, userName, variantLabel } from '@/shared/mock/services';
+import { addOrderEvent, appendLedger, audit, customerName, locationCode, postDebtEntry, userName, variantLabel } from '@/shared/mock/services';
 
 function toItem(r: (typeof db.returns)[number]) {
   return {
@@ -121,7 +121,72 @@ mock('POST', '/returns', ({ body, userId }) => {
   return toItem(row);
 });
 
+function isQuarantineLoc(l: { zone: string | null }) {
+  const z = (l.zone ?? '')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase();
+  return z.includes('quarantine') || z.includes('cach ly') || z.includes('hang tra');
+}
+
+mock('GET', '/returns/:id/inspect-defaults', ({ params }) => {
+  const row = db.returns.find((r) => r.id === Number(params.id));
+  if (!row) fail(404, 'Không tìm thấy phiếu trả');
+  const quarantineAll = db.locations.filter(isQuarantineLoc);
+  const quarantine = quarantineAll[0] ?? null;
+  const lines = (row.items ?? []).map((item) => {
+    const out = [...db.ledger]
+      .reverse()
+      .find((e) => e.variantId === item.variantId && e.refType === 'sales_order_line' && (e.entryType === 'out' || e.entryType === 'hold' || e.entryType === 'release') && e.locationId != null);
+    const stock = db.stock.filter((s) => s.variantId === item.variantId).sort((a, b) => b.lotId - a.lotId)[0];
+    const locationId = out?.locationId ?? stock?.locationId ?? null;
+    const loc = locationId == null ? null : db.locations.find((l) => l.id === locationId);
+    const label = loc ? [locationCode(loc.id), loc.zone].filter(Boolean).join(' · ') : null;
+    const lineQ = loc
+      ? (quarantineAll.find((q) => q.warehouseId === loc.warehouseId) ?? null)
+      : quarantine;
+    return {
+      variantId: item.variantId,
+      lotId: item.lotId ?? out?.lotId ?? stock?.lotId ?? null,
+      shippedLocationId: locationId,
+      shippedLocationLabel: label,
+      quarantineLocationId: lineQ?.id ?? null,
+      quarantineLocationLabel: lineQ
+        ? [locationCode(lineQ.id), lineQ.zone].filter(Boolean).join(' · ')
+        : null,
+    };
+  });
+  return {
+    quarantineLocationId: quarantine?.id ?? null,
+    quarantineLabel: quarantine ? [locationCode(quarantine.id), quarantine.zone].filter(Boolean).join(' · ') : null,
+    lines,
+  };
+});
+
 const ALLOWED: Record<string, string[]> = { pending: ['received', 'rejected'], received: ['refunded'] };
+
+function applyStockIn(variantId: number, locationId: number | null, qty: number, quarantine: boolean, refId: number, note: string, userId: number | null) {
+  let stock = locationId != null
+    ? db.stock.filter((s) => s.variantId === variantId && s.locationId === locationId).sort((a, b) => b.lotId - a.lotId)[0]
+    : undefined;
+  if (!stock) stock = db.stock.filter((s) => s.variantId === variantId).sort((a, b) => b.lotId - a.lotId)[0];
+  if (!stock) return;
+  if (quarantine) stock.qtyQuarantine += qty;
+  else stock.qtyAvailable += qty;
+  appendLedger({
+    variantId,
+    lotId: stock.lotId,
+    locationId: stock.locationId,
+    toLocationId: null,
+    entryType: 'return',
+    qtyDelta: qty,
+    balanceAfter: stock.qtyAvailable,
+    refType: 'sales_return',
+    refId,
+    note,
+    createdBy: userId,
+  });
+}
 
 mock('PATCH', '/returns/:id/status', ({ params, body, userId }) => {
   const row = db.returns.find((r) => r.id === Number(params.id));
@@ -129,13 +194,32 @@ mock('PATCH', '/returns/:id/status', ({ params, body, userId }) => {
   if (!ALLOWED[row.status]?.includes(body.status)) fail(409, 'Không thể chuyển sang trạng thái này');
   row.status = body.status;
   if (body.status === 'received') {
-    // Hàng trả về vào khu cách ly, không bán lại ngay.
-    row.items?.forEach((item) => {
-      const stock = db.stock.filter((s) => s.variantId === item.variantId).sort((a, b) => b.lotId - a.lotId)[0];
-      if (!stock) return;
-      stock.qtyQuarantine += item.qty;
-      appendLedger({ variantId: item.variantId, lotId: stock.lotId, locationId: stock.locationId, toLocationId: null, entryType: 'adjust', qtyDelta: item.qty, balanceAfter: stock.qtyAvailable, refType: 'sales_return', refId: row.id, note: 'Hàng trả về, cách ly', createdBy: userId });
-    });
+    const inspections = Array.isArray(body.inspections) ? body.inspections : null;
+    if (inspections?.length) {
+      const remaining = new Map<number, number>();
+      row.items?.forEach((item) => remaining.set(item.variantId, (remaining.get(item.variantId) ?? 0) + item.qty));
+      for (const line of inspections) {
+        if (line.qty <= 0) continue;
+        const left = remaining.get(line.variantId) ?? 0;
+        if (line.qty > left) fail(409, 'Số lượng kiểm vượt quá phiếu trả');
+        remaining.set(line.variantId, left - line.qty);
+        applyStockIn(
+          line.variantId,
+          line.locationId ?? null,
+          line.qty,
+          !line.passed,
+          row.id,
+          line.passed ? `Nhập lại hàng trả — ${row.code}` : `Đưa vào khu hàng trả — ${row.code}`,
+          userId,
+        );
+      }
+      if ([...remaining.values()].some((q) => q > 0)) fail(400, 'Chưa kiểm đủ số lượng trên phiếu trả');
+    } else {
+      // Không gửi inspections → mặc định cách ly toàn bộ.
+      row.items?.forEach((item) => {
+        applyStockIn(item.variantId, null, item.qty, true, row.id, `Hàng trả về, khu hàng trả — ${row.code}`, userId);
+      });
+    }
   }
   if (body.status === 'refunded') {
     const order = db.orders.find((o) => o.id === row.orderId);

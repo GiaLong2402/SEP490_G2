@@ -26,22 +26,40 @@ mock('GET', '/stocktakes', ({ query }) => {
 
 mock('GET', '/stocktakes/:id', ({ params }) => toDetail(Number(params.id)));
 
+function isQuarantineZone(zone: string | null | undefined) {
+  const z = (zone ?? '')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase();
+  return z.includes('quarantine') || z.includes('cach ly') || z.includes('hang tra');
+}
+
 mock('POST', '/stocktakes', ({ body, userId }) => {
   const id = nextId(db.stocktakes);
-  // Khớp BE: chỉ vị trí kho active; zone trống locations vs trống hàng là 2 message khác nhau.
-  const zoneLocations = db.locations
-    .filter((l) => {
-      const wh = db.warehouses.find((w) => w.id === l.warehouseId);
-      return wh?.isActive !== false && (!body.zone || l.zone === body.zone);
-    })
-    .map((l) => l.id);
-  if (!zoneLocations.length) {
-    fail(409, body.zone ? 'Khu vực này không có vị trí' : 'Chưa có vị trí kho đang dùng');
+  const warehouseId = body.warehouseId == null ? null : Number(body.warehouseId);
+  const quarantineScope = isQuarantineZone(body.zone);
+  const scoped = db.locations.filter((l) => {
+    const wh = db.warehouses.find((w) => w.id === l.warehouseId);
+    return wh?.isActive !== false
+      && (warehouseId == null || l.warehouseId === warehouseId)
+      && (!body.zone || l.zone === body.zone);
+  });
+  if (!scoped.length) {
+    fail(409, body.zone ? 'Khu vực này không có vị trí trong kho đã chọn' : 'Chưa có vị trí kho đang dùng');
   }
-  const stocks = db.stock.filter((s) => zoneLocations.includes(s.locationId) && s.qtyAvailable + s.qtyHeld > 0);
+  const zoneLocationIds = scoped.map((l) => l.id);
+  const onHand = (s: (typeof db.stock)[number]) => {
+    const loc = db.locations.find((l) => l.id === s.locationId);
+    if (quarantineScope || isQuarantineZone(loc?.zone)) return s.qtyQuarantine;
+    return s.qtyAvailable + s.qtyHeld;
+  };
+  const stocks = db.stock.filter((s) => zoneLocationIds.includes(s.locationId) && onHand(s) > 0);
   if (!stocks.length) fail(409, 'Khu vực này không có hàng để kiểm kê');
-  db.stocktakes.push({ id, code: nextCode('KK', db.stocktakes), scope: body.zone ?? 'Toàn kho', status: 'counting', createdBy: userId, countedBy: userId, startedAt: new Date().toISOString(), closedAt: null, note: body.note });
-  stocks.forEach((s) => db.stocktakeLines.push({ id: nextId(db.stocktakeLines), stocktakeId: id, variantId: s.variantId, lotId: s.lotId, locationId: s.locationId, systemQty: s.qtyAvailable + s.qtyHeld, countedQty: null, diff: 0 }));
+  const wh = warehouseId == null ? null : db.warehouses.find((w) => w.id === warehouseId);
+  const area = body.zone ?? 'Toàn kho';
+  const scope = wh ? `${wh.code} · ${area}` : area;
+  db.stocktakes.push({ id, code: nextCode('KK', db.stocktakes), scope, status: 'counting', createdBy: userId, countedBy: userId, startedAt: new Date().toISOString(), closedAt: null, note: body.note });
+  stocks.forEach((s) => db.stocktakeLines.push({ id: nextId(db.stocktakeLines), stocktakeId: id, variantId: s.variantId, lotId: s.lotId, locationId: s.locationId, systemQty: onHand(s), countedQty: null, diff: 0 }));
   return toDetail(id);
 });
 

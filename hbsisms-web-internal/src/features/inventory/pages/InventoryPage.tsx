@@ -97,7 +97,7 @@ export default function InventoryPage() {
     { key: 'left', header: 'Thời hạn', cell: (l) => <ExpiryChip daysLeft={l.daysLeft} /> },
     { key: 'avail', header: 'Khả dụng', align: 'right', cell: (l) => <span className="num">{num(l.available)}</span> },
     { key: 'held', header: 'Đang giữ', align: 'right', cell: (l) => <span className="num">{num(l.held)}</span> },
-    { key: 'q', header: 'Cách ly', align: 'right', hideOnMobile: true, cell: (l) => <span className="num">{num(l.quarantine)}</span> },
+    { key: 'q', header: 'Hàng trả', align: 'right', hideOnMobile: true, cell: (l) => <span className="num">{num(l.quarantine)}</span> },
     { key: 'expQty', header: 'Hết hạn', align: 'right', hideOnMobile: true, cell: (l) => <span className="num">{num(l.expired)}</span> },
     { key: 'actions', header: '', align: 'right', cell: (l) => lotActions(l) },
   ];
@@ -107,7 +107,7 @@ export default function InventoryPage() {
     { key: 'pack', header: 'Quy cách', cell: (v) => v.packLabel },
     { key: 'avail', header: 'Khả dụng', align: 'right', cell: (v) => <span className="num font-medium">{num(v.available)}</span> },
     { key: 'held', header: 'Đang giữ', align: 'right', cell: (v) => <span className="num">{num(v.held)}</span> },
-    { key: 'q', header: 'Cách ly', align: 'right', hideOnMobile: true, cell: (v) => <span className="num">{num(v.quarantine)}</span> },
+    { key: 'q', header: 'Hàng trả', align: 'right', hideOnMobile: true, cell: (v) => <span className="num">{num(v.quarantine)}</span> },
     { key: 'status', header: 'Tình trạng', cell: (v) => <Chip tone={v.isLow ? 'red' : 'green'}>{v.isLow ? 'Tồn thấp' : 'Đủ hàng'}</Chip> },
   ];
   const ledgerColumns: Column<LedgerRow>[] = [
@@ -220,7 +220,7 @@ export default function InventoryPage() {
               ) : (
                 <table className="w-full text-small">
                   <thead>
-                    <tr className="text-left text-micro font-semibold uppercase text-ink-muted"><th className="py-1">Lô (theo FEFO)</th><th>Vị trí</th><th>Ngày SX</th><th>HSD</th><th>Thời hạn</th><th className="text-right">Khả dụng</th><th className="text-right">Giữ</th><th className="text-right">Cách ly</th><th /></tr>
+                    <tr className="text-left text-micro font-semibold uppercase text-ink-muted"><th className="py-1">Lô (theo FEFO)</th><th>Vị trí</th><th>Ngày SX</th><th>HSD</th><th>Thời hạn</th><th className="text-right">Khả dụng</th><th className="text-right">Giữ</th><th className="text-right">Hàng trả</th><th /></tr>
                   </thead>
                   <tbody>
                     {v.lots.map((l) => (

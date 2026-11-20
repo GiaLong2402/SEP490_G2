@@ -156,10 +156,11 @@ export const paymentReconcileFlagMeta: Meta<PaymentReconcileFlag> = {
 export type DebtEntryType = 'charge' | 'payment' | 'adjust' | 'writeoff';
 export const debtEntryLabels: Record<DebtEntryType, string> = { charge: 'Phát sinh nợ', payment: 'Thanh toán', adjust: 'Điều chỉnh', writeoff: 'Xóa nợ' };
 
-export type LedgerEntryType = 'in' | 'out' | 'hold' | 'release' | 'move' | 'adjust' | 'damage' | 'expire';
+export type LedgerEntryType = 'in' | 'out' | 'hold' | 'release' | 'move' | 'adjust' | 'damage' | 'expire' | 'return';
 export const ledgerEntryMeta: Meta<LedgerEntryType> = {
   in: { label: 'Nhập', tone: 'green' }, out: { label: 'Xuất', tone: 'blue' }, hold: { label: 'Giữ', tone: 'amber' }, release: { label: 'Nhả', tone: 'neutral' },
   move: { label: 'Chuyển', tone: 'neutral' }, adjust: { label: 'Điều chỉnh', tone: 'amber' }, damage: { label: 'Hỏng', tone: 'red' }, expire: { label: 'Hết hạn', tone: 'red' },
+  return: { label: 'Trả hàng', tone: 'green' },
 };
 
 export type ReceiptType = 'finished' | 'raw';

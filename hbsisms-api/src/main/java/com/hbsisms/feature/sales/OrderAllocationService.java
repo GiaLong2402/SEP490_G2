@@ -176,8 +176,12 @@ public class OrderAllocationService {
             remaining.merge(key.variantId(), -take, Integer::sum);
             released += take;
         }
-        refreshAllocationStatus(order);
-        salesOrderRepository.save(order);
+        // adjustQtyHeld clearAutomatically → order/lines detach; phải load lại trước khi đụng lines.
+        SalesOrder current = salesOrderRepository
+                .findWithDetailsById(order.getId())
+                .orElse(order);
+        refreshAllocationStatus(current);
+        salesOrderRepository.save(current);
         return released;
     }
 
@@ -204,12 +208,15 @@ public class OrderAllocationService {
                     actorId));
             released += qty;
         }
-        for (SalesOrderLine line : order.getLines()) {
+        SalesOrder current = salesOrderRepository
+                .findWithDetailsById(order.getId())
+                .orElse(order);
+        for (SalesOrderLine line : current.getLines()) {
             line.setOutstandingQty(line.getQtyKhay());
         }
-        order.setAllocationStatus(AllocationStatus.NONE);
-        order.setHoldExpiresAt(null);
-        salesOrderRepository.save(order);
+        current.setAllocationStatus(AllocationStatus.NONE);
+        current.setHoldExpiresAt(null);
+        salesOrderRepository.save(current);
         return released;
     }
 

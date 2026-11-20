@@ -3,6 +3,7 @@ package com.hbsisms.feature.sales;
 import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
 import com.hbsisms.feature.sales.dto.ReturnInputRequest;
+import com.hbsisms.feature.sales.dto.ReturnInspectDefaultsResponse;
 import com.hbsisms.feature.sales.dto.ReturnListItemResponse;
 import com.hbsisms.feature.sales.dto.ReturnStatusRequest;
 import com.hbsisms.feature.sales.dto.ReturnableOrderResponse;
@@ -48,6 +49,11 @@ public class ReturnController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) Long deliveryId) {
         return salesReturnService.returnableOrders(q, deliveryId);
+    }
+
+    @GetMapping("/{id}/inspect-defaults")
+    public ReturnInspectDefaultsResponse inspectDefaults(@PathVariable Long id) {
+        return salesReturnService.inspectDefaults(id);
     }
 
     @PostMapping

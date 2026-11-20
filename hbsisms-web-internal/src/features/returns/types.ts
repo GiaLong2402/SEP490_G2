@@ -25,6 +25,29 @@ export interface ReturnInput {
   items: { variantId: ID; qty: number }[];
 }
 
+/** Một dòng kiểm khi PATCH status=received (task #30). */
+export interface ReturnInspectLine {
+  variantId: ID;
+  lotId?: ID | null;
+  locationId: ID;
+  passed: boolean;
+  qty: number;
+}
+
+/** GET /returns/{id}/inspect-defaults — gợi ý vị trí đã xuất / cách ly cùng kho. */
+export interface ReturnInspectDefaults {
+  quarantineLocationId: ID | null;
+  quarantineLabel: string | null;
+  lines: {
+    variantId: ID;
+    lotId: ID | null;
+    shippedLocationId: ID | null;
+    shippedLocationLabel: string | null;
+    quarantineLocationId: ID | null;
+    quarantineLocationLabel: string | null;
+  }[];
+}
+
 export type { ReturnStatus };
 
 /** Dòng còn có thể trả của một đơn. */

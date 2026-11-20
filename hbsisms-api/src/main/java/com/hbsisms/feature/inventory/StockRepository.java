@@ -128,7 +128,9 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
               and (loc.zone is null
                    or (lower(loc.zone) not like '%quarantine%'
                        and lower(loc.zone) not like '%cach ly%'
-                       and lower(loc.zone) not like '%cách ly%'))
+                       and lower(loc.zone) not like '%cách ly%'
+                       and lower(loc.zone) not like '%hàng trả%'
+                       and lower(loc.zone) not like '%hang tra%'))
             order by l.expDate asc nulls last, s.id asc
             """)
     List<Stock> findFefoCandidates(

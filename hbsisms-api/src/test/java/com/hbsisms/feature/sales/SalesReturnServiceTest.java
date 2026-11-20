@@ -18,6 +18,7 @@ import com.hbsisms.feature.inventory.LocationRepository;
 import com.hbsisms.feature.inventory.StockLedgerRepository;
 import com.hbsisms.feature.inventory.StockRepository;
 import com.hbsisms.feature.inventory.StockService;
+import com.hbsisms.feature.payment.PaymentService;
 import com.hbsisms.feature.sales.dto.ReturnInputRequest;
 import com.hbsisms.feature.sales.dto.ReturnLineInput;
 import com.hbsisms.feature.sales.dto.ReturnListItemResponse;
@@ -75,6 +76,8 @@ class SalesReturnServiceTest {
     private LocationRepository locationRepository;
     @Mock
     private OrderAllocationService orderAllocationService;
+    @Mock
+    private PaymentService paymentService;
 
     private SalesReturnService service;
     private SalesOrder order;
@@ -97,6 +100,7 @@ class SalesReturnServiceTest {
                 stockLedgerRepository,
                 locationRepository,
                 orderAllocationService,
+                paymentService,
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
         actor = TestFixtures.staff(7L, "khoi", TestFixtures.role((short) 3, "sales", java.util.Set.of()));
@@ -266,13 +270,26 @@ class SalesReturnServiceTest {
                 .thenReturn(List.of());
         com.hbsisms.feature.inventory.Lot lot = new com.hbsisms.feature.inventory.Lot();
         ReflectionTestUtils.setField(lot, "id", 3L);
+        com.hbsisms.feature.inventory.Warehouse warehouse = new com.hbsisms.feature.inventory.Warehouse();
+        ReflectionTestUtils.setField(warehouse, "id", 1L);
+        warehouse.setCode("HB-KHO1");
         com.hbsisms.feature.inventory.Location loc = new com.hbsisms.feature.inventory.Location();
         ReflectionTestUtils.setField(loc, "id", 4L);
+        loc.setCode("A-01");
+        loc.setZone("A");
+        loc.setWarehouse(warehouse);
+        com.hbsisms.feature.inventory.Location quarantine = new com.hbsisms.feature.inventory.Location();
+        ReflectionTestUtils.setField(quarantine, "id", 8L);
+        quarantine.setCode("HT-01");
+        quarantine.setZone("Khu hàng trả");
+        quarantine.setWarehouse(warehouse);
         com.hbsisms.feature.inventory.Stock stock = new com.hbsisms.feature.inventory.Stock();
         stock.setVariant(variant);
         stock.setLot(lot);
         stock.setLocation(loc);
         when(stockRepository.findByVariantIdWithLotLocation(11L)).thenReturn(List.of(stock));
+        when(locationRepository.findById(4L)).thenReturn(Optional.of(loc));
+        when(locationRepository.findAllWithWarehouse()).thenReturn(List.of(loc, quarantine));
 
         service.setStatus(50L, ReturnStatus.RECEIVED, null, 7L);
 
@@ -297,6 +314,21 @@ class SalesReturnServiceTest {
         service.setStatus(50L, ReturnStatus.RECEIVED, null, 7L);
 
         verify(orderAllocationService).releaseHeldForVariants(eq(order), any(), eq(7L), any());
+        verify(stockService, never()).quarantineReturn(any());
+        verify(stockService, never()).receiveReturn(any());
+    }
+
+    @Test
+    void setStatus_refunded_recordsPaymentRefund() {
+        SalesReturn row = pendingReturn(null);
+        row.setStatus(ReturnStatus.RECEIVED);
+        when(salesReturnRepository.findWithDetailsById(50L)).thenReturn(Optional.of(row));
+
+        service.setStatus(50L, ReturnStatus.REFUNDED, null, 7L);
+
+        verify(paymentService)
+                .recordRefundForSalesReturn(100L, new BigDecimal("200000.00"), "TH-2026-0001", 7L);
+        assertThat(row.getStatus()).isEqualTo(ReturnStatus.REFUNDED);
         verify(stockService, never()).quarantineReturn(any());
         verify(stockService, never()).receiveReturn(any());
     }
