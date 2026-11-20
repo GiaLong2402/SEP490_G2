@@ -313,6 +313,70 @@ public class PaymentService {
                 paymentRepository.findWithDetailsById(refund.getId()).orElse(refund));
     }
 
+    /**
+     * Task #31 — hoàn theo phiếu trả: công nợ B2B → giảm nợ; còn lại → phiếu {@code REFUND}
+     * (TM/CK, khớp #40). Đơn chưa thu / đã hoàn hết → no-op (chỉ đổi status phiếu trả).
+     */
+    @Transactional
+    public void recordRefundForSalesReturn(
+            Long orderId, BigDecimal returnAmount, String returnCode, Long actorId) {
+        if (orderId == null || returnAmount == null || returnAmount.compareTo(ZERO) <= 0) {
+            return;
+        }
+        SalesOrder order = salesOrderRepository
+                .findWithDetailsById(orderId)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy đơn hàng"));
+        String code = Strings.trimToNull(returnCode) == null ? "trả hàng" : returnCode.trim();
+
+        if (order.getPaymentMethod() == PaymentMethod.CREDIT_NET) {
+            if (order.getCustomer() == null) {
+                return;
+            }
+            Customer customer = customerRepository
+                    .findById(order.getCustomer().getId())
+                    .orElseThrow(() -> ApiException.badRequest("Khách hàng không tồn tại"));
+            BigDecimal delta = returnAmount.negate().setScale(2, RoundingMode.HALF_UP);
+            customer.setCurrentDebt(customer.getCurrentDebt().add(delta));
+            CustomerDebtLedger entry = new CustomerDebtLedger();
+            entry.setCustomer(customer);
+            entry.setOrder(order);
+            entry.setPayment(null);
+            entry.setEntryType(DebtEntryType.ADJUST);
+            entry.setAmount(delta);
+            entry.setBalanceAfter(customer.getCurrentDebt());
+            entry.setNote("Giảm nợ do trả hàng " + code);
+            customerDebtLedgerRepository.save(entry);
+            customerRepository.save(customer);
+
+            AppUser actor = actorId == null
+                    ? null
+                    : userRepository.findById(actorId).orElse(null);
+            OrderEvent event = new OrderEvent();
+            event.setOrder(order);
+            event.setEventType("refund");
+            event.setDescription("Giảm nợ " + returnAmount.toPlainString() + " ₫ — phiếu " + code);
+            event.setCreatedBy(actor);
+            orderEventRepository.save(event);
+            auditLogService.record(
+                    actorId, "refund", "sales_return", orderId, Map.of("amount", returnAmount, "creditNet", true));
+            return;
+        }
+
+        BigDecimal net = netPaid(orderId);
+        if (net.compareTo(ZERO) <= 0) {
+            return;
+        }
+        BigDecimal amount = returnAmount.min(net).setScale(2, RoundingMode.HALF_UP);
+        PaymentMethod method = order.getPaymentMethod() == PaymentMethod.BANK_TRANSFER
+                ? PaymentMethod.BANK_TRANSFER
+                : PaymentMethod.CASH;
+        String reference = method == PaymentMethod.BANK_TRANSFER ? code : null;
+        String note = method == PaymentMethod.CASH
+                ? "Hoàn tiền mặt phiếu trả " + code + " — đã trả khách"
+                : "Hoàn chuyển khoản phiếu trả " + code;
+        recordRefund(new PaymentRefundRequest(orderId, null, method, amount, reference, note), actorId);
+    }
+
     /** Inter 3 dòng 8 — đơn đang có PayOS PENDING thì không cho thu CASH/CK tay. */
     private void assertNoPendingPayosLink(Long orderId) {
         boolean pendingPayos = paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(orderId).stream()

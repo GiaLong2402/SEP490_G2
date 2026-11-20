@@ -23,8 +23,8 @@ export default defineConfig({
     // Sau này gọi Spring Boot qua proxy (vd: /api -> http://localhost:8080)
     proxy: {
       '/api': {
-        // Khớp SERVER_PORT trong hbsisms-api/.env (8081)
-        target: 'http://localhost:8081',
+        // Khớp server.port mặc định Spring Boot (8080). Đổi nếu .env set SERVER_PORT khác.
+        target: 'http://localhost:8080',
         changeOrigin: true,
       },
     },

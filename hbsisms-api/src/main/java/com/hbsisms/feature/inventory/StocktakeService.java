@@ -97,20 +97,24 @@ public class StocktakeService {
     @Transactional
     public StocktakeDetailResponse create(StocktakeInput input, Long actorId) {
         AppUser actor = requireUser(actorId);
+        Long warehouseId = input == null ? null : input.warehouseId();
         String zone = Strings.trimToNull(input == null ? null : input.zone());
-        Set<Long> locationIds = locationRepository.findAllWithWarehouse().stream()
+        boolean quarantineScope = QuarantineLocationSeeder.isQuarantineZoneLabel(zone);
+
+        List<Location> scoped = locationRepository.findAllWithWarehouse().stream()
                 .filter(l -> l.getWarehouse() != null && l.getWarehouse().isActive())
+                .filter(l -> warehouseId == null || warehouseId.equals(l.getWarehouse().getId()))
                 .filter(l -> zone == null || zone.equals(l.getZone()))
-                .map(Location::getId)
-                .collect(Collectors.toCollection(HashSet::new));
-        if (locationIds.isEmpty()) {
+                .toList();
+        if (scoped.isEmpty()) {
             throw ApiException.conflict(
-                    zone == null ? "Chưa có vị trí kho đang dùng" : "Khu vực này không có vị trí");
+                    zone == null ? "Chưa có vị trí kho đang dùng" : "Khu vực này không có vị trí trong kho đã chọn");
         }
+        Set<Long> locationIds = scoped.stream().map(Location::getId).collect(Collectors.toCollection(HashSet::new));
 
         List<Stock> stocks = stockRepository.findAllWithDetails().stream()
                 .filter(s -> locationIds.contains(s.getLocation().getId()))
-                .filter(s -> s.getQtyAvailable() + s.getQtyHeld() > 0)
+                .filter(s -> onHandForStocktake(s, quarantineScope) > 0)
                 .toList();
         if (stocks.isEmpty()) {
             throw ApiException.conflict("Khu vực này không có hàng để kiểm kê");
@@ -118,7 +122,7 @@ public class StocktakeService {
 
         Stocktake stocktake = new Stocktake();
         stocktake.setCode(nextKkCode());
-        stocktake.setScope(zone == null ? "Toàn kho" : zone);
+        stocktake.setScope(formatScope(scoped.get(0).getWarehouse(), warehouseId, zone));
         stocktake.setStatus(StocktakeStatus.COUNTING);
         stocktake.setCreatedBy(actor);
         stocktake.setCountedBy(actor);
@@ -131,12 +135,29 @@ public class StocktakeService {
             line.setVariant(stock.getVariant());
             line.setLot(stock.getLot());
             line.setLocation(stock.getLocation());
-            line.setSystemQty(stock.getQtyAvailable() + stock.getQtyHeld());
+            line.setSystemQty(onHandForStocktake(stock, quarantineScope));
             line.setCountedQty(null);
             stocktake.addLine(line);
         }
         stocktakeRepository.save(stocktake);
         return toDetail(requireWithActors(stocktake.getId()));
+    }
+
+    /** Khu cách ly: đếm qty_quarantine; khu thường: khả dụng + giữ. */
+    private static int onHandForStocktake(Stock stock, boolean quarantineScope) {
+        if (quarantineScope || QuarantineLocationSeeder.isQuarantineZone(stock.getLocation())) {
+            return stock.getQtyQuarantine();
+        }
+        return stock.getQtyAvailable() + stock.getQtyHeld();
+    }
+
+    private static String formatScope(Warehouse warehouse, Long warehouseId, String zone) {
+        String area = zone == null ? "Toàn kho" : zone;
+        if (warehouseId == null || warehouse == null) {
+            return area;
+        }
+        String code = Strings.trimToNull(warehouse.getCode());
+        return code == null ? area : code + " · " + area;
     }
 
     @Transactional
@@ -222,11 +243,20 @@ public class StocktakeService {
                     .findByVariant_IdAndLot_IdAndLocation_Id(
                             line.getVariant().getId(), line.getLot().getId(), line.getLocation().getId())
                     .orElseThrow(() -> ApiException.notFound("Không tìm thấy dòng tồn để điều chỉnh"));
-            stockService.adjustByStockId(
-                    stock.getId(),
-                    diff,
-                    "Điều chỉnh theo kiểm kê " + stocktake.getCode(),
-                    actorId);
+            // Khu cách ly: chênh lệch điều chỉnh qty_quarantine; khu thường: khả dụng.
+            if (QuarantineLocationSeeder.isQuarantineZone(line.getLocation())) {
+                stockService.adjustQuarantineByStockId(
+                        stock.getId(),
+                        diff,
+                        "Điều chỉnh khu hàng trả theo kiểm kê " + stocktake.getCode(),
+                        actorId);
+            } else {
+                stockService.adjustByStockId(
+                        stock.getId(),
+                        diff,
+                        "Điều chỉnh theo kiểm kê " + stocktake.getCode(),
+                        actorId);
+            }
         }
         stocktake.setStatus(StocktakeStatus.DONE);
         stocktake.setClosedAt(Instant.now());
