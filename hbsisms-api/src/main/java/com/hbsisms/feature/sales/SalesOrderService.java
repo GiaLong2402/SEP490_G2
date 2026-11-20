@@ -660,16 +660,19 @@ public class SalesOrderService {
 
         Long actorId = actor == null ? null : actor.getId();
         int held = orderAllocationService.holdForOrder(order, actorId, allowOutstandingShortage);
-        // Re-read sau hold (persist + detach) để event/response có allocationStatus đúng.
-        SalesOrder fresh = salesOrderRepository.findWithDetailsById(order.getId()).orElse(order);
+        // holdForOrder đã save + Stock clearAutomatically detach entity → không save lại bản stale.
+        SalesOrder fresh = salesOrderRepository
+                .findWithDetailsById(order.getId())
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy đơn"));
+        order.setState(fresh.getState());
         order.setAllocationStatus(fresh.getAllocationStatus());
         order.setHoldExpiresAt(fresh.getHoldExpiresAt());
         addEvent(
-                order,
+                fresh,
                 "confirmed",
                 "Xác nhận đơn — giữ " + held + " khay (FEFO, " + fresh.getAllocationStatus().code() + ")",
                 actor);
-        salesOrderRepository.save(order);
+        salesOrderRepository.save(fresh);
     }
 
     private void cancelOrderInternal(SalesOrder order, String reason, AppUser actor, boolean rejectPendingApproval) {
