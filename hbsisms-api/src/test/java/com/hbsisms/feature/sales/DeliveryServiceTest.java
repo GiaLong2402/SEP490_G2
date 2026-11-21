@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -21,9 +22,11 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -76,10 +79,10 @@ class DeliveryServiceTest {
     void update_deliveredWhenCodUnpaid_returns409() {
         SalesOrder order = order(20L, PaymentMethod.COD, PaymentStatus.UNPAID, OrderState.TO_SHIP);
         Delivery delivery = delivery(30L, order, DeliveryState.GOING);
-        when(deliveryRepository.findById(30L)).thenReturn(Optional.of(delivery));
+        when(deliveryRepository.findByIdForUpdate(30L)).thenReturn(Optional.of(delivery));
         when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
 
-        assertThatThrownBy(() -> service.update(30L, new DeliveryUpdateRequest(DeliveryState.DELIVERED, null, null), 9L))
+        assertThatThrownBy(() -> service.update(30L, new DeliveryUpdateRequest(DeliveryState.DELIVERED, null), 9L))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> {
                     ApiException api = (ApiException) ex;
@@ -93,10 +96,10 @@ class DeliveryServiceTest {
         SalesOrder order = order(21L, PaymentMethod.CASH, PaymentStatus.UNPAID, OrderState.TO_SHIP);
         order.setFulfillmentMethod(FulfillmentMethod.SHOP_DELIVERY);
         Delivery delivery = delivery(31L, order, DeliveryState.GOING);
-        when(deliveryRepository.findById(31L)).thenReturn(Optional.of(delivery));
+        when(deliveryRepository.findByIdForUpdate(31L)).thenReturn(Optional.of(delivery));
         when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
 
-        assertThatThrownBy(() -> service.update(31L, new DeliveryUpdateRequest(DeliveryState.DELIVERED, null, null), 9L))
+        assertThatThrownBy(() -> service.update(31L, new DeliveryUpdateRequest(DeliveryState.DELIVERED, null), 9L))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> {
                     ApiException api = (ApiException) ex;
@@ -112,17 +115,165 @@ class DeliveryServiceTest {
         SalesOrderLine line = new SalesOrderLine();
         setId(line, 40L);
         line.setQtyKhay(1);
-        when(deliveryRepository.findById(32L)).thenReturn(Optional.of(delivery));
+        when(deliveryRepository.findByIdForUpdate(32L)).thenReturn(Optional.of(delivery));
         when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
         when(salesOrderLineRepository.findByOrder_IdOrderByIdAsc(22L)).thenReturn(List.of(line));
         when(deliveryRepository.findByOrder_IdOrderByIdAsc(22L)).thenReturn(List.of(delivery));
 
-        service.update(32L, new DeliveryUpdateRequest(DeliveryState.DELIVERED, null, null), 9L);
+        service.update(32L, new DeliveryUpdateRequest(DeliveryState.DELIVERED, null), 9L);
 
         assertThat(delivery.getState()).isEqualTo(DeliveryState.DELIVERED);
         assertThat(order.getState()).isEqualTo(OrderState.DELIVERED);
         verify(orderAllocationService).issueOutHeldForOrder(eq(order), eq(9L));
         verify(deliveryRepository).save(delivery);
+    }
+
+    // ---- Inter 3 dòng 21: bắt đầu giao (không gán người giao — cách giao chỉ là nhãn) ----
+
+    @Test
+    void start_shopDelivery_withoutAssignee_goesGoingAndRecordsStartedAt() {
+        SalesOrder order = order(50L, PaymentMethod.CASH, PaymentStatus.PAID, OrderState.TO_SHIP);
+        Delivery delivery = delivery(60L, order, DeliveryState.READY);
+        when(deliveryRepository.findByIdForUpdate(60L)).thenReturn(Optional.of(delivery));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        service.update(60L, new DeliveryUpdateRequest(DeliveryState.GOING, null), 9L);
+
+        assertThat(delivery.getState()).isEqualTo(DeliveryState.GOING);
+        assertThat(delivery.getStartedAt()).isEqualTo(Instant.parse("2026-11-15T10:00:00Z"));
+        assertThat(delivery.getDeliveredAt()).isNull();
+        assertThat(order.getState()).isEqualTo(OrderState.TO_SHIP);
+        assertThat(savedEvent().getDescription()).isEqualTo("Bắt đầu giao Đợt 1 · Shop tự giao");
+        verify(auditLogService).record(eq(9L), eq("update"), eq("delivery"), eq(60L), any());
+        verify(deliveryRepository).save(delivery);
+    }
+
+    @Test
+    void start_partnerDelivery_eventShowsPartnerLabel() {
+        SalesOrder order = order(51L, PaymentMethod.BANK_TRANSFER, PaymentStatus.PAID, OrderState.TO_SHIP);
+        Delivery delivery = delivery(61L, order, DeliveryState.READY);
+        delivery.setFulfillmentMethod(FulfillmentMethod.PARTNER_DELIVERY);
+        when(deliveryRepository.findByIdForUpdate(61L)).thenReturn(Optional.of(delivery));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        service.update(61L, new DeliveryUpdateRequest(DeliveryState.GOING, null), 9L);
+
+        assertThat(delivery.getState()).isEqualTo(DeliveryState.GOING);
+        assertThat(savedEvent().getDescription()).isEqualTo("Bắt đầu giao Đợt 1 · Đối tác giao");
+    }
+
+    @Test
+    void start_pickup_hasNoGoingStep_returns409() {
+        SalesOrder order = order(52L, PaymentMethod.CASH, PaymentStatus.PAID, OrderState.TO_SHIP);
+        Delivery delivery = delivery(62L, order, DeliveryState.READY);
+        delivery.setFulfillmentMethod(FulfillmentMethod.PICKUP);
+        when(deliveryRepository.findByIdForUpdate(62L)).thenReturn(Optional.of(delivery));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        assertConflict(() -> service.update(62L, new DeliveryUpdateRequest(DeliveryState.GOING, null), 9L),
+                "Không thể chuyển");
+        assertThat(delivery.getState()).isEqualTo(DeliveryState.READY);
+        assertThat(delivery.getStartedAt()).isNull();
+    }
+
+    @Test
+    void start_orderNotReadyToShip_returns409() {
+        SalesOrder order = order(53L, PaymentMethod.CASH, PaymentStatus.PAID, OrderState.PREPARING);
+        Delivery delivery = delivery(63L, order, DeliveryState.READY);
+        when(deliveryRepository.findByIdForUpdate(63L)).thenReturn(Optional.of(delivery));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        assertConflict(() -> service.update(63L, new DeliveryUpdateRequest(DeliveryState.GOING, null), 9L),
+                "Chờ giao");
+        assertThat(delivery.getState()).isEqualTo(DeliveryState.READY);
+    }
+
+    @Test
+    void start_alreadyGoing_returns409_keepsStartedAt() {
+        SalesOrder order = order(54L, PaymentMethod.CASH, PaymentStatus.PAID, OrderState.TO_SHIP);
+        Delivery delivery = delivery(64L, order, DeliveryState.GOING);
+        Instant firstStart = Instant.parse("2026-11-15T08:00:00Z");
+        delivery.setStartedAt(firstStart);
+        when(deliveryRepository.findByIdForUpdate(64L)).thenReturn(Optional.of(delivery));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        assertConflict(() -> service.update(64L, new DeliveryUpdateRequest(DeliveryState.GOING, null), 9L),
+                "Không thể chuyển");
+        assertThat(delivery.getStartedAt()).isEqualTo(firstStart);
+    }
+
+    @Test
+    void start_failedDelivery_returns409() {
+        SalesOrder order = order(55L, PaymentMethod.CASH, PaymentStatus.PAID, OrderState.TO_SHIP);
+        Delivery delivery = delivery(65L, order, DeliveryState.FAILED);
+        when(deliveryRepository.findByIdForUpdate(65L)).thenReturn(Optional.of(delivery));
+
+        assertConflict(() -> service.update(65L, new DeliveryUpdateRequest(DeliveryState.GOING, null), 9L),
+                "đã thất bại");
+    }
+
+    @Test
+    void update_deliveredDelivery_returns409() {
+        SalesOrder order = order(56L, PaymentMethod.CASH, PaymentStatus.PAID, OrderState.DELIVERED);
+        Delivery delivery = delivery(66L, order, DeliveryState.DELIVERED);
+        when(deliveryRepository.findByIdForUpdate(66L)).thenReturn(Optional.of(delivery));
+
+        assertConflict(() -> service.update(66L, new DeliveryUpdateRequest(null, "ghi chú"), 9L), "hoàn tất");
+    }
+
+    @Test
+    void update_noStateNoNote_returns400_withoutLoading() {
+        assertThatThrownBy(() -> service.update(67L, new DeliveryUpdateRequest(null, "   "), 9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+        verify(deliveryRepository, never()).findByIdForUpdate(any());
+    }
+
+    @Test
+    void update_unknownDelivery_returns404() {
+        when(deliveryRepository.findByIdForUpdate(68L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.update(68L, new DeliveryUpdateRequest(DeliveryState.GOING, null), 9L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void update_noteOnly_onFailedDelivery_savesNoteWithoutStateChange() {
+        SalesOrder order = order(57L, PaymentMethod.CASH, PaymentStatus.PAID, OrderState.TO_SHIP);
+        Delivery delivery = delivery(69L, order, DeliveryState.FAILED);
+        when(deliveryRepository.findByIdForUpdate(69L)).thenReturn(Optional.of(delivery));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+
+        service.update(69L, new DeliveryUpdateRequest(null, "  Khách hẹn chiều mai  "), 9L);
+
+        assertThat(delivery.getState()).isEqualTo(DeliveryState.FAILED);
+        assertThat(delivery.getNote()).isEqualTo("Khách hẹn chiều mai");
+        verify(orderEventRepository, never()).save(any());
+        verify(deliveryRepository).save(delivery);
+    }
+
+    @Test
+    void methodLabel_matchesInternalWebTags() {
+        assertThat(DeliveryService.methodLabel(FulfillmentMethod.SHOP_DELIVERY)).isEqualTo("Shop tự giao");
+        assertThat(DeliveryService.methodLabel(FulfillmentMethod.PICKUP)).isEqualTo("Khách đến lấy");
+        assertThat(DeliveryService.methodLabel(FulfillmentMethod.PARTNER_DELIVERY)).isEqualTo("Đối tác giao");
+    }
+
+    private OrderEvent savedEvent() {
+        ArgumentCaptor<OrderEvent> captor = ArgumentCaptor.forClass(OrderEvent.class);
+        verify(orderEventRepository).save(captor.capture());
+        return captor.getValue();
+    }
+
+    private static void assertConflict(ThrowingCallable call, String messagePart) {
+        assertThatThrownBy(call)
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(api.getMessage()).contains(messagePart);
+                });
     }
 
     private SalesOrder order(long id, PaymentMethod method, PaymentStatus pay, OrderState state) {

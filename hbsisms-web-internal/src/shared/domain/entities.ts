@@ -127,8 +127,8 @@ export interface DeliveryItem { orderLineId: ID; qtyKhay: number }
 
 export interface Delivery {
   id: ID; code: string | null; orderId: ID; legLabel: string | null; scheduledDate: ISODate | null; timeWindow: string | null;
-  fulfillmentMethod: E.FulfillmentMethod; addressId: ID | null; inRadius: boolean; distanceKm: number | null; assignedTo: ID | null;
-  carrier: string | null; items: DeliveryItem[] | null; state: E.DeliveryState; deliveredAt: ISODateTime | null; note: string | null;
+  fulfillmentMethod: E.FulfillmentMethod; addressId: ID | null; inRadius: boolean; distanceKm: number | null;
+  items: DeliveryItem[] | null; state: E.DeliveryState; startedAt: ISODateTime | null; deliveredAt: ISODateTime | null; note: string | null;
 }
 
 export interface ReturnItem { variantId: ID; lotId: ID | null; qty: number; amount: number }

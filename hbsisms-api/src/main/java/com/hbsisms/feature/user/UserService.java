@@ -129,21 +129,10 @@ public class UserService {
                 authIdentityRepository.deleteByUser_IdAndProvider(currentId, AuthIdentity.PROVIDER_FIREBASE);
             }
         }
-        user.setPosition(normalizePosition(request.position()));
+        user.setPosition(Strings.trimToNull(request.position()));
         user.setEmployeeCode(employeeCode);
         user.setRole(role);
         user.setActive(request.isActive());
-    }
-
-    static final String COURIER_POSITION = Couriers.POSITION;
-
-    /** "giao hang", "GIAO HÀNG"… → "Giao hàng" (danh sách người giao so khớp đúng chữ này); còn lại giữ nguyên. */
-    static String normalizePosition(String raw) {
-        String value = Strings.trimToNull(raw);
-        if (value == null) {
-            return null;
-        }
-        return "giao-hang".equals(Strings.slugify(value)) ? COURIER_POSITION : value;
     }
 
     /** Inter 2 task 3 — staff accounts always have a VN mobile used for OTP login. */

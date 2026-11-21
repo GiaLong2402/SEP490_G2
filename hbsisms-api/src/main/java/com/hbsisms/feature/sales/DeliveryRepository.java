@@ -21,15 +21,14 @@ public interface DeliveryRepository extends JpaRepository<Delivery, Long>, JpaSp
     @Query("select d from Delivery d where d.id = :id")
     Optional<Delivery> findByIdForUpdate(@Param("id") Long id);
 
-    @EntityGraph(attributePaths = "assignedTo")
     List<Delivery> findByOrder_IdOrderByIdAsc(Long orderId);
 
     /** Batch trạng thái giao cho export đơn (Inter 3 dòng 12). */
     List<Delivery> findByOrder_IdIn(Collection<Long> orderIds);
 
-    /** Màn Giao hàng: lấy kèm đơn, khách, địa chỉ, người giao trong 1 query (tránh N+1). */
+    /** Màn Giao hàng: lấy kèm đơn, khách, địa chỉ trong 1 query (tránh N+1). */
     @Override
-    @EntityGraph(attributePaths = {"order", "order.customer", "address", "assignedTo"})
+    @EntityGraph(attributePaths = {"order", "order.customer", "address"})
     Page<Delivery> findAll(Specification<Delivery> spec, Pageable pageable);
 
     /** Tổng khay của từng đơn (dùng cho đợt giao "Trọn đơn" không có danh sách hàng riêng). Mỗi dòng: [orderId, tổng khay]. */

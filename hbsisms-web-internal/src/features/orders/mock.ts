@@ -45,7 +45,7 @@ function toDetail(id: number) {
     customer: db.customers.find((c) => c.id === order.customerId) ?? null,
     address: db.addresses.find((a) => a.id === order.shipAddressId) ?? null,
     lines: db.orderLines.filter((l) => l.orderId === id).map((l) => ({ ...l, ...variantLabel(l.variantId), deliveredKhay: delivered.get(l.id) ?? (deliveries.length === 0 && ['delivered', 'completed'].includes(order.state) ? l.qtyKhay : 0) })),
-    deliveries: deliveries.map((d) => ({ ...d, assigneeName: userName(d.assignedTo) })),
+    deliveries,
     payments,
     events: db.orderEvents.filter((e) => e.orderId === id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((e) => ({ ...e, actorName: userName(e.createdBy) })),
     returns: db.returns.filter((r) => r.orderId === id),

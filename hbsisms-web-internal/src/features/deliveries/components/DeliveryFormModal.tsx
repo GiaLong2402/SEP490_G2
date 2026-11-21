@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useAction } from '@/shared/api/useAction';
 import type { Delivery, ID } from '@/shared/domain/entities';
-import { fulfillmentLabels, type FulfillmentMethod } from '@/shared/domain/enums';
+import { fulfillmentMeta, type FulfillmentMethod } from '@/shared/domain/enums';
 import { num, todayISO } from '@/shared/lib/format';
-import { Button, Field, Input, Modal, Select } from '@/shared/ui';
+import { Button, Field, Input, Modal, Select, StatusChip } from '@/shared/ui';
 import { deliveriesApi } from '../api';
-import { useCouriers } from '../hooks';
 import { DELIVERY_TIME_WINDOWS } from '../timeWindows';
 
 export interface DeliveryOrderContext {
@@ -22,7 +21,6 @@ export interface DeliveryOrderContext {
 
 /** Một đơn = một lần giao trọn; hình thức lấy từ đơn (không cho đổi). */
 export function DeliveryFormModal({ open, order, onClose }: { open: boolean; order: DeliveryOrderContext; onClose: () => void }) {
-  const couriers = useCouriers();
   const method = order.fulfillmentMethod;
   const remaining = (lineId: ID, qtyKhay: number) =>
     qtyKhay
@@ -34,8 +32,6 @@ export function DeliveryFormModal({ open, order, onClose }: { open: boolean; ord
 
   const [scheduledDate, setScheduledDate] = useState(todayISO());
   const [timeWindow, setTimeWindow] = useState('');
-  const [assignedTo, setAssignedTo] = useState('');
-  const [carrier, setCarrier] = useState('');
   const [touched, setTouched] = useState(false);
 
   const activeLegs = order.deliveries.filter((d) => d.state !== 'failed').length;
@@ -50,8 +46,6 @@ export function DeliveryFormModal({ open, order, onClose }: { open: boolean; ord
     setTouched(false);
     setScheduledDate(todayISO());
     setTimeWindow('');
-    setAssignedTo('');
-    setCarrier('');
   }, [open]);
 
   const create = useAction(
@@ -65,8 +59,6 @@ export function DeliveryFormModal({ open, order, onClose }: { open: boolean; ord
         addressId: method === 'pickup' ? null : order.shipAddressId,
         inRadius: order.inRadius,
         distanceKm: order.distanceKm,
-        assignedTo: method === 'shop_delivery' && assignedTo ? Number(assignedTo) : null,
-        carrier: method === 'partner_delivery' ? carrier || null : null,
         items: items.filter((i) => i.qtyKhay > 0),
         note: null,
       }),
@@ -97,8 +89,8 @@ export function DeliveryFormModal({ open, order, onClose }: { open: boolean; ord
       ) : (
         <>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Field label="Hình thức">
-              <p className="flex h-[34px] items-center text-body text-ink">{fulfillmentLabels[method]}</p>
+            <Field label="Cách giao">
+              <p className="flex h-[34px] items-center"><StatusChip meta={fulfillmentMeta} value={method} /></p>
             </Field>
             <Field label="Ngày giao" required error={touched && !scheduledDate ? 'Vui lòng chọn ngày' : undefined}>
               <Input type="date" min={todayISO()} value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} />
@@ -109,21 +101,6 @@ export function DeliveryFormModal({ open, order, onClose }: { open: boolean; ord
                 {DELIVERY_TIME_WINDOWS.map((w) => <option key={w} value={w}>{w}</option>)}
               </Select>
             </Field>
-            {method === 'shop_delivery' && (
-              <Field label="Nhân viên giao" className="sm:col-span-3">
-                <Select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
-                  <option value="">Chưa phân công</option>
-                  {couriers.data?.map((c) => (
-                    <option key={c.id} value={c.id}>{c.fullName}</option>
-                  ))}
-                </Select>
-              </Field>
-            )}
-            {method === 'partner_delivery' && (
-              <Field label="Đối tác giao" className="sm:col-span-3">
-                <Input value={carrier} onChange={(e) => setCarrier(e.target.value)} />
-              </Field>
-            )}
           </div>
           <h3 className="mb-2 mt-4 text-h2">Số khay giao (trọn đơn)</h3>
           <p className="mb-2 text-small text-ink-muted">Giao đủ toàn bộ khay còn lại trong một lần — không tách đợt.</p>

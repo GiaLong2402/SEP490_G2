@@ -21,16 +21,13 @@ public record OrderDeliveryViewResponse(
         Long addressId,
         boolean inRadius,
         BigDecimal distanceKm,
-        Long assignedTo,
-        String carrier,
         List<DeliveryItem> items,
         DeliveryState state,
+        Instant startedAt,
         Instant deliveredAt,
-        String note,
-        String assigneeName) {
+        String note) {
 
     public static OrderDeliveryViewResponse from(Delivery delivery) {
-        var assignee = delivery.getAssignedTo();
         return new OrderDeliveryViewResponse(
                 delivery.getId(),
                 delivery.getCode(),
@@ -42,12 +39,10 @@ public record OrderDeliveryViewResponse(
                 delivery.getAddress() == null ? null : delivery.getAddress().getId(),
                 delivery.isInRadius(),
                 delivery.getDistanceKm(),
-                assignee == null ? null : assignee.getId(),
-                delivery.getCarrier(),
                 delivery.getItems(),
                 delivery.getState(),
+                delivery.getStartedAt(),
                 delivery.getDeliveredAt(),
-                delivery.getNote(),
-                assignee == null ? null : assignee.getFullName());
+                delivery.getNote());
     }
 }

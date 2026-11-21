@@ -8,8 +8,6 @@ import { adminApi } from '../api';
 import type { UserListItem } from '../types';
 
 const empty = { username: '', fullName: '', email: '', phone: '', roleId: '', position: '', employeeCode: '', isActive: true, password: '' };
-/** Chức vụ chỉ dùng để đánh dấu người giao hàng: để trống hoặc "Giao hàng". */
-const COURIER_POSITION = 'Giao hàng';
 
 export default function UsersPage() {
   const list = useListParams(['roleId'] as const);
@@ -24,7 +22,7 @@ export default function UsersPage() {
   const openForm = (user: UserListItem | 'new') => {
     setTouched(false);
     setEditing(user);
-    setForm(user === 'new' ? empty : { username: user.username ?? '', fullName: user.fullName, email: user.email ?? '', phone: user.phone ?? '', roleId: String(user.roleId ?? ''), position: user.position === COURIER_POSITION ? COURIER_POSITION : '', employeeCode: user.employeeCode ?? '', isActive: user.isActive, password: '' });
+    setForm(user === 'new' ? empty : { username: user.username ?? '', fullName: user.fullName, email: user.email ?? '', phone: user.phone ?? '', roleId: String(user.roleId ?? ''), position: '', employeeCode: user.employeeCode ?? '', isActive: user.isActive, password: '' });
   };
   const errors = {
     username: !form.username.trim() ? 'Bắt buộc' : undefined,
@@ -62,7 +60,6 @@ export default function UsersPage() {
     { key: 'name', header: 'Họ tên', cell: (u) => <div><div className="font-medium">{u.fullName}</div><div className="text-ink-faint">{u.username}</div></div> },
     { key: 'email', header: 'Email', hideOnMobile: true, cell: (u) => u.email ?? '—' },
     { key: 'role', header: 'Vai trò', cell: (u) => u.roleName ?? '—' },
-    { key: 'position', header: 'Chức vụ', hideOnMobile: true, cell: (u) => u.position ?? '—' },
     { key: 'login', header: 'Đăng nhập gần nhất', hideOnMobile: true, cell: (u) => dateTime(u.lastLoginAt) },
     { key: 'active', header: 'Trạng thái', cell: (u) => <Chip tone={u.isActive ? 'green' : 'neutral'}>{u.isActive ? 'Hoạt động' : 'Đã khóa'}</Chip> },
     { key: 'edit', header: '', align: 'right', cell: (u) => <IconButton label={`Sửa ${u.fullName}`} onClick={() => openForm(u)}><Pencil size={14} /></IconButton> },
@@ -99,12 +96,6 @@ export default function UsersPage() {
             <Select value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })}>
               <option value="">Chọn...</option>
               {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </Select>
-          </Field>
-          <Field label="Chức vụ" hint="Chọn “Giao hàng” để có tên trong danh sách phân công giao">
-            <Select value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })}>
-              <option value="">Không</option>
-              <option value={COURIER_POSITION}>{COURIER_POSITION}</option>
             </Select>
           </Field>
           <Field label="Mã nhân viên"><Input value={form.employeeCode} onChange={(e) => setForm({ ...form, employeeCode: e.target.value })} /></Field>

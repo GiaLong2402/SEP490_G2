@@ -19,7 +19,6 @@ const DEMO_ACCOUNTS = [
   ['owner', 'Chủ cửa hàng'],
   ['sales1', 'Bán hàng'],
   ['kho1', 'Thủ kho'],
-  ['giao1', 'Giao hàng'],
   ['admin', 'Quản trị'],
 ] as const;
 

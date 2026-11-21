@@ -83,7 +83,7 @@ function seed(): MockDb {
     user(2, 'owner', 'Phạm Thị Hòa', 'owner@hbsisms.vn', 2, 'Chủ cửa hàng'),
     user(3, 'sales1', 'Nguyễn Thị Mai', 'mai@hbsisms.vn', 3, 'Kinh doanh'),
     user(4, 'kho1', 'Vũ Văn Khoa', 'khoa@hbsisms.vn', 4, 'Thủ kho'),
-    user(5, 'giao1', 'Đỗ Quang Sơn', 'son@hbsisms.vn', 4, 'Giao hàng'),
+    user(5, 'kho2', 'Đỗ Quang Sơn', 'son@hbsisms.vn', 4, 'Thủ kho'),
   ];
 
   const b2b = (id: number, code: string, name: string, phone: string, tax: string, contact: string, limit: number, net: number): T.Customer => ({
@@ -321,15 +321,15 @@ function seed(): MockDb {
       const shipped = state === 'delivered' || state === 'completed';
       const base = {
         orderId: id, fulfillmentMethod: orders[id - 1].fulfillmentMethod, addressId, inRadius: distance <= 8, distanceKm: distance,
-        assignedTo: distance <= 8 ? 5 : null, carrier: distance <= 8 ? null : 'Giao hàng tiết kiệm', note: null, timeWindow: '08:00 – 11:00',
+        note: null, timeWindow: '08:00 – 11:00',
       };
       const code = (n: number) => `GH-${pad(deliveries.length + n, 4)}`;
       if (isPartial) {
-        deliveries.push({ ...base, id: deliveries.length + 1, code: code(1), legLabel: 'Đợt 1/2', scheduledDate: isoDate(day + 1), items: line.map((l) => ({ orderLineId: l.id, qtyKhay: Math.ceil(l.qtyKhay / 2) })), state: 'delivered', deliveredAt: isoTime(day + 1, 10) });
-        deliveries.push({ ...base, id: deliveries.length + 1, code: code(1), legLabel: 'Đợt 2/2', scheduledDate: isoDate(1), items: line.map((l) => ({ orderLineId: l.id, qtyKhay: Math.floor(l.qtyKhay / 2) })), state: 'ready', deliveredAt: null });
+        deliveries.push({ ...base, id: deliveries.length + 1, code: code(1), legLabel: 'Đợt 1/2', scheduledDate: isoDate(day + 1), items: line.map((l) => ({ orderLineId: l.id, qtyKhay: Math.ceil(l.qtyKhay / 2) })), state: 'delivered', startedAt: isoTime(day + 1, 8), deliveredAt: isoTime(day + 1, 10) });
+        deliveries.push({ ...base, id: deliveries.length + 1, code: code(1), legLabel: 'Đợt 2/2', scheduledDate: isoDate(1), items: line.map((l) => ({ orderLineId: l.id, qtyKhay: Math.floor(l.qtyKhay / 2) })), state: 'ready', startedAt: null, deliveredAt: null });
         pushEvent(id, 'delivery', 'Đã giao đợt 1/2', isoTime(day + 1, 10), 5);
       } else {
-        deliveries.push({ ...base, id: deliveries.length + 1, code: code(1), legLabel: 'Trọn đơn', scheduledDate: shipped ? isoDate(day + 1) : isoDate(0), items: line.map((l) => ({ orderLineId: l.id, qtyKhay: l.qtyKhay })), state: shipped ? 'delivered' : pick(['ready', 'going'] as const), deliveredAt: shipped ? isoTime(day + 1, 10) : null });
+        deliveries.push({ ...base, id: deliveries.length + 1, code: code(1), legLabel: 'Trọn đơn', scheduledDate: shipped ? isoDate(day + 1) : isoDate(0), items: line.map((l) => ({ orderLineId: l.id, qtyKhay: l.qtyKhay })), state: shipped ? 'delivered' : pick(['ready', 'going'] as const), startedAt: shipped ? isoTime(day + 1, 8) : null, deliveredAt: shipped ? isoTime(day + 1, 10) : null });
         if (shipped) pushEvent(id, 'delivery', 'Đã giao hàng', isoTime(day + 1, 10), 5);
       }
     }
@@ -419,7 +419,7 @@ function seed(): MockDb {
     { id: 3, userId: 2, type: 'debt', title: 'Công nợ quá hạn', body: 'Quán Hải Đăng có khoản đã quá hạn', link: '/debt', isRead: true, createdAt: isoTime(-1, 9) },
     { id: 4, userId: 3, type: 'order', title: 'Đơn online mới', body: 'Có đơn mới từ website cần xác nhận', link: '/orders?state=pending', isRead: false, createdAt: isoTime(0, 8, 40) },
     { id: 5, userId: 4, type: 'expiry', title: 'Lô sắp hết hạn', body: 'Ưu tiên xuất lô mực nguyên con', link: '/inventory?tab=expiry', isRead: false, createdAt: isoTime(0, 7, 0) },
-    { id: 6, userId: 5, type: 'delivery', title: 'Lịch giao hôm nay', body: 'Kiểm tra các đợt giao được phân công', link: '/deliveries', isRead: false, createdAt: isoTime(0, 7, 10) },
+    { id: 6, userId: 5, type: 'delivery', title: 'Lịch giao hôm nay', body: 'Kiểm tra các đợt giao hôm nay', link: '/deliveries', isRead: false, createdAt: isoTime(0, 7, 10) },
     { id: 7, userId: 1, type: 'system', title: 'Kết nối hóa đơn điện tử chưa sẵn sàng', body: 'Tích hợp HĐĐT đang ở trạng thái sắp ra mắt', link: '/admin/config', isRead: false, createdAt: isoTime(-2, 9) },
   ];
 

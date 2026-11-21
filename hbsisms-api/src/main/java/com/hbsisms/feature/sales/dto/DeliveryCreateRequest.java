@@ -17,7 +17,5 @@ public record DeliveryCreateRequest(
         String timeWindow,
         FulfillmentMethod fulfillmentMethod,
         Long addressId,
-        Long assignedTo,
-        String carrier,
         List<DeliveryItem> items,
         String note) {}

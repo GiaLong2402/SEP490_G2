@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Delivery legs: danh sách, tạo đợt, cập nhật trạng thái / phân công (FE {@code /deliveries}). */
+/** Giao hàng: danh sách, tạo đợt, cập nhật trạng thái (FE {@code /deliveries}); cách giao chỉ là nhãn, không phân công người giao. */
 @RestController
 @RequestMapping("/deliveries")
 @PreAuthorize("hasAnyAuthority('orders', 'inventory')")
@@ -41,14 +41,13 @@ public class DeliveryController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String state,
             @RequestParam(required = false) String date,
-            @RequestParam(required = false) Long assignedTo,
             @RequestParam(required = false) String timeWindow,
             @RequestParam(required = false) String fulfillmentMethod,
             @RequestParam(required = false) String sort,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "" + PageRequests.DEFAULT_PAGE_SIZE) int pageSize) {
         return deliveryService.search(
-                q, state, date, assignedTo, timeWindow, fulfillmentMethod, sort, page, pageSize);
+                q, state, date, timeWindow, fulfillmentMethod, sort, page, pageSize);
     }
 
     /** Tạo đợt giao cho đơn Chờ giao / Giao một phần (mọi đơn, kể cả đơn Sales tạo). */

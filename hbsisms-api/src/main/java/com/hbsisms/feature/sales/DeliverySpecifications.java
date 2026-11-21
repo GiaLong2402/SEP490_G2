@@ -34,7 +34,6 @@ final class DeliverySpecifications {
             String keyword,
             DeliveryState state,
             LocalDate date,
-            Long assignedTo,
             String timeWindow,
             FulfillmentMethod fulfillmentMethod) {
         List<Specification<Delivery>> specs = new ArrayList<>();
@@ -48,9 +47,6 @@ final class DeliverySpecifications {
         }
         if (date != null) {
             specs.add((root, query, cb) -> cb.equal(root.get("scheduledDate"), date));
-        }
-        if (assignedTo != null) {
-            specs.add((root, query, cb) -> cb.equal(root.get("assignedTo").get("id"), assignedTo));
         }
         String window = Strings.trimToNull(timeWindow);
         if (window != null) {

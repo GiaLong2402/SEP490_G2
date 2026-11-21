@@ -14,9 +14,7 @@ export interface OrderLineView extends SalesOrderLine {
   deliveredKhay: number;
 }
 
-export interface OrderDeliveryView extends Delivery {
-  assigneeName: string | null;
-}
+export type OrderDeliveryView = Delivery;
 
 export interface OrderEventView extends OrderEvent {
   actorName: string | null;

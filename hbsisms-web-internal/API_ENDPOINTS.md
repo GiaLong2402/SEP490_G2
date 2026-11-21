@@ -66,14 +66,13 @@ Tổng cộng 97 endpoint, sinh từ `src/features/*/mock.ts`. Kiểu dữ liệ
 
 ## deliveries
 
-Contract FE: `features/deliveries/api.ts`. **Cường (Inter 3):** `GET /deliveries/couriers` + OUT theo đợt khi `PATCH` → `delivered`. **Long:** list/create đợt giao.
+Contract FE: `features/deliveries/api.ts`. **Không có người giao nội bộ** — cách giao chỉ là nhãn `fulfillmentMethod`: `shop_delivery` (Shop tự giao: người trong tiệm / gửi nhà xe khi xa), `pickup` (Khách đến lấy), `partner_delivery` (Đối tác giao: book đơn vị vận chuyển; tích hợp API để sau). **Cường (Inter 3):** OUT theo đợt khi `PATCH` → `delivered`. **Long:** list / create / bắt đầu giao.
 
 | Phương thức | Đường dẫn | Ghi chú |
 |---|---|---|
-| GET | `/deliveries/couriers` | Cường — `{ id, fullName, position }[]`; user active + `position = "Giao hàng"` (không dùng cờ riêng) |
-| GET | `/deliveries` | Long — đã có BE (lọc, sort `asc`, tổng khay) |
-| POST | `/deliveries` | Long — **201** + `DeliveryListItem`. Đơn Chờ giao / Giao một phần; ngày ≥ hôm nay; `timeWindow` ∈ 4 khung (`08:00-10:00`…`16:00-18:00`); giao tận nơi cần địa chỉ thuộc khách; `assignedTo` chỉ shop_delivery + chức vụ "Giao hàng"; một đơn giao một lần, trọn đơn: đã có chuyến chưa thất bại → 409, thất bại thì tạo lại được (giao lại); `items` phải đủ khay mọi dòng (bỏ trống = BE tự lấy đủ). BE tự đặt `legLabel` = "Trọn đơn", mã `DL-<năm>-<số>` (dãy chung), khoảng cách |
-| PATCH | `/deliveries/:id` | state/assign; **DELIVERED → OUT theo đợt** (`refType=delivery`) |
+| GET | `/deliveries` | Long — lọc `q`, `state`, `date`, `timeWindow`, `fulfillmentMethod`; sort `asc`; trả `startedAt`, `deliveredAt`, tổng khay |
+| POST | `/deliveries` | Long — **201** + `DeliveryListItem`. Đơn Chờ giao / Giao một phần; ngày ≥ hôm nay; `timeWindow` ∈ 4 khung (`08:00-10:00`…`16:00-18:00`); giao tận nơi cần địa chỉ thuộc khách; không gán người giao; một đơn giao một lần, trọn đơn: đã có chuyến chưa thất bại → 409, thất bại thì tạo lại được (giao lại); `items` phải đủ khay mọi dòng (bỏ trống = BE tự lấy đủ). BE tự đặt `legLabel` = "Trọn đơn", mã `DL-<năm>-<số>` (dãy chung), khoảng cách |
+| PATCH | `/deliveries/:id` | Body `{ state?, note? }`. Khóa đợt giao khi cập nhật. `ready → going` (Bắt đầu giao, không cần người giao): lưu `startedAt`, sự kiện "Bắt đầu giao … · <cách giao>" cho khách thấy; lấy tại quầy không có bước này (409). Đơn phải Chờ giao / Giao một phần. **DELIVERED → OUT theo đợt** (`refType=delivery`) |
 
 ## inventory
 

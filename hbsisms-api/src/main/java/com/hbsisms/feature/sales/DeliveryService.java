@@ -13,7 +13,6 @@ import com.hbsisms.feature.sales.dto.DeliveryUpdateRequest;
 import com.hbsisms.feature.system.AuditLogService;
 import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.AppUser;
-import com.hbsisms.feature.user.Couriers;
 import com.hbsisms.feature.user.UserRepository;
 import java.time.Clock;
 import java.time.Instant;
@@ -32,7 +31,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Tạo giao hàng (mọi đơn có giao hàng, kể cả đơn Sales tạo) — một đơn giao một lần, trọn đơn. Cập nhật đợt giao: bắt đầu giao / đã giao / thất bại / gán tài xế (lấy tại quầy: khách đã nhận / không đến).
+ * Tạo giao hàng (mọi đơn có giao hàng, kể cả đơn Sales tạo) — một đơn giao một lần, trọn đơn. Cập nhật đợt giao: bắt đầu giao / đã giao / thất bại (lấy tại quầy: khách đã nhận / không đến).
+ * Cách giao chỉ là nhãn: Shop tự giao / Khách đến lấy / Đối tác giao — không gán nhân viên giao.
  * Đồng bộ trạng thái đơn theo tổng khay đã giao ({@code partial} / {@code delivered}).
  */
 @Service
@@ -106,7 +106,6 @@ public class DeliveryService {
             String q,
             String state,
             String date,
-            Long assignedTo,
             String timeWindow,
             String fulfillmentMethod,
             String sort,
@@ -120,7 +119,6 @@ public class DeliveryService {
                         q,
                         parseState(state),
                         parseDate(date),
-                        assignedTo,
                         timeWindow,
                         parseFulfillmentMethod(fulfillmentMethod)),
                 PageRequests.of(page, pageSize, listSort));
@@ -156,7 +154,7 @@ public class DeliveryService {
      *   <li>Ngày giao bắt buộc, không ở quá khứ; khung giờ (nếu có) thuộc {@link DeliveryTimeWindows}.</li>
      *   <li>Giao tận nơi / đối tác: cần địa chỉ (mặc định địa chỉ trên đơn) thuộc đúng khách của đơn;
      *       khoảng cách / trong bán kính chép từ địa chỉ (đã tính bằng Goong lúc lưu địa chỉ).</li>
-     *   <li>Người giao chỉ cho cửa hàng tự giao, phải là {@link Couriers người giao}.</li>
+     *   <li>Cách giao chỉ là nhãn (Shop tự giao / Khách đến lấy / Đối tác giao), không gán nhân viên giao.</li>
      *   <li>Một đơn giao một lần, trọn đơn: đơn đã có chuyến chưa thất bại → 409; chuyến trước thất bại
      *       thì được tạo chuyến mới (giao lại). Mỗi dòng phải giao đủ số khay đặt.</li>
      *   <li>Mã chuyến giao theo dãy chung {@code DL-<năm>-<số>} ({@link BusinessCodeService}).</li>
@@ -196,7 +194,6 @@ public class DeliveryService {
         }
 
         CustomerAddress address = method == FulfillmentMethod.PICKUP ? null : resolveAddress(order, request.addressId());
-        AppUser courier = resolveCourier(method, request.assignedTo());
 
         List<Delivery> existing = deliveryRepository.findByOrder_IdOrderByIdAsc(order.getId());
         if (existing.stream().anyMatch(d -> d.getState() != DeliveryState.FAILED)) {
@@ -218,8 +215,6 @@ public class DeliveryService {
         delivery.setAddress(address);
         delivery.setInRadius(address == null || address.isInDeliveryRadius());
         delivery.setDistanceKm(address == null ? null : address.getDistanceKm());
-        delivery.setAssignedTo(courier);
-        delivery.setCarrier(method == FulfillmentMethod.PARTNER_DELIVERY ? Strings.trimToNull(request.carrier()) : null);
         delivery.setItems(items);
         delivery.setState(DeliveryState.READY);
         delivery.setNote(Strings.trimToNull(request.note()));
@@ -263,24 +258,6 @@ public class DeliveryService {
         return address;
     }
 
-    /** Người giao (không bắt buộc lúc tạo): chỉ cho cửa hàng tự giao, phải là người giao đang hoạt động. */
-    private AppUser resolveCourier(FulfillmentMethod method, Long assignedTo) {
-        if (assignedTo == null) {
-            return null;
-        }
-        if (method != FulfillmentMethod.SHOP_DELIVERY) {
-            throw ApiException.badRequest("Chỉ phân công nhân viên giao cho đợt cửa hàng tự giao");
-        }
-        AppUser courier = userRepository
-                .findById(assignedTo)
-                .orElseThrow(() -> ApiException.badRequest("Không tìm thấy nhân viên giao hàng"));
-        if (!Couriers.isCourier(courier)) {
-            throw ApiException.badRequest("Nhân viên này không phải người giao hàng (cần chức vụ \""
-                    + Couriers.POSITION + "\" và đang hoạt động)");
-        }
-        return courier;
-    }
-
     /**
      * Một đơn giao một lần, trọn đơn: mỗi dòng phải giao đủ số khay đã đặt.
      * {@code requested} rỗng → hệ thống tự lấy đủ các dòng của đơn.
@@ -318,10 +295,19 @@ public class DeliveryService {
         return full;
     }
 
+    /**
+     * Cập nhật đợt giao: đổi trạng thái (bắt đầu giao / đã giao / thất bại) và/hoặc ghi chú.
+     * Bắt đầu giao không cần gán người giao — cách giao chỉ là nhãn; lưu giờ bắt đầu để khách theo dõi.
+     * Khóa dòng đợt giao để 2 người bấm cùng lúc không chuyển trạng thái 2 lần.
+     */
     @Transactional
     public void update(Long id, DeliveryUpdateRequest request, Long actorId) {
+        String note = request == null ? null : Strings.trimToNull(request.note());
+        if (request == null || (request.state() == null && note == null)) {
+            throw ApiException.badRequest("Không có trường nào để cập nhật");
+        }
         Delivery delivery = deliveryRepository
-                .findById(id)
+                .findByIdForUpdate(id)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy đợt giao"));
 
         if (delivery.getState() == DeliveryState.DELIVERED) {
@@ -332,37 +318,12 @@ public class DeliveryService {
         }
 
         AppUser actor = actorId == null ? null : userRepository.findById(actorId).orElse(null);
-        boolean changed = false;
-
-        // FE: { assignedTo } riêng khi phân công; { state } khi đổi trạng thái (không đụng assignee).
-        boolean assignOnly = request.state() == null;
-        if (assignOnly || request.assignedTo() != null) {
-            if (request.assignedTo() == null) {
-                delivery.setAssignedTo(null);
-            } else {
-                AppUser courier = userRepository
-                        .findById(request.assignedTo())
-                        .orElseThrow(() -> ApiException.badRequest("Không tìm thấy nhân viên giao hàng"));
-                delivery.setAssignedTo(courier);
-            }
-            changed = true;
-        }
-
-        String note = Strings.trimToNull(request.note());
         if (note != null) {
             delivery.setNote(note);
-            changed = true;
         }
-
         if (request.state() != null) {
             applyState(delivery, request.state(), note, actor, actorId);
-            changed = true;
         }
-
-        if (!changed) {
-            throw ApiException.badRequest("Không có trường nào để cập nhật");
-        }
-
         deliveryRepository.save(delivery);
     }
 
@@ -394,7 +355,8 @@ public class DeliveryService {
         String leg = delivery.getLegLabel() == null ? delivery.getCode() : delivery.getLegLabel();
 
         if (target == DeliveryState.GOING) {
-            addEvent(order, "delivery", "Bắt đầu giao " + leg, actor);
+            delivery.setStartedAt(Instant.now(clock));
+            addEvent(order, "delivery", "Bắt đầu giao " + leg + " · " + methodLabel(delivery.getFulfillmentMethod()), actor);
         } else if (target == DeliveryState.FAILED) {
             String reason = note == null ? "" : ": " + note;
             addEvent(order, "delivery", (pickup ? "Khách không đến lấy " : "Giao thất bại ") + leg + reason, actor);
@@ -410,6 +372,18 @@ public class DeliveryService {
             detail.put("note", note);
         }
         auditLogService.record(actorId, "update", "delivery", delivery.getId(), detail);
+    }
+
+    /** Nhãn cách giao (khớp {@code fulfillmentLabels} của web nội bộ). */
+    static String methodLabel(FulfillmentMethod method) {
+        if (method == null) {
+            return "Shop tự giao";
+        }
+        return switch (method) {
+            case SHOP_DELIVERY -> "Shop tự giao";
+            case PICKUP -> "Khách đến lấy";
+            case PARTNER_DELIVERY -> "Đối tác giao";
+        };
     }
 
     private void syncOrderAfterDelivery(SalesOrder order, AppUser actor, Long actorId) {
