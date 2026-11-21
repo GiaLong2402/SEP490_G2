@@ -1,4 +1,4 @@
-import type { Category, ID, Product, ProductVariant, VolumeTier } from '@/shared/domain/entities';
+import type { Category, ID, Product, ProductVariant, UnitOfMeasure, VolumeTier } from '@/shared/domain/entities';
 
 export interface VariantWithTiers extends ProductVariant {
   tiers: VolumeTier[];
@@ -7,6 +7,8 @@ export interface VariantWithTiers extends ProductVariant {
 
 export interface ProductListItem extends Product {
   categoryName: string | null;
+  unitCode: string | null;
+  unitName: string | null;
   variants: VariantWithTiers[];
 }
 
@@ -24,6 +26,12 @@ export interface ProductInput {
   gallery: string[];
   isPublished: boolean;
   isActive: boolean;
+  /** Ít nhất một trong ba cờ phải bật. */
+  isRawMaterial: boolean;
+  isSellable: boolean;
+  isProducible: boolean;
+  /** Bắt buộc khi là nguyên liệu. */
+  unitId: ID | null;
 }
 
 export interface VariantInput {
@@ -64,3 +72,12 @@ export interface CategoryInput {
   sortOrder: number;
   isActive: boolean;
 }
+
+export type { UnitOfMeasure };
+
+export interface UnitInput {
+  code: string;
+  name: string;
+  isActive: boolean;
+}
+

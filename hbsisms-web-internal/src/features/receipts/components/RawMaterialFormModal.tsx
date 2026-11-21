@@ -1,30 +1,32 @@
 import { useEffect, useState } from 'react';
 import { useAction } from '@/shared/api/useAction';
 import { num } from '@/shared/lib/format';
-import { Button, Checkbox, Field, Input, Modal } from '@/shared/ui';
+import { useUnits } from '@/features/products';
+import { Button, Checkbox, Field, Input, Modal, Select } from '@/shared/ui';
 import { receiptsApi } from '../api';
 import type { RawMaterial } from '../types';
 
-const empty = { code: '', name: '', unit: 'kg', reorderLevel: '', isActive: true };
+const empty = { code: '', name: '', unitId: '', reorderLevel: '', isActive: true };
 
 export function RawMaterialFormModal({ open, material, onClose, onSaved }: { open: boolean; material?: RawMaterial; onClose: () => void; onSaved?: (id: number) => void }) {
+  const units = useUnits();
   const [form, setForm] = useState(empty);
   const [touched, setTouched] = useState(false);
   useEffect(() => {
     if (!open) return;
     setTouched(false);
-    setForm(material ? { code: material.code, name: material.name, unit: material.unit, reorderLevel: material.reorderLevel?.toString() ?? '', isActive: material.isActive } : empty);
+    setForm(material ? { code: material.code, name: material.name, unitId: material.unitId ? String(material.unitId) : '', reorderLevel: material.reorderLevel?.toString() ?? '', isActive: material.isActive } : empty);
   }, [open, material]);
 
   const errors = {
     code: !form.code.trim() ? 'Vui lòng nhập mã' : undefined,
     name: !form.name.trim() ? 'Vui lòng nhập tên' : undefined,
-    unit: !form.unit.trim() ? 'Vui lòng nhập đơn vị' : undefined,
+    unitId: !form.unitId ? 'Vui lòng chọn đơn vị tính' : undefined,
     reorderLevel: form.reorderLevel !== '' && !(Number(form.reorderLevel) >= 0) ? 'Không được âm' : undefined,
   };
   const save = useAction(
     () => {
-      const body = { code: form.code.trim(), name: form.name.trim(), unit: form.unit.trim(), reorderLevel: form.reorderLevel === '' ? null : Number(form.reorderLevel), isActive: form.isActive };
+      const body = { code: form.code.trim(), name: form.name.trim(), unitId: Number(form.unitId), reorderLevel: form.reorderLevel === '' ? null : Number(form.reorderLevel), isActive: form.isActive };
       return material ? receiptsApi.updateRawMaterial(material.id, body) : receiptsApi.createRawMaterial(body);
     },
     {
@@ -50,7 +52,12 @@ export function RawMaterialFormModal({ open, material, onClose, onSaved }: { ope
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Mã nguyên liệu" required error={touched ? errors.code : undefined}><Input placeholder="NL-MUC" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} /></Field>
         <Field label="Tên nguyên liệu" required error={touched ? errors.name : undefined}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-        <Field label="Đơn vị" required error={touched ? errors.unit : undefined}><Input placeholder="kg, cái, cuộn..." value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} /></Field>
+        <Field label="Đơn vị tính" required error={touched ? errors.unitId : undefined} hint={material && !material.unitId ? `Đơn vị cũ: ${material.unit} (chưa gắn danh mục)` : undefined}>
+          <Select aria-label="Đơn vị tính" value={form.unitId} onChange={(e) => setForm({ ...form, unitId: e.target.value })}>
+            <option value="">Chọn...</option>
+            {(units.data ?? []).filter((u) => u.isActive || String(u.id) === form.unitId).map((u) => <option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}
+          </Select>
+        </Field>
         <Field label="Mức đặt lại" error={touched ? errors.reorderLevel : undefined} hint="Tồn dưới mức này sẽ hiện cảnh báo"><Input type="number" min={0} step="0.1" value={form.reorderLevel} onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })} /></Field>
         <div className="sm:col-span-2">
           <Checkbox label="Đang sử dụng" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />

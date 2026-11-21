@@ -11,6 +11,7 @@ import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.common.text.Strings;
 import com.hbsisms.common.web.PageResponse;
 import com.hbsisms.feature.catalog.dto.ProductResponse;
+import com.hbsisms.feature.inventory.RawMaterialRepository;
 import com.hbsisms.feature.inventory.StockRepository;
 import java.math.BigDecimal;
 import java.util.List;
@@ -45,6 +46,10 @@ class ProductServiceReadTest {
     private VolumeTierRepository volumeTierRepository;
     @Mock
     private StockRepository stockRepository;
+    @Mock
+    private UnitOfMeasureRepository unitRepository;
+    @Mock
+    private RawMaterialRepository rawMaterialRepository;
 
     private ProductService productService;
 
@@ -55,7 +60,9 @@ class ProductServiceReadTest {
                 categoryRepository,
                 productVariantRepository,
                 volumeTierRepository,
-                stockRepository);
+                stockRepository,
+                unitRepository,
+                rawMaterialRepository);
     }
 
     @Test

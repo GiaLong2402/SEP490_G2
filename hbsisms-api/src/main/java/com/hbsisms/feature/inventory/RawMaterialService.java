@@ -2,6 +2,8 @@ package com.hbsisms.feature.inventory;
 
 import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.common.text.Strings;
+import com.hbsisms.feature.catalog.UnitOfMeasure;
+import com.hbsisms.feature.catalog.UnitOfMeasureRepository;
 import com.hbsisms.feature.inventory.dto.RawMaterialRequest;
 import com.hbsisms.feature.inventory.dto.RawMaterialResponse;
 import java.math.BigDecimal;
@@ -15,9 +17,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class RawMaterialService {
 
     private final RawMaterialRepository rawMaterialRepository;
+    private final UnitOfMeasureRepository unitRepository;
 
-    public RawMaterialService(RawMaterialRepository rawMaterialRepository) {
+    public RawMaterialService(
+            RawMaterialRepository rawMaterialRepository, UnitOfMeasureRepository unitRepository) {
         this.rawMaterialRepository = rawMaterialRepository;
+        this.unitRepository = unitRepository;
     }
 
     public List<RawMaterialResponse> list(String q, Boolean activeOnly, Boolean lowStock) {
@@ -71,20 +76,43 @@ public class RawMaterialService {
         return reorder != null && material.getQtyOnHand().compareTo(reorder) < 0;
     }
 
-    private static void apply(RawMaterial material, RawMaterialRequest request, String code) {
+    private void apply(RawMaterial material, RawMaterialRequest request, String code) {
         String name = Strings.trimToNull(request.name());
-        String unit = Strings.trimToNull(request.unit());
-        if (name == null || unit == null) {
+        if (name == null) {
             throw ApiException.badRequest("Vui lòng nhập mã, tên và đơn vị");
         }
+        resolveUnit(material, request);
         if (request.reorderLevel() != null && request.reorderLevel().signum() < 0) {
             throw ApiException.badRequest("Mức đặt lại không được âm");
         }
         material.setCode(code);
         material.setName(name);
-        material.setUnit(unit);
         material.setReorderLevel(request.reorderLevel());
         material.setActive(Boolean.TRUE.equals(request.isActive()));
+    }
+
+    /** Prefers {@code unitId}; falls back to legacy free-text {@code unit} (linked to master by code when found). */
+    private void resolveUnit(RawMaterial material, RawMaterialRequest request) {
+        if (request.unitId() != null) {
+            UnitOfMeasure ref = unitRepository
+                    .findById(request.unitId())
+                    .orElseThrow(() -> ApiException.notFound("Không tìm thấy đơn vị tính"));
+            UnitOfMeasure current = material.getUnitRef();
+            boolean sameAsCurrent = current != null && ref.getId().equals(current.getId());
+            if (!ref.isActive() && !sameAsCurrent) {
+                throw ApiException.badRequest("Đơn vị tính đã ngừng sử dụng");
+            }
+            material.setUnitRef(ref);
+            material.setUnit(ref.getCode());
+            return;
+        }
+        String legacy = Strings.trimToNull(request.unit());
+        if (legacy == null) {
+            throw ApiException.badRequest("Vui lòng nhập mã, tên và đơn vị");
+        }
+        UnitOfMeasure matched = unitRepository.findByCodeIgnoreCase(legacy).orElse(null);
+        material.setUnitRef(matched);
+        material.setUnit(matched == null ? legacy : matched.getCode());
     }
 
     private static String normalizeCode(String raw) {

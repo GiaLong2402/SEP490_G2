@@ -1,4 +1,4 @@
-import { BarChart3, Boxes, ClipboardCheck, ClipboardList, ClipboardPen, CreditCard, Factory, FileText, HandCoins, History, LayoutDashboard, PackagePlus, PackageSearch, PackageX, RotateCcw, ScanBarcode, Settings, ShieldCheck, ShoppingCart, Star, Store, Tags, TicketPercent, Truck, Users, UsersRound, Warehouse, type LucideIcon } from 'lucide-react';
+import { BarChart3, Boxes, ClipboardCheck, ClipboardList, ClipboardPen, CreditCard, Factory, FileText, HandCoins, History, LayoutDashboard, PackagePlus, PackageSearch, PackageX, Ruler, RotateCcw, ScanBarcode, Settings, ShieldCheck, ShoppingCart, Star, Store, Tags, TicketPercent, Truck, Users, UsersRound, Warehouse, type LucideIcon } from 'lucide-react';
 import type { Permission } from '@/shared/domain/enums';
 
 export interface NavItem {
@@ -51,6 +51,7 @@ export const navigation: NavGroup[] = [
       { to: '/customers', label: 'Khách hàng', icon: Users, permission: 'customers' },
       { to: '/products', label: 'Sản phẩm', icon: Store, permission: 'products' },
       { to: '/categories', label: 'Loại sản phẩm', icon: Tags, permission: 'products' },
+      { to: '/units', label: 'Đơn vị tính', icon: Ruler, permission: ['products', 'inventory'] },
       { to: '/vouchers', label: 'Voucher', icon: TicketPercent, permission: 'customers' },
       { to: '/reviews', label: 'Đánh giá', icon: Star, permission: 'customers' },
     ],

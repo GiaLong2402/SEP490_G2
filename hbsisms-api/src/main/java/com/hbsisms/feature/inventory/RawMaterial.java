@@ -1,7 +1,11 @@
 package com.hbsisms.feature.inventory;
 
 import jakarta.persistence.Column;
+import com.hbsisms.feature.catalog.UnitOfMeasure;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -30,8 +34,13 @@ public class RawMaterial {
     @Column(nullable = false, length = 160)
     private String name;
 
+    /** Denormalized unit code (kept in sync with {@link #unitRef} when set). */
     @Column(nullable = false, length = 20)
     private String unit;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "unit_id")
+    private UnitOfMeasure unitRef;
 
     @Column(nullable = false, precision = 12, scale = 3)
     private BigDecimal qtyOnHand = BigDecimal.ZERO;

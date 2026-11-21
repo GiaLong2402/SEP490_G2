@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useAction } from '@/shared/api/useAction';
-import { Button, Checkbox, Field, Input, Modal, Textarea } from '@/shared/ui';
+import { Button, Checkbox, Field, Input, Modal, Select, Textarea } from '@/shared/ui';
 import { productsApi } from '../api';
 import { CategoryFormModal } from './CategoryFormModal';
 import { CategorySelectMenu } from './CategoryFilterMenu';
-import { useCategories } from '../hooks';
+import { useCategories, useUnits } from '../hooks';
 import type { ProductDetail, ProductInput } from '../types';
 
 const empty: ProductInput = {
@@ -18,6 +18,10 @@ const empty: ProductInput = {
   gallery: [],
   isPublished: false,
   isActive: true,
+  isRawMaterial: false,
+  isSellable: true,
+  isProducible: false,
+  unitId: null,
 };
 
 function galleryToText(gallery: string[] | null | undefined) {
@@ -33,6 +37,7 @@ function textToGallery(text: string) {
 
 export function ProductFormModal({ open, product, onClose, onSaved }: { open: boolean; product?: ProductDetail; onClose: () => void; onSaved?: (id: number) => void }) {
   const categories = useCategories();
+  const units = useUnits();
   const [form, setForm] = useState<ProductInput>(empty);
   const [galleryText, setGalleryText] = useState('');
   const [touched, setTouched] = useState(false);
@@ -52,6 +57,10 @@ export function ProductFormModal({ open, product, onClose, onSaved }: { open: bo
         gallery: product.gallery ?? [],
         isPublished: product.isPublished,
         isActive: product.isActive,
+        isRawMaterial: product.isRawMaterial ?? false,
+        isSellable: product.isSellable ?? true,
+        isProducible: product.isProducible ?? false,
+        unitId: product.unitId ?? null,
       });
       setGalleryText(galleryToText(product.gallery));
     } else {
@@ -80,7 +89,9 @@ export function ProductFormModal({ open, product, onClose, onSaved }: { open: bo
       },
     },
   );
-  const valid = form.code.trim() && form.name.trim();
+  const noFlag = !form.isRawMaterial && !form.isSellable && !form.isProducible;
+  const unitMissing = form.isRawMaterial && form.unitId === null;
+  const valid = form.code.trim() && form.name.trim() && !noFlag && !unitMissing;
   return (
     <>
     <Modal
@@ -139,6 +150,29 @@ export function ProductFormModal({ open, product, onClose, onSaved }: { open: bo
             onChange={(e) => setGalleryText(e.target.value)}
           />
         </Field>
+        <div className="sm:col-span-2 space-y-2">
+          <div className="flex flex-wrap gap-5">
+            <Checkbox
+              label="Là nguyên liệu"
+              checked={form.isRawMaterial}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setForm((f) => ({ ...f, isRawMaterial: on, unitId: on ? f.unitId : null }));
+              }}
+            />
+            <Checkbox label="Có thể bán" checked={form.isSellable} onChange={(e) => set('isSellable', e.target.checked)} />
+            <Checkbox label="Có thể sản xuất" checked={form.isProducible} onChange={(e) => set('isProducible', e.target.checked)} />
+          </div>
+          {touched && noFlag ? <p className="text-small text-red-fg">Chọn ít nhất một loại: nguyên liệu, bán hoặc sản xuất</p> : null}
+          {form.isRawMaterial ? (
+            <Field label="Đơn vị tính (nguyên liệu)" required error={touched && unitMissing ? 'Nguyên liệu bắt buộc chọn đơn vị tính' : undefined} hint="Chỉ dùng khi mặt hàng là NVL (thường là kg). Đồng bộ sang tồn nguyên liệu cùng mã.">
+              <Select aria-label="Đơn vị tính nguyên liệu" value={form.unitId === null ? '' : String(form.unitId)} onChange={(e) => set('unitId', e.target.value ? Number(e.target.value) : null)}>
+                <option value="">Chọn...</option>
+                {(units.data ?? []).filter((u) => u.isActive || u.id === form.unitId).map((u) => <option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}
+              </Select>
+            </Field>
+          ) : null}
+        </div>
         <div className="flex gap-5 sm:col-span-2">
           <Checkbox label="Hiển thị trên cổng B2C" checked={form.isPublished} onChange={(e) => set('isPublished', e.target.checked)} />
           <Checkbox label="Đang kinh doanh" checked={form.isActive} onChange={(e) => set('isActive', e.target.checked)} />

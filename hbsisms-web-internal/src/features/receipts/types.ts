@@ -40,7 +40,8 @@ export interface ReceiptInput {
 export interface RawMaterialInput {
   code: string;
   name: string;
-  unit: string;
+  /** Đơn vị tính trong danh mục /units. */
+  unitId: ID;
   reorderLevel: number | null;
   isActive: boolean;
 }
