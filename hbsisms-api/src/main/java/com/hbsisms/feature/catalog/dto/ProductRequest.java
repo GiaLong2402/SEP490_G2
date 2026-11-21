@@ -34,5 +34,17 @@ public record ProductRequest(
         Boolean isPublished,
 
         @NotNull(message = "Trạng thái kinh doanh là bắt buộc")
-        Boolean isActive) {
+        Boolean isActive,
+
+        /** Null = false on create, keep existing on update. */
+        Boolean isRawMaterial,
+
+        /** Null = true on create, keep existing on update. */
+        Boolean isSellable,
+
+        /** Null = false on create, keep existing on update. */
+        Boolean isProducible,
+
+        /** Required when {@code isRawMaterial}; otherwise optional. */
+        Long unitId) {
 }

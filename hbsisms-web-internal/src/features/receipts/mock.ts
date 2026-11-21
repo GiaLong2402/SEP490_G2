@@ -8,12 +8,29 @@ const toItem = (r: (typeof db.receipts)[number]) => ({
   supplierName: r.source?.trim() || '—',
 });
 
+/** Ưu tiên unitId; chuỗi unit cũ chỉ dùng khi không có unitId. Trả về code + đơn vị đã chuẩn hóa. */
 function checkRawMaterial(body: any, id: number | null) {
   const code = String(body.code ?? '').trim();
-  if (!code || !String(body.name ?? '').trim() || !String(body.unit ?? '').trim()) fail(400, 'Vui lòng nhập mã, tên và đơn vị');
+  if (!code || !String(body.name ?? '').trim()) fail(400, 'Vui lòng nhập mã, tên và đơn vị');
   if (db.rawMaterials.some((m) => m.code === code && m.id !== id)) fail(409, `Mã ${code} đã tồn tại`);
-  if (body.reorderLevel !== null && Number(body.reorderLevel) < 0) fail(400, 'Mức đặt lại không được âm');
-  return code;
+  if (body.reorderLevel !== null && body.reorderLevel !== undefined && Number(body.reorderLevel) < 0) fail(400, 'Mức đặt lại không được âm');
+  let unitId: number | null = null;
+  let unit: string;
+  if (body.unitId !== null && body.unitId !== undefined) {
+    const ref = db.units.find((u) => u.id === Number(body.unitId));
+    if (!ref) fail(404, 'Không tìm thấy đơn vị tính');
+    const current = id === null ? undefined : db.rawMaterials.find((m) => m.id === id);
+    if (!ref.isActive && ref.id !== current?.unitId) fail(400, 'Đơn vị tính đã ngừng sử dụng');
+    unitId = ref.id;
+    unit = ref.code;
+  } else {
+    const legacy = String(body.unit ?? '').trim();
+    if (!legacy) fail(400, 'Vui lòng nhập mã, tên và đơn vị');
+    const matched = db.units.find((u) => u.code.toLowerCase() === legacy.toLowerCase());
+    unitId = matched?.id ?? null;
+    unit = matched?.code ?? legacy;
+  }
+  return { code, unit, unitId };
 }
 
 mock('GET', '/raw-materials', ({ query }) => {
@@ -34,7 +51,7 @@ mock('GET', '/raw-materials/:id', ({ params }) => {
 });
 
 mock('POST', '/raw-materials', ({ body, userId }) => {
-  const row = { ...body, code: checkRawMaterial(body, null), id: nextId(db.rawMaterials), qtyOnHand: 0 };
+  const row = { ...body, ...checkRawMaterial(body, null), id: nextId(db.rawMaterials), qtyOnHand: 0 };
   db.rawMaterials.push(row);
   audit(userId, 'create', 'raw_material', row.id);
   return row;
@@ -45,7 +62,7 @@ mock('PUT', '/raw-materials/:id', ({ params, body, userId }) => {
   const row = db.rawMaterials.find((m) => m.id === Number(params.id));
   if (!row) fail(404, 'Không tìm thấy nguyên liệu');
   const { qtyOnHand: _ignored, ...rest } = body;
-  Object.assign(row, rest, { code: checkRawMaterial(body, row.id) });
+  Object.assign(row, rest, checkRawMaterial(body, row.id));
   audit(userId, 'update', 'raw_material', row.id);
   return row;
 });

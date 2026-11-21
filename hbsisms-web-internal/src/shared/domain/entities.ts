@@ -34,6 +34,8 @@ export interface Category {
 export interface Product {
   id: ID; code: string; name: string; slug: string | null; categoryId: ID | null; description: string | null; storageNote: string | null;
   origin: string | null; imageUrl: string | null; gallery: string[] | null; isPublished: boolean; isActive: boolean;
+  /** Cờ loại hàng: nguyên liệu / bán / sản xuất (ít nhất một cờ bật). */
+  isRawMaterial: boolean; isSellable: boolean; isProducible: boolean; unitId: ID | null;
   createdAt: ISODateTime; updatedAt: ISODateTime;
 }
 
@@ -51,7 +53,8 @@ export interface CustomerPrice {
 
 export interface Warehouse { id: ID; code: string; name: string; address: string | null; capacity: number; isActive: boolean }
 export interface Location { id: ID; warehouseId: ID; code: string; zone: string | null; capacity: number; note: string | null }
-export interface RawMaterial { id: ID; code: string; name: string; unit: string; qtyOnHand: number; reorderLevel: number | null; isActive: boolean }
+export interface UnitOfMeasure { id: ID; code: string; name: string; isActive: boolean }
+export interface RawMaterial { id: ID; code: string; name: string; unit: string; unitId: ID | null; qtyOnHand: number; reorderLevel: number | null; isActive: boolean }
 export interface Lot { id: ID; lotCode: string; variantId: ID; mfgDate: ISODate | null; expDate: ISODate | null; receivedAt: ISODateTime | null; note: string | null }
 
 export interface Stock {

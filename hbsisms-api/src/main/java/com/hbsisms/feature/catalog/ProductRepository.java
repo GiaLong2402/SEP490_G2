@@ -11,6 +11,8 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     boolean existsByCategory_Id(Long categoryId);
 
+    boolean existsByUnit_Id(Long unitId);
+
     boolean existsByCodeIgnoreCase(String code);
 
     boolean existsByCodeIgnoreCaseAndIdNot(String code, Long id);
@@ -19,10 +21,10 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     boolean existsBySlugIgnoreCaseAndIdNot(String slug, Long id);
 
-    @EntityGraph(attributePaths = "category")
+    @EntityGraph(attributePaths = {"category", "unit"})
     Optional<Product> findWithCategoryById(Long id);
 
-    @EntityGraph(attributePaths = "category")
+    @EntityGraph(attributePaths = {"category", "unit"})
     Optional<Product> findWithCategoryBySlugIgnoreCase(String slug);
 
     Optional<Product> findByCodeIgnoreCase(String code);

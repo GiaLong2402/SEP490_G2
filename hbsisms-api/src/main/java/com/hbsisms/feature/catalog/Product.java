@@ -74,6 +74,20 @@ public class Product extends AuditableEntity {
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 
+    /** Also tracked as a raw material (same code) in inventory. */
+    @Column(name = "is_raw_material", nullable = false)
+    private boolean rawMaterial;
+
+    @Column(name = "is_sellable", nullable = false)
+    private boolean sellable = true;
+
+    @Column(name = "is_producible", nullable = false)
+    private boolean producible;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "unit_id")
+    private UnitOfMeasure unit;
+
     public List<String> getGallery() {
         return gallery == null ? List.of() : List.copyOf(gallery);
     }

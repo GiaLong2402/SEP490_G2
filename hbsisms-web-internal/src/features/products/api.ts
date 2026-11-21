@@ -1,6 +1,6 @@
 import { api, type ListQuery, type Page } from '@/shared/api/client';
 import type { ID } from '@/shared/domain/entities';
-import type { CategoryInput, CategoryListItem, ProductDetail, ProductInput, ProductListItem, VariantInput, VariantOption } from './types';
+import type { CategoryInput, CategoryListItem, ProductDetail, ProductInput, ProductListItem, UnitInput, UnitOfMeasure, VariantInput, VariantOption } from './types';
 
 export const productsApi = {
   list: (query: ListQuery & { categoryId?: string }, signal?: AbortSignal) => api.get<Page<ProductListItem>>('/products', query, signal),
@@ -13,4 +13,7 @@ export const productsApi = {
   categories: () => api.get<CategoryListItem[]>('/categories'),
   createCategory: (body: CategoryInput) => api.post<CategoryListItem>('/categories', body),
   updateCategory: (id: ID, body: CategoryInput) => api.put<CategoryListItem>(`/categories/${id}`, body),
+  units: (query: { activeOnly?: boolean } = {}, signal?: AbortSignal) => api.get<UnitOfMeasure[]>('/units', query, signal),
+  createUnit: (body: UnitInput) => api.post<UnitOfMeasure>('/units', body),
+  updateUnit: (id: ID, body: UnitInput) => api.put<UnitOfMeasure>(`/units/${id}`, body),
 };

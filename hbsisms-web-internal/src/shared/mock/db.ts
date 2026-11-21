@@ -4,7 +4,7 @@ import type * as T from '@/shared/domain/entities';
 import type { OrderState, PaymentMethod, SaleChannel } from '@/shared/domain/enums';
 
 // Tăng phiên bản khi đổi cấu trúc để không đọc nhầm dữ liệu cũ đã lưu trong trình duyệt.
-const STORAGE_KEY = 'hbsisms.mockdb.v2';
+const STORAGE_KEY = 'hbsisms.mockdb.v3';
 const pad = (n: number, width = 2) => String(n).padStart(width, '0');
 
 function isoDate(offsetDays: number) {
@@ -31,6 +31,7 @@ export interface MockDb {
   customerPrices: (T.CustomerPrice & { pendingPrice: number | null })[];
   warehouses: T.Warehouse[];
   locations: T.Location[];
+  units: T.UnitOfMeasure[];
   rawMaterials: T.RawMaterial[];
   suppliers: T.Supplier[];
   lots: T.Lot[];
@@ -121,7 +122,7 @@ function seed(): MockDb {
   ];
 
   const product = (id: number, code: string, name: string, categoryId: number, description: string, storageNote: string): T.Product => ({
-    id, code, name, slug: code, categoryId, description, storageNote, origin: 'Quảng Ninh', imageUrl: `/images/${code}.png`, gallery: null, isPublished: true, isActive: true, createdAt: isoTime(-300), updatedAt: now,
+    id, code, name, slug: code, categoryId, description, storageNote, origin: 'Quảng Ninh', imageUrl: `/images/${code}.png`, gallery: null, isPublished: true, isActive: true, isRawMaterial: false, isSellable: true, isProducible: true, unitId: 4, createdAt: isoTime(-300), updatedAt: now,
   });
   const products = [
     product(1, 'cha-muc', 'Chả mực', 1, 'Chả mực giã tay, đóng khay cố định theo quy cách.', 'Bảo quản lạnh. Hạn dùng 14 ngày kể từ ngày sản xuất.'),
@@ -160,11 +161,19 @@ function seed(): MockDb {
   ] as const)
     .map(([code, zone, capacity], i) => ({ id: i + 1, warehouseId: 1, code, zone, capacity, note: null }));
 
+  // Chỉ dữ liệu demo cho mock FE; API thật không seed đơn vị.
+  const units: T.UnitOfMeasure[] = [
+    { id: 1, code: 'kg', name: 'Ki-lô-gam', isActive: true },
+    { id: 2, code: 'cái', name: 'Cái', isActive: true },
+    { id: 3, code: 'cuộn', name: 'Cuộn', isActive: true },
+    { id: 4, code: 'khay', name: 'Khay', isActive: true },
+  ];
+
   const rawMaterials: T.RawMaterial[] = [
-    { id: 1, code: 'NL-MUC', name: 'Mực tươi nguyên liệu', unit: 'kg', qtyOnHand: 185.5, reorderLevel: 100, isActive: true },
-    { id: 2, code: 'NL-TOM', name: 'Tôm biển nguyên liệu', unit: 'kg', qtyOnHand: 62, reorderLevel: 80, isActive: true },
-    { id: 3, code: 'NL-KHAY', name: 'Khay xốp đóng gói', unit: 'cái', qtyOnHand: 2400, reorderLevel: 500, isActive: true },
-    { id: 4, code: 'NL-MANG', name: 'Màng bọc thực phẩm', unit: 'cuộn', qtyOnHand: 14, reorderLevel: 20, isActive: true },
+    { id: 1, code: 'NL-MUC', name: 'Mực tươi nguyên liệu', unit: 'kg', unitId: 1, qtyOnHand: 185.5, reorderLevel: 100, isActive: true },
+    { id: 2, code: 'NL-TOM', name: 'Tôm biển nguyên liệu', unit: 'kg', unitId: 1, qtyOnHand: 62, reorderLevel: 80, isActive: true },
+    { id: 3, code: 'NL-KHAY', name: 'Khay xốp đóng gói', unit: 'cái', unitId: 2, qtyOnHand: 2400, reorderLevel: 500, isActive: true },
+    { id: 4, code: 'NL-MANG', name: 'Màng bọc thực phẩm', unit: 'cuộn', unitId: 3, qtyOnHand: 14, reorderLevel: 20, isActive: true },
   ];
 
   const supplier = (id: number, name: string, taxCode: string | null, contactName: string, phone: string, address: string, isActive = true): T.Supplier => ({
@@ -438,7 +447,7 @@ function seed(): MockDb {
   ];
 
   return {
-    roles, users, customers, addresses, categories, products, variants, tiers, customerPrices, warehouses, locations, rawMaterials, suppliers, lots, stock, ledger, receipts, stocktakes, stocktakeLines,
+    roles, users, customers, addresses, categories, products, variants, tiers, customerPrices, warehouses, locations, units, rawMaterials, suppliers, lots, stock, ledger, receipts, stocktakes, stocktakeLines,
     damageReports, requests, quotes, quoteLines, orders, orderLines, deliveries, returns, orderEvents, payments, debtLedger, reviews, vouchers, approvals, notifications, config, auditLog,
   };
 }

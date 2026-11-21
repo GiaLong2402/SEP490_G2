@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.hbsisms.common.exception.ApiException;
+import com.hbsisms.feature.catalog.UnitOfMeasure;
+import com.hbsisms.feature.catalog.UnitOfMeasureRepository;
 import com.hbsisms.feature.inventory.dto.RawMaterialRequest;
 import com.hbsisms.feature.inventory.dto.RawMaterialResponse;
 import java.math.BigDecimal;
@@ -26,12 +28,14 @@ class RawMaterialServiceTest {
 
     @Mock
     private RawMaterialRepository rawMaterialRepository;
+    @Mock
+    private UnitOfMeasureRepository unitRepository;
 
     private RawMaterialService service;
 
     @BeforeEach
     void setUp() {
-        service = new RawMaterialService(rawMaterialRepository);
+        service = new RawMaterialService(rawMaterialRepository, unitRepository);
     }
 
     @Test
@@ -95,9 +99,53 @@ class RawMaterialServiceTest {
         assertThat(response.name()).isEqualTo("Mực");
     }
 
-    private static RawMaterialRequest request(
-            String code, String name, String unit, BigDecimal reorderLevel, boolean active) {
-        return new RawMaterialRequest(code, name, unit, reorderLevel, active);
+    @Test
+    void create_prefersUnitIdAndDenormalizesCode() {
+        UnitOfMeasure kg = unit(3L, "kg", "Ki-lô-gam", true);
+        when(rawMaterialRepository.existsByCodeIgnoreCase("NL-TOM")).thenReturn(false);
+        when(unitRepository.findById(3L)).thenReturn(Optional.of(kg));
+        when(rawMaterialRepository.save(any(RawMaterial.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        RawMaterialResponse response =
+                service.create(new RawMaterialRequest("NL-TOM", "Tôm", 3L, "legacy", null, true));
+
+        assertThat(response.unitId()).isEqualTo(3L);
+        assertThat(response.unit()).isEqualTo("kg");
+    }
+
+    @Test
+    void create_rejectsInactiveUnit() {
+        when(rawMaterialRepository.existsByCodeIgnoreCase("NL-TOM")).thenReturn(false);
+        when(unitRepository.findById(3L)).thenReturn(Optional.of(unit(3L, "kg", "Ki-lô-gam", false)));
+
+        assertThatThrownBy(() -> service.create(new RawMaterialRequest("NL-TOM", "Tôm", 3L, null, null, true)))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(rawMaterialRepository, never()).save(any());
+    }
+
+    @Test
+    void create_rejectsMissingUnitIdAndLegacyUnit() {
+        when(rawMaterialRepository.existsByCodeIgnoreCase("NL-TOM")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.create(new RawMaterialRequest("NL-TOM", "Tôm", null, "  ", null, true)))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    private static UnitOfMeasure unit(Long id, String code, String name, boolean active) {
+        UnitOfMeasure u = new UnitOfMeasure();
+        ReflectionTestUtils.setField(u, "id", id);
+        u.setCode(code);
+        u.setName(name);
+        u.setActive(active);
+        return u;
+    }
+
+    private static RawMaterialRequest request(            String code, String name, String unit, BigDecimal reorderLevel, boolean active) {
+        return new RawMaterialRequest(code, name, null, unit, reorderLevel, active);
     }
 
     private static RawMaterial material(

@@ -14,9 +14,10 @@ public record RawMaterialRequest(
         @NotBlank(message = "Vui lòng nhập tên")
                 @Size(max = 160, message = "Tên tối đa 160 ký tự")
                 String name,
-        @NotBlank(message = "Vui lòng nhập đơn vị")
-                @Size(max = 20, message = "Đơn vị tối đa 20 ký tự")
-                String unit,
+        /** Preferred: master unit id. */
+        Long unitId,
+        /** Legacy free-text unit; used only when {@code unitId} is absent. */
+        @Size(max = 20, message = "Đơn vị tối đa 20 ký tự") String unit,
         @DecimalMin(value = "0", message = "Mức đặt lại không được âm") BigDecimal reorderLevel,
         @NotNull(message = "Trạng thái là bắt buộc") Boolean isActive) {
 }

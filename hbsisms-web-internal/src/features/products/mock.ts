@@ -5,6 +5,8 @@ import { audit, availableQty } from '@/shared/mock/services';
 const toItem = (product: (typeof db.products)[number]) => ({
   ...product,
   categoryName: db.categories.find((c) => c.id === product.categoryId)?.name ?? null,
+  unitCode: db.units.find((u) => u.id === product.unitId)?.code ?? null,
+  unitName: db.units.find((u) => u.id === product.unitId)?.name ?? null,
   variants: db.variants
     .filter((v) => v.productId === product.id)
     .map((v) => ({ ...v, tiers: db.tiers.filter((t) => t.variantId === v.id).sort((a, b) => a.minQtyKhay - b.minQtyKhay), available: availableQty(v.id) })),
@@ -40,6 +42,77 @@ function validateCategory(body: any, id: number | null) {
     if (parentId === id) fail(409, 'Loại cha không được là chính nó hoặc loại con của nó');
   }
   return code;
+}
+
+const isUnitInUse = (unitId: number) => db.products.some((p) => p.unitId === unitId) || db.rawMaterials.some((m) => m.unitId === unitId);
+
+function validateUnit(body: any, id: number | null) {
+  const code = String(body.code ?? '').trim();
+  const name = String(body.name ?? '').trim();
+  if (!code) fail(400, 'Vui lòng nhập mã đơn vị');
+  if (!name) fail(400, 'Vui lòng nhập tên đơn vị');
+  if (db.units.some((u) => u.code.toLowerCase() === code.toLowerCase() && u.id !== id)) fail(409, `Mã ${code} đã tồn tại`);
+  return { code, name };
+}
+
+mock('GET', '/units', ({ query }) =>
+  db.units
+    .filter((u) => query.activeOnly === undefined || query.activeOnly === '' || u.isActive === (query.activeOnly === 'true'))
+    .sort((a, b) => a.code.localeCompare(b.code, 'vi')),
+);
+
+mock('POST', '/units', ({ body, userId }) => {
+  const { code, name } = validateUnit(body, null);
+  const row = { id: nextId(db.units), code, name, isActive: body.isActive !== false };
+  db.units.push(row);
+  audit(userId, 'create', 'unit_of_measure', row.id);
+  return row;
+});
+
+mock('PUT', '/units/:id', ({ params, body, userId }) => {
+  const row = db.units.find((u) => u.id === Number(params.id));
+  if (!row) fail(404, 'Không tìm thấy đơn vị tính');
+  const { code, name } = validateUnit(body, row.id);
+  const isActive = body.isActive !== false;
+  if (row.isActive && !isActive && isUnitInUse(row.id)) fail(409, 'Không thể ngừng sử dụng đơn vị đang được dùng bởi sản phẩm hoặc nguyên liệu');
+  Object.assign(row, { code, name, isActive });
+  audit(userId, 'update', 'unit_of_measure', row.id);
+  return row;
+});
+
+/** Khớp API: ít nhất một cờ, nguyên liệu bắt buộc đơn vị; trả về cờ + unitId đã chuẩn hóa. */
+function resolveFlags(body: any, current?: (typeof db.products)[number]) {
+  const flags = {
+    isRawMaterial: body.isRawMaterial ?? current?.isRawMaterial ?? false,
+    isSellable: body.isSellable ?? current?.isSellable ?? true,
+    isProducible: body.isProducible ?? current?.isProducible ?? false,
+  };
+  if (!flags.isRawMaterial && !flags.isSellable && !flags.isProducible) fail(400, 'Chọn ít nhất một loại: nguyên liệu, bán hoặc sản xuất');
+  const unitId: number | null = body.unitId ?? null;
+  if (flags.isRawMaterial && unitId === null) fail(400, 'Nguyên liệu bắt buộc chọn đơn vị tính');
+  if (unitId !== null) {
+    const unit = db.units.find((u) => u.id === unitId);
+    if (!unit) fail(404, 'Không tìm thấy đơn vị tính');
+    if (!unit.isActive && unitId !== current?.unitId) fail(400, 'Đơn vị tính đã ngừng sử dụng');
+  }
+  return { ...flags, unitId };
+}
+
+/** Upsert nguyên liệu cùng mã (tồn 0 khi tạo); tắt cờ nguyên liệu thì ngừng dùng nguyên liệu đó. */
+function syncRawMaterial(product: (typeof db.products)[number], previousCode: string | null) {
+  const matchCode = (code: string) => db.rawMaterials.find((m) => m.code.toLowerCase() === code.toLowerCase());
+  let raw = matchCode(product.code) ?? (previousCode ? matchCode(previousCode) : undefined);
+  if (product.isRawMaterial) {
+    const unit = db.units.find((u) => u.id === product.unitId)!;
+    if (!raw) {
+      raw = { id: nextId(db.rawMaterials), code: product.code, name: product.name, unit: unit.code, unitId: unit.id, qtyOnHand: 0, reorderLevel: null, isActive: product.isActive };
+      db.rawMaterials.push(raw);
+    } else {
+      Object.assign(raw, { code: product.code, name: product.name, unit: unit.code, unitId: unit.id, isActive: product.isActive });
+    }
+  } else if (raw) {
+    raw.isActive = false;
+  }
 }
 
 mock('GET', '/categories', () => db.categories.map(toCategoryItem).sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'vi')));
@@ -120,6 +193,7 @@ mock('POST', '/products', ({ body, userId }) => {
   if (db.products.some((p) => p.code.toLowerCase() === code.toLowerCase())) fail(409, `Mã ${code} đã tồn tại`);
   // Khớp API: tạo mới chưa có variant active → không publish B2C.
   if (body.isPublished) fail(400, 'Không thể hiển thị cổng B2C khi chưa có quy cách đang bán');
+  const flags = resolveFlags(body);
   const now = new Date().toISOString();
   const gallery = Array.isArray(body.gallery)
     ? body.gallery.map((url: string) => String(url).trim()).filter(Boolean)
@@ -128,6 +202,7 @@ mock('POST', '/products', ({ body, userId }) => {
     ...body,
     code,
     name,
+    ...flags,
     id: nextId(db.products),
     slug: name
       .normalize('NFD')
@@ -141,6 +216,7 @@ mock('POST', '/products', ({ body, userId }) => {
     updatedAt: now,
   };
   db.products.push(product);
+  syncRawMaterial(product, null);
   audit(userId, 'create', 'product', product.id);
   return toItem(product);
 });
@@ -159,6 +235,8 @@ mock('PUT', '/products/:id', ({ params, body, userId }) => {
     const hasActiveVariant = db.variants.some((v) => v.productId === product.id && v.isActive);
     if (!hasActiveVariant) fail(400, 'Không thể hiển thị cổng B2C khi chưa có quy cách đang bán');
   }
+  const flags = resolveFlags(body, product);
+  const previousCode = product.code;
   // gallery null = giữ (API); [] hoặc mảng = ghi đè. FE form luôn gửi string[].
   const nextGallery =
     body.gallery === null || body.gallery === undefined
@@ -171,8 +249,10 @@ mock('PUT', '/products/:id', ({ params, body, userId }) => {
     name,
     imageUrl: typeof body.imageUrl === 'string' && body.imageUrl.trim() ? body.imageUrl.trim() : null,
     gallery: nextGallery,
+    ...flags,
     updatedAt: new Date().toISOString(),
   });
+  syncRawMaterial(product, previousCode);
   audit(userId, 'update', 'product', product.id);
   return toItem(product);
 });

@@ -9,6 +9,7 @@ public record RawMaterialResponse(
         String code,
         String name,
         String unit,
+        Long unitId,
         BigDecimal qtyOnHand,
         BigDecimal reorderLevel,
         boolean isActive) {
@@ -19,6 +20,7 @@ public record RawMaterialResponse(
                 material.getCode(),
                 material.getName(),
                 material.getUnit(),
+                material.getUnitRef() == null ? null : material.getUnitRef().getId(),
                 material.getQtyOnHand(),
                 material.getReorderLevel(),
                 material.isActive());

@@ -1,3 +1,3 @@
-export { useCategories, useProducts, useVariantOptions } from './hooks';
+export { useCategories, useProducts, useUnits, useVariantOptions } from './hooks';
 export { productRoutes } from './routes';
-export type { VariantOption } from './types';
+export type { UnitOfMeasure, VariantOption } from './types';
