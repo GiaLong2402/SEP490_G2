@@ -12,7 +12,7 @@ import { ReceiptDialog } from '@/features/pos/components/ReceiptDialog';
 import type { Receipt } from '@/features/pos/types';
 import { useAction } from '@/shared/api/useAction';
 import type { SalesReturn } from '@/shared/domain/entities';
-import { allocationStatusMeta, deliveryStateMeta, fulfillmentLabels, orderStateMeta, payDirectionLabels, paymentMethodLabels, paymentStatusMeta, payTxnStatusMeta, priceBasisMeta, returnStatusMeta, saleChannelLabels, sellUnitLabels, type OrderState } from '@/shared/domain/enums';
+import { allocationStatusMeta, deliveryStateMeta, fulfillmentLabels, fulfillmentMeta, orderStateMeta, payDirectionLabels, paymentMethodLabels, paymentStatusMeta, payTxnStatusMeta, priceBasisMeta, returnStatusMeta, saleChannelLabels, sellUnitLabels, type OrderState } from '@/shared/domain/enums';
 import { date, dateTime, money, num } from '@/shared/lib/format';
 import { Alert, Button, Card, Chip, ConfirmDialog, DataTable, ErrorState, InfoList, LinkButton, Meter, PageHeader, PageLoading, StatusChip, type Column } from '@/shared/ui';
 import { ordersApi } from '../api';
@@ -125,7 +125,7 @@ export default function OrderDetailPage() {
   const deliveryColumns: Column<OrderDeliveryView>[] = [
     { key: 'leg', header: 'Giao hàng', cell: (d) => <div><div className="font-medium">{d.legLabel ?? 'Trọn đơn'}</div><div className="num text-ink-faint">{d.code}</div></div> },
     { key: 'when', header: 'Lịch giao', cell: (d) => <span className="whitespace-nowrap">{date(d.scheduledDate)}{d.timeWindow ? ` · ${d.timeWindow}` : ''}</span> },
-    { key: 'who', header: 'Người giao', cell: (d) => d.assigneeName ?? d.carrier ?? fulfillmentLabels[d.fulfillmentMethod] },
+    { key: 'who', header: 'Cách giao', cell: (d) => <StatusChip meta={fulfillmentMeta} value={d.fulfillmentMethod} /> },
     { key: 'qty', header: 'Khay', align: 'right', cell: (d) => <span className="num">{num((d.items ?? []).reduce((s, i) => s + i.qtyKhay, 0))}</span> },
     { key: 'state', header: 'Trạng thái', cell: (d) => <StatusChip meta={deliveryStateMeta} value={d.state} /> },
     {

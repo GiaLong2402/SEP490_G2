@@ -28,17 +28,15 @@ public record DeliveryListItemResponse(
         Long addressId,
         boolean inRadius,
         BigDecimal distanceKm,
-        Long assignedTo,
-        String carrier,
         List<DeliveryItem> items,
         DeliveryState state,
+        Instant startedAt,
         Instant deliveredAt,
         String note,
         String orderCode,
         OrderState orderState,
         String customerName,
         String addressText,
-        String assigneeName,
         int totalKhay) {
 
     /**
@@ -48,7 +46,6 @@ public record DeliveryListItemResponse(
     public static DeliveryListItemResponse from(Delivery delivery, Integer orderTotalKhay) {
         SalesOrder order = delivery.getOrder();
         CustomerAddress address = delivery.getAddress();
-        var assignee = delivery.getAssignedTo();
         List<DeliveryItem> items = delivery.getItems();
         return new DeliveryListItemResponse(
                 delivery.getId(),
@@ -61,17 +58,15 @@ public record DeliveryListItemResponse(
                 address == null ? null : address.getId(),
                 delivery.isInRadius(),
                 delivery.getDistanceKm(),
-                assignee == null ? null : assignee.getId(),
-                delivery.getCarrier(),
                 items,
                 delivery.getState(),
+                delivery.getStartedAt(),
                 delivery.getDeliveredAt(),
                 delivery.getNote(),
                 order.getCode(),
                 order.getState(),
                 customerNameOf(order),
                 addressTextOf(address),
-                assignee == null ? null : assignee.getFullName(),
                 items.isEmpty() && orderTotalKhay != null ? orderTotalKhay : totalKhayOf(items));
     }
 

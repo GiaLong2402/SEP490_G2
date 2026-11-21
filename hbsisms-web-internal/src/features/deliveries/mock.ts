@@ -1,13 +1,14 @@
 import { fail, matches, mock, paginate } from '@/shared/api/mockServer';
+import { fulfillmentLabels } from '@/shared/domain/enums';
 import { db, nextCode, nextId } from '@/shared/mock/db';
-import { addOrderEvent, audit, customerName, shipHeld, userName } from '@/shared/mock/services';
+import { addOrderEvent, audit, customerName, shipHeld } from '@/shared/mock/services';
 
 function toItem(d: (typeof db.deliveries)[number]) {
   const order = db.orders.find((o) => o.id === d.orderId);
   const address = db.addresses.find((a) => a.id === d.addressId);
   return {
     ...d, orderCode: order?.code ?? '—', customerName: customerName(order?.customerId) ?? 'Khách lẻ', addressText: address ? [address.line1, address.ward, address.province || address.district].filter(Boolean).join(', ') : null,
-    assigneeName: userName(d.assignedTo), totalKhay: (d.items ?? []).reduce((sum, i) => sum + i.qtyKhay, 0),
+    totalKhay: (d.items ?? []).reduce((sum, i) => sum + i.qtyKhay, 0),
   };
 }
 
@@ -25,16 +26,12 @@ function syncOrderState(orderId: number, userId: number | null) {
   }
 }
 
-mock('GET', '/deliveries/couriers', () =>
-  db.users.filter((u) => u.isActive && u.position === 'Giao hàng').map((u) => ({ id: u.id, fullName: u.fullName, position: u.position })),
-);
-
 mock('GET', '/deliveries', ({ query }) => {
   const rows = db.deliveries
     .map(toItem)
     .filter((d) => matches(query.q, d.code, d.orderCode, d.customerName))
     .filter((d) => !query.state || d.state === query.state)
-    .filter((d) => !query.assignedTo || d.assignedTo === Number(query.assignedTo))
+    .filter((d) => !query.fulfillmentMethod || d.fulfillmentMethod === query.fulfillmentMethod)
     .filter((d) => !query.date || d.scheduledDate === query.date)
     .sort((a, b) => (b.scheduledDate ?? '').localeCompare(a.scheduledDate ?? '') || b.id - a.id);
   return paginate(rows, query);
@@ -57,7 +54,7 @@ mock('POST', '/deliveries', ({ body, userId }) => {
     const line = db.orderLines.find((l) => l.id === item.orderLineId);
     if (!line || line.orderId !== order.id) fail(400, 'Dòng hàng không thuộc đơn');
   });
-  const row = { ...body, items, legLabel: 'Trọn đơn', id: nextId(db.deliveries), code: nextCode('GH', db.deliveries), state: 'ready' as const, deliveredAt: null };
+  const row = { ...body, items, legLabel: 'Trọn đơn', id: nextId(db.deliveries), code: nextCode('DL', db.deliveries), state: 'ready' as const, startedAt: null, deliveredAt: null };
   db.deliveries.push(row);
   addOrderEvent(order.id, 'delivery', `Tạo giao hàng ${row.legLabel}`, userId);
   return toItem(row);
@@ -67,7 +64,6 @@ mock('PATCH', '/deliveries/:id', ({ params, body, userId }) => {
   const row = db.deliveries.find((d) => d.id === Number(params.id));
   if (!row) fail(404, 'Không tìm thấy đợt giao');
   if (row.state === 'delivered') fail(409, 'Đợt giao đã hoàn tất');
-  if ('assignedTo' in body) row.assignedTo = body.assignedTo;
   if (body.note) row.note = body.note;
   if (body.state) {
     const order = db.orders.find((o) => o.id === row.orderId);
@@ -92,7 +88,8 @@ mock('PATCH', '/deliveries/:id', ({ params, body, userId }) => {
     } else if (body.state === 'failed') {
       addOrderEvent(row.orderId, 'delivery', `Giao thất bại ${row.legLabel}${body.note ? `: ${body.note}` : ''}`, userId);
     } else if (body.state === 'going') {
-      addOrderEvent(row.orderId, 'delivery', `Bắt đầu giao ${row.legLabel}`, userId);
+      row.startedAt = new Date().toISOString();
+      addOrderEvent(row.orderId, 'delivery', `Bắt đầu giao ${row.legLabel} · ${fulfillmentLabels[row.fulfillmentMethod]}`, userId);
     }
     audit(userId, 'update', 'delivery', row.id, { state: body.state });
   }

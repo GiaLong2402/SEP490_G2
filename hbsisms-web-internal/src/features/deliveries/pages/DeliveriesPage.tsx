@@ -1,23 +1,18 @@
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/features/auth';
-import { useAction } from '@/shared/api/useAction';
-import { deliveryStateMeta, fulfillmentLabels } from '@/shared/domain/enums';
-import { date, num, todayISO } from '@/shared/lib/format';
-import { Button, Card, Chip, DataTable, FilterBar, FilterSelect, Input, PageHeader, Pagination, SearchBox, Select, StatusChip, enumOptions, useListParams, type Column } from '@/shared/ui';
-import { deliveriesApi } from '../api';
+import { deliveryStateMeta, fulfillmentMeta } from '@/shared/domain/enums';
+import { date, dateTime, num, todayISO } from '@/shared/lib/format';
+import { Button, Card, Chip, DataTable, FilterBar, FilterSelect, Input, PageHeader, Pagination, SearchBox, StatusChip, enumOptions, useListParams, type Column } from '@/shared/ui';
 import { DeliveryStateActions } from '../components/DeliveryStateActions';
-import { useCouriers, useDeliveries } from '../hooks';
+import { useDeliveries } from '../hooks';
 import type { DeliveryListItem } from '../types';
 
 export default function DeliveriesPage() {
   const { user } = useAuth();
-  const list = useListParams(['state', 'date', 'assignedTo', 'sort'] as const);
+  const list = useListParams(['state', 'method', 'date', 'sort'] as const);
   const oldestFirst = list.filters.sort === 'asc';
-  const couriers = useCouriers();
-  const { data, isLoading, error, refetch } = useDeliveries({ q: list.q, page: list.page, state: list.filters.state, date: list.filters.date, assignedTo: list.filters.assignedTo, sort: list.filters.sort });
-  const assign = useAction(({ id, assignedTo }: { id: number; assignedTo: number | null }) => deliveriesApi.update(id, { assignedTo }), { success: 'Đã phân công người giao' });
-  const isCourier = user?.position === 'Giao hàng';
+  const { data, isLoading, error, refetch } = useDeliveries({ q: list.q, page: list.page, state: list.filters.state, fulfillmentMethod: list.filters.method, date: list.filters.date, sort: list.filters.sort });
 
   const columns: Column<DeliveryListItem>[] = [
     {
@@ -39,36 +34,32 @@ export default function DeliveriesPage() {
     { key: 'when', header: 'Lịch giao', cell: (d) => <div className="whitespace-nowrap">{date(d.scheduledDate)}<div className="text-ink-faint">{d.timeWindow}</div></div> },
     { key: 'distance', header: 'Khoảng cách', hideOnMobile: true, cell: (d) => (d.distanceKm !== null ? <Chip tone={d.inRadius ? 'green' : 'amber'}>{d.distanceKm} km</Chip> : '—') },
     { key: 'qty', header: 'Khay', align: 'right', cell: (d) => <span className="num">{num(d.totalKhay)}</span> },
+    { key: 'method', header: 'Cách giao', cell: (d) => <StatusChip meta={fulfillmentMeta} value={d.fulfillmentMethod} /> },
     {
-      key: 'assignee', header: 'Người giao',
-      cell: (d) =>
-        d.fulfillmentMethod === 'shop_delivery' && !isCourier && d.state !== 'delivered' && d.state !== 'failed' ? (
-          <Select aria-label={`Người giao ${d.code}`} className="!h-7 !w-[140px] text-small" value={d.assignedTo ?? ''} onChange={(e) => assign.mutate({ id: d.id, assignedTo: e.target.value ? Number(e.target.value) : null })}>
-            <option value="">Chưa phân công</option>
-            {couriers.data?.map((c) => <option key={c.id} value={c.id}>{c.fullName}</option>)}
-          </Select>
-        ) : (
-          <span className="whitespace-nowrap">{d.assigneeName ?? d.carrier ?? fulfillmentLabels[d.fulfillmentMethod]}</span>
-        ),
+      key: 'state', header: 'Trạng thái',
+      cell: (d) => (
+        <div className="whitespace-nowrap">
+          <StatusChip meta={deliveryStateMeta} value={d.state} />
+          {d.state === 'going' && d.startedAt && <div className="mt-0.5 text-micro text-ink-faint">Bắt đầu {dateTime(d.startedAt)}</div>}
+          {d.state === 'delivered' && d.deliveredAt && <div className="mt-0.5 text-micro text-ink-faint">Lúc {dateTime(d.deliveredAt)}</div>}
+        </div>
+      ),
     },
-    { key: 'state', header: 'Trạng thái', cell: (d) => <StatusChip meta={deliveryStateMeta} value={d.state} /> },
     { key: 'actions', header: '', align: 'right', cell: (d) => <DeliveryStateActions delivery={d} orderState={d.orderState} /> },
   ];
 
   return (
     <>
-      <PageHeader title="Giao hàng" subtitle="Lịch giao, phân công và cập nhật trạng thái (một lần / đơn)" />
+      <PageHeader title="Giao hàng" subtitle="Lịch giao và cập nhật trạng thái (một lần / đơn) · Shop tự giao / Khách đến lấy / Đối tác giao" />
       <Card flush>
         <FilterBar
           actions={
-            <>
-              <Button onClick={() => list.setFilter('date', list.filters.date === todayISO() ? '' : todayISO())} variant={list.filters.date === todayISO() ? 'primary' : 'secondary'}>Hôm nay</Button>
-              {isCourier && user && <Button onClick={() => list.setFilter('assignedTo', list.filters.assignedTo ? '' : String(user.id))} variant={list.filters.assignedTo ? 'primary' : 'secondary'}>Của tôi</Button>}
-            </>
+            <Button onClick={() => list.setFilter('date', list.filters.date === todayISO() ? '' : todayISO())} variant={list.filters.date === todayISO() ? 'primary' : 'secondary'}>Hôm nay</Button>
           }
         >
           <SearchBox value={list.q} onChange={list.setQ} placeholder="Tìm mã, đơn, khách..." />
           <FilterSelect label="Trạng thái" value={list.filters.state} onChange={(v) => list.setFilter('state', v)}>{enumOptions(deliveryStateMeta)}</FilterSelect>
+          <FilterSelect label="Cách giao" value={list.filters.method} onChange={(v) => list.setFilter('method', v)}>{enumOptions(fulfillmentMeta)}</FilterSelect>
           <Input aria-label="Ngày giao" type="date" className="!w-[150px]" value={list.filters.date} onChange={(e) => list.setFilter('date', e.target.value)} />
         </FilterBar>
         <DataTable columns={columns} rows={data?.items} rowKey={(d) => d.id} loading={isLoading} error={error} onRetry={refetch} emptyText="Không có giao hàng phù hợp" />

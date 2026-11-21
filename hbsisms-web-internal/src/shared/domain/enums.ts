@@ -110,6 +110,10 @@ export const orderListAllocationStatusMeta: Record<string, { label: string; tone
 
 export type FulfillmentMethod = 'shop_delivery' | 'pickup' | 'partner_delivery';
 export const fulfillmentLabels: Record<FulfillmentMethod, string> = { shop_delivery: 'Shop tự giao', pickup: 'Khách đến lấy', partner_delivery: 'Đối tác giao' };
+/** Nhãn cách giao (màn Giao hàng, chi tiết đơn): Shop tự giao = cửa hàng tự lo (người trong tiệm / gửi nhà xe khi xa); Đối tác giao = book đơn vị vận chuyển. */
+export const fulfillmentMeta: Meta<FulfillmentMethod> = {
+  shop_delivery: { label: 'Shop tự giao', tone: 'blue' }, pickup: { label: 'Khách đến lấy', tone: 'neutral' }, partner_delivery: { label: 'Đối tác giao', tone: 'amber' },
+};
 
 export type SellUnit = 'pack' | 'case';
 export const sellUnitLabels: Record<SellUnit, string> = { pack: 'Khay', case: 'Thùng' };

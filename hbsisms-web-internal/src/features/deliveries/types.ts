@@ -7,7 +7,6 @@ export interface DeliveryListItem extends Delivery {
   orderState: OrderState;
   customerName: string | null;
   addressText: string | null;
-  assigneeName: string | null;
   totalKhay: number;
 }
 
@@ -20,20 +19,11 @@ export interface DeliveryInput {
   addressId: ID | null;
   inRadius: boolean;
   distanceKm: number | null;
-  assignedTo: ID | null;
-  carrier: string | null;
   items: DeliveryItem[];
   note: string | null;
 }
 
 export interface DeliveryUpdate {
   state?: DeliveryState;
-  assignedTo?: ID | null;
   note?: string;
-}
-
-export interface Courier {
-  id: ID;
-  fullName: string;
-  position: string | null;
 }

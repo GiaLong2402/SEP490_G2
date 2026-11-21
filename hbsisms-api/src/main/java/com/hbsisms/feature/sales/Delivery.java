@@ -1,7 +1,6 @@
 package com.hbsisms.feature.sales;
 
 import com.hbsisms.feature.customer.CustomerAddress;
-import com.hbsisms.feature.user.AppUser;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -31,8 +30,7 @@ import org.hibernate.type.SqlTypes;
 /** One delivery leg of an order (B2B orders can ship in several legs). Shipped quantities live in {@code items}. */
 @Entity
 @Table(name = "delivery", indexes = {
-        @Index(name = "idx_delivery_order", columnList = "order_id"),
-        @Index(name = "idx_delivery_assignee", columnList = "assigned_to")})
+        @Index(name = "idx_delivery_order", columnList = "order_id")})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -78,12 +76,7 @@ public class Delivery {
     @Column(precision = 6, scale = 2)
     private BigDecimal distanceKm;
 
-    /** Staff driver when the shop delivers itself. */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "assigned_to")
-    private AppUser assignedTo;
-
-    /** Partner carrier name. */
+    /** Tên đơn vị vận chuyển — để dành khi nối API đơn vị vận chuyển (hiện chưa dùng). */
     @Column(length = 120)
     private String carrier;
 
@@ -93,6 +86,9 @@ public class Delivery {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private DeliveryState state = DeliveryState.READY;
+
+    /** Lúc bấm "Bắt đầu giao" (Sẵn sàng → Đang giao); lấy tại quầy không có bước này. */
+    private Instant startedAt;
 
     private Instant deliveredAt;
 
