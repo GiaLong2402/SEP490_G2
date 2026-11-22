@@ -45,4 +45,10 @@ class BusinessCodeServiceTest {
         assertThat(service.nextDeliveryCode()).isEqualTo("DL-2026-0003");
         assertThat(service.nextReturnCode()).isEqualTo("RET-2026-0004");
     }
+
+    @Test
+    void nextProductionAndMaterialIssueCodes_formatYearlySequence() {
+        assertThat(service.nextProductionOrderCode()).isEqualTo("LSX-2026-0001");
+        assertThat(service.nextMaterialIssueCode()).isEqualTo("PX-2026-0002");
+    }
 }

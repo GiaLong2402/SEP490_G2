@@ -32,6 +32,8 @@ public class BusinessCodeSequenceRunner implements ApplicationRunner {
         ensureSequence(BusinessCodeService.SEQ_PAYOS_ORDER, 130001);
         ensureSequence(BusinessCodeService.SEQ_DELIVERY, 1);
         ensureSequence(BusinessCodeService.SEQ_RETURN, 1);
+        ensureSequence(BusinessCodeService.SEQ_PRODUCTION_ORDER, 1);
+        ensureSequence(BusinessCodeService.SEQ_MATERIAL_ISSUE, 1);
     }
 
     private void ensureSequence(String qualifiedName, long start) {
