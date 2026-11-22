@@ -5,6 +5,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
 
 /** Body of POST /goods-receipts — source replaces supplier until Supplier module lands. */
@@ -15,5 +16,7 @@ public record GoodsReceiptRequest(
                 String source,
         @Size(max = 2000, message = "Ghi chú quá dài") String note,
         @Valid List<FinishedReceiptLineRequest> finishedLines,
-        @Valid List<RawReceiptLineRequest> rawLines) {
+        @Valid List<RawReceiptLineRequest> rawLines,
+        /** Phiếu NVL: ngày hàng dự kiến về (không bắt buộc). */
+        LocalDate expectedDate) {
 }

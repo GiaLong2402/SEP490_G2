@@ -10,3 +10,9 @@ export const useRawMaterials = (query: RawMaterialQuery = {}, enabled = true) =>
     placeholderData: keepPreviousData,
     enabled,
   });
+export const useRawMaterialLots = (id: number | null) =>
+  useQuery({
+    queryKey: ['raw-material-lots', id],
+    queryFn: ({ signal }) => receiptsApi.rawMaterialLots(id as number, false, signal),
+    enabled: id !== null,
+  });

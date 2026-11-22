@@ -4,7 +4,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 
-/** One raw-material line on POST /goods-receipts. */
+/** Một dòng NVL khi tạo phiếu nhập (POST /goods-receipts): {@code qty} = số lượng dự kiến, chưa cộng tồn. */
 public record RawReceiptLineRequest(
         @NotNull(message = "Nguyên liệu là bắt buộc") Long rawMaterialId,
         @NotNull(message = "Số lượng là bắt buộc")
