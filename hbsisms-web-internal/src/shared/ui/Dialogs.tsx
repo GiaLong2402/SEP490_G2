@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode, type SyntheticEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject, type SyntheticEvent } from 'react';
 import { X } from 'lucide-react';
 import { Button, IconButton } from './Button';
 import { Field, Textarea } from './Form';
@@ -14,11 +14,50 @@ function useNativeDialog(open: boolean) {
   return ref;
 }
 
+/**
+ * Chromium/Edge: hủy hộp thoại chọn file (Esc hoặc nút X) bên trong `<dialog>`
+ * cũng bắn sự kiện `cancel` lên dialog → đóng luôn modal. Chặn khi vừa mở file picker.
+ */
+function useIgnoreFilePickerCancel(dialogRef: RefObject<HTMLDialogElement | null>, open: boolean) {
+  const filePickerOpenRef = useRef(false);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog || !open) return;
+
+    const markFilePicker = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.('input[type="file"]')) {
+        filePickerOpenRef.current = true;
+      }
+    };
+
+    const onWindowFocus = () => {
+      if (!filePickerOpenRef.current) return;
+      // Đợi cancel (nếu có) xử lý xong rồi mới cho Esc đóng modal trở lại.
+      window.setTimeout(() => {
+        filePickerOpenRef.current = false;
+      }, 300);
+    };
+
+    dialog.addEventListener('click', markFilePicker, true);
+    window.addEventListener('focus', onWindowFocus);
+    return () => {
+      dialog.removeEventListener('click', markFilePicker, true);
+      window.removeEventListener('focus', onWindowFocus);
+    };
+  }, [dialogRef, open]);
+
+  return filePickerOpenRef;
+}
+
 // Chỉ nghe sự kiện cancel (phím Esc): sự kiện close đến sau một nhịp nên có thể đóng nhầm dialog vừa được mở lại.
-const closeOnEsc = (onClose: () => void) => (event: SyntheticEvent) => {
-  event.preventDefault();
-  onClose();
-};
+const closeOnEsc =
+  (onClose: () => void, ignoreRef?: RefObject<boolean>) => (event: SyntheticEvent) => {
+    event.preventDefault();
+    if (ignoreRef?.current) return;
+    onClose();
+  };
 
 interface ModalProps {
   open: boolean;
@@ -34,6 +73,7 @@ interface ModalProps {
 // <dialog> gốc đã có bẫy focus, phím Esc và trả focus về nơi mở.
 export function Modal({ open, title, onClose, children, footer, width = 'md', onSubmit }: ModalProps) {
   const ref = useNativeDialog(open);
+  const ignoreFilePickerCancel = useIgnoreFilePickerCancel(ref, open);
   const w = { md: 'max-w-[480px]', lg: 'max-w-[680px]', xl: 'max-w-[920px]' }[width];
   const body = (
     <>
@@ -48,7 +88,11 @@ export function Modal({ open, title, onClose, children, footer, width = 'md', on
     </>
   );
   return (
-    <dialog ref={ref} onCancel={closeOnEsc(onClose)} className={`w-[calc(100vw-32px)] ${w} rounded-lg bg-card p-0 text-ink shadow-pop`}>
+    <dialog
+      ref={ref}
+      onCancel={closeOnEsc(onClose, ignoreFilePickerCancel)}
+      className={`w-[calc(100vw-32px)] ${w} rounded-lg bg-card p-0 text-ink shadow-pop`}
+    >
       {onSubmit ? (
         <form
           noValidate
