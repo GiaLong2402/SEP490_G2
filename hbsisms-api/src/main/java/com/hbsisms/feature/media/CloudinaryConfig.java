@@ -1,5 +1,6 @@
 package com.hbsisms.feature.media;
 
+<<<<<<< HEAD
 import com.cloudinary.Cloudinary;
 import com.cloudinary.utils.ObjectUtils;
 import org.springframework.context.annotation.Bean;
@@ -21,3 +22,11 @@ public class CloudinaryConfig {
                 "secure", true));
     }
 }
+=======
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+@EnableConfigurationProperties(CloudinaryProperties.class)
+public class CloudinaryConfig {}
+>>>>>>> origin/main
