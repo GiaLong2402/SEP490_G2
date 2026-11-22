@@ -95,3 +95,9 @@ app:
     shop-latitude: ${SHOP_LATITUDE:20.951248}
     shop-longitude: ${SHOP_LONGITUDE:107.080502}
     delivery-radius-km: ${DELIVERY_RADIUS_KM:8}
+  cloudinary:
+    # Signed upload — API Secret chỉ nằm ở backend. Empty = POST /media/cloudinary-signature báo lỗi.
+    cloud-name: ${CLOUDINARY_CLOUD_NAME:}
+    api-key: ${CLOUDINARY_API_KEY:}
+    api-secret: ${CLOUDINARY_API_SECRET:}
+    folder: ${CLOUDINARY_FOLDER:products}
