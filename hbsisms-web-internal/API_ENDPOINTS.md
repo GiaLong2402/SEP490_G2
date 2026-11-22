@@ -170,6 +170,8 @@ Jackson khóa tên field `isPublished` / `isActive` (không `published` / `activ
 | PUT | `/products/:id` | **200** + `ProductDetail`; `gallery: null` giữ, `[]` xóa |
 | POST | `/products/:id/variants` | **204**; body `VariantInput` (+ `tiers[]`) |
 | PUT | `/variants/:id` | **204**; body `VariantInput` |
+| GET | `/products/:id/bom` | `BomDetail` — định mức NVL (Task BOM) |
+| PUT | `/products/:id/bom` | **200** + `BomDetail`; body `{ lines: BomLineInput[] }` full replace; chặn chọn chính SP làm NVL của nó |
 
 ## quotes
 

@@ -44,7 +44,109 @@ function validateCategory(body: any, id: number | null) {
   return code;
 }
 
-const isUnitInUse = (unitId: number) => db.products.some((p) => p.unitId === unitId) || db.rawMaterials.some((m) => m.unitId === unitId);
+const isUnitInUse = (unitId: number) =>
+  db.products.some((p) => p.unitId === unitId)
+  || db.rawMaterials.some((m) => m.unitId === unitId)
+  || db.productBomLines.some((line) => line.unitId === unitId);
+
+function toBomResponse(productId: number) {
+  const product = db.products.find((p) => p.id === productId);
+  if (!product) fail(404, 'Không tìm thấy sản phẩm');
+  const lines = db.productBomLines
+    .filter((line) => line.productId === productId)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
+    .map((line) => {
+      const raw = line.rawMaterialId != null ? db.rawMaterials.find((m) => m.id === line.rawMaterialId) : undefined;
+      const component = line.componentProductId != null ? db.products.find((p) => p.id === line.componentProductId) : undefined;
+      const unit = db.units.find((u) => u.id === line.unitId)!;
+      return {
+        id: line.id,
+        rawMaterialId: line.rawMaterialId,
+        rawMaterialCode: raw?.code ?? null,
+        rawMaterialName: raw?.name ?? null,
+        componentProductId: line.componentProductId,
+        componentProductCode: component?.code ?? null,
+        componentProductName: component?.name ?? null,
+        qty: line.qty,
+        unitId: line.unitId,
+        unitCode: unit.code,
+        unitName: unit.name,
+        wastePercent: line.wastePercent,
+        sortOrder: line.sortOrder,
+      };
+    });
+  return { productId: product.id, productCode: product.code, productName: product.name, lines };
+}
+
+function replaceBom(productId: number, body: any, userId: number | null | undefined) {
+  const product = db.products.find((p) => p.id === productId);
+  if (!product) fail(404, 'Không tìm thấy sản phẩm');
+  const lines = Array.isArray(body?.lines) ? body.lines : fail(400, 'Danh sách định mức là bắt buộc');
+  const rawIds = new Set<number>();
+  const componentIds = new Set<number>();
+  const next: (typeof db.productBomLines)[number][] = [];
+  lines.forEach((line: any, index: number) => {
+    const hasRaw = line.rawMaterialId != null;
+    const hasComponent = line.componentProductId != null;
+    if (hasRaw === hasComponent) fail(400, 'Mỗi dòng chọn đúng một: nguyên liệu hoặc sản phẩm cấu thành');
+    const qty = Number(line.qty);
+    if (!(qty > 0)) fail(400, 'Số lượng định mức phải lớn hơn 0');
+    const unitId = Number(line.unitId);
+    const unit = db.units.find((u) => u.id === unitId);
+    if (!unit) fail(404, 'Không tìm thấy đơn vị tính');
+    if (!unit.isActive) fail(400, 'Đơn vị tính đã ngừng sử dụng');
+    let wastePercent: number | null = line.wastePercent == null || line.wastePercent === '' ? null : Number(line.wastePercent);
+    if (wastePercent != null && (Number.isNaN(wastePercent) || wastePercent < 0 || wastePercent > 100)) {
+      fail(400, '% hao hụt phải từ 0 đến 100');
+    }
+    if (hasRaw) {
+      const rawId = Number(line.rawMaterialId);
+      if (rawIds.has(rawId)) fail(400, 'Nguyên liệu bị trùng trong định mức');
+      rawIds.add(rawId);
+      const raw = db.rawMaterials.find((m) => m.id === rawId);
+      if (!raw) fail(404, 'Không tìm thấy nguyên liệu');
+      if (!raw.isActive) fail(400, 'Nguyên liệu đã ngừng sử dụng');
+      if (raw.code.toLowerCase() === product.code.toLowerCase()) {
+        fail(400, 'Không thể chọn chính sản phẩm này làm nguyên liệu của nó');
+      }
+      next.push({
+        id: 0,
+        productId,
+        rawMaterialId: rawId,
+        componentProductId: null,
+        qty,
+        unitId,
+        wastePercent,
+        sortOrder: index,
+      });
+    } else {
+      const componentId = Number(line.componentProductId);
+      if (componentId === productId) fail(400, 'Không thể chọn chính sản phẩm này làm nguyên liệu của nó');
+      if (componentIds.has(componentId)) fail(400, 'Sản phẩm cấu thành bị trùng trong định mức');
+      componentIds.add(componentId);
+      const component = db.products.find((p) => p.id === componentId);
+      if (!component) fail(404, 'Không tìm thấy sản phẩm cấu thành');
+      if (!component.isActive) fail(400, 'Sản phẩm cấu thành đã ngừng kinh doanh');
+      next.push({
+        id: 0,
+        productId,
+        rawMaterialId: null,
+        componentProductId: componentId,
+        qty,
+        unitId,
+        wastePercent,
+        sortOrder: index,
+      });
+    }
+  });
+  db.productBomLines = db.productBomLines.filter((line) => line.productId !== productId);
+  next.forEach((line) => {
+    line.id = nextId(db.productBomLines);
+    db.productBomLines.push(line);
+  });
+  audit(userId, 'update', 'product_bom', productId);
+  return toBomResponse(productId);
+}
 
 function validateUnit(body: any, id: number | null) {
   const code = String(body.code ?? '').trim();
@@ -80,39 +182,15 @@ mock('PUT', '/units/:id', ({ params, body, userId }) => {
   return row;
 });
 
-/** Khớp API: ít nhất một cờ, nguyên liệu bắt buộc đơn vị; trả về cờ + unitId đã chuẩn hóa. */
-function resolveFlags(body: any, current?: (typeof db.products)[number]) {
-  const flags = {
-    isRawMaterial: body.isRawMaterial ?? current?.isRawMaterial ?? false,
+/** Mentor tạm bỏ vừa NVL vừa bán: SP = hàng bán; NVL quản lý riêng. Cột DB vẫn giữ. */
+function resolveCatalogFlags(body: any, current?: (typeof db.products)[number]) {
+  if (body.isRawMaterial === true) fail(400, 'Tạm thời nguyên liệu quản lý riêng, không đánh dấu trên sản phẩm');
+  return {
+    isRawMaterial: false,
     isSellable: body.isSellable ?? current?.isSellable ?? true,
     isProducible: body.isProducible ?? current?.isProducible ?? false,
+    unitId: null as number | null,
   };
-  if (!flags.isRawMaterial && !flags.isSellable && !flags.isProducible) fail(400, 'Chọn ít nhất một loại: nguyên liệu, bán hoặc sản xuất');
-  const unitId: number | null = body.unitId ?? null;
-  if (flags.isRawMaterial && unitId === null) fail(400, 'Nguyên liệu bắt buộc chọn đơn vị tính');
-  if (unitId !== null) {
-    const unit = db.units.find((u) => u.id === unitId);
-    if (!unit) fail(404, 'Không tìm thấy đơn vị tính');
-    if (!unit.isActive && unitId !== current?.unitId) fail(400, 'Đơn vị tính đã ngừng sử dụng');
-  }
-  return { ...flags, unitId };
-}
-
-/** Upsert nguyên liệu cùng mã (tồn 0 khi tạo); tắt cờ nguyên liệu thì ngừng dùng nguyên liệu đó. */
-function syncRawMaterial(product: (typeof db.products)[number], previousCode: string | null) {
-  const matchCode = (code: string) => db.rawMaterials.find((m) => m.code.toLowerCase() === code.toLowerCase());
-  let raw = matchCode(product.code) ?? (previousCode ? matchCode(previousCode) : undefined);
-  if (product.isRawMaterial) {
-    const unit = db.units.find((u) => u.id === product.unitId)!;
-    if (!raw) {
-      raw = { id: nextId(db.rawMaterials), code: product.code, name: product.name, unit: unit.code, unitId: unit.id, qtyOnHand: 0, reorderLevel: null, isActive: product.isActive };
-      db.rawMaterials.push(raw);
-    } else {
-      Object.assign(raw, { code: product.code, name: product.name, unit: unit.code, unitId: unit.id, isActive: product.isActive });
-    }
-  } else if (raw) {
-    raw.isActive = false;
-  }
 }
 
 mock('GET', '/categories', () => db.categories.map(toCategoryItem).sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'vi')));
@@ -193,7 +271,7 @@ mock('POST', '/products', ({ body, userId }) => {
   if (db.products.some((p) => p.code.toLowerCase() === code.toLowerCase())) fail(409, `Mã ${code} đã tồn tại`);
   // Khớp API: tạo mới chưa có variant active → không publish B2C.
   if (body.isPublished) fail(400, 'Không thể hiển thị cổng B2C khi chưa có quy cách đang bán');
-  const flags = resolveFlags(body);
+  const flags = resolveCatalogFlags(body);
   const now = new Date().toISOString();
   const gallery = Array.isArray(body.gallery)
     ? body.gallery.map((url: string) => String(url).trim()).filter(Boolean)
@@ -216,7 +294,6 @@ mock('POST', '/products', ({ body, userId }) => {
     updatedAt: now,
   };
   db.products.push(product);
-  syncRawMaterial(product, null);
   audit(userId, 'create', 'product', product.id);
   return toItem(product);
 });
@@ -235,8 +312,7 @@ mock('PUT', '/products/:id', ({ params, body, userId }) => {
     const hasActiveVariant = db.variants.some((v) => v.productId === product.id && v.isActive);
     if (!hasActiveVariant) fail(400, 'Không thể hiển thị cổng B2C khi chưa có quy cách đang bán');
   }
-  const flags = resolveFlags(body, product);
-  const previousCode = product.code;
+  const flags = resolveCatalogFlags(body, product);
   // gallery null = giữ (API); [] hoặc mảng = ghi đè. FE form luôn gửi string[].
   const nextGallery =
     body.gallery === null || body.gallery === undefined
@@ -252,7 +328,6 @@ mock('PUT', '/products/:id', ({ params, body, userId }) => {
     ...flags,
     updatedAt: new Date().toISOString(),
   });
-  syncRawMaterial(product, previousCode);
   audit(userId, 'update', 'product', product.id);
   return toItem(product);
 });
@@ -276,3 +351,7 @@ mock('PUT', '/variants/:id', ({ params, body, userId }) => {
   saveTiers(variant.id, tiers);
   audit(userId, 'update', 'product_variant', variant.id);
 });
+
+mock('GET', '/products/:id/bom', ({ params }) => toBomResponse(Number(params.id)));
+
+mock('PUT', '/products/:id/bom', ({ params, body, userId }) => replaceBom(Number(params.id), body, userId));

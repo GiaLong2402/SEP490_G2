@@ -7,11 +7,8 @@ import com.hbsisms.common.web.PageResponse;
 import com.hbsisms.feature.catalog.dto.ProductRequest;
 import com.hbsisms.feature.catalog.dto.ProductResponse;
 import com.hbsisms.feature.catalog.dto.VariantWithTiersResponse;
-import com.hbsisms.feature.inventory.RawMaterial;
-import com.hbsisms.feature.inventory.RawMaterialRepository;
 import com.hbsisms.feature.inventory.StockRepository;
 import jakarta.persistence.criteria.Predicate;
-import java.math.BigDecimal;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,7 +24,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class ProductService {
 
-    private static final int RAW_MATERIAL_CODE_MAX = 40;
     private static final Sort LIST_SORT = Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id"));
 
     private final ProductRepository productRepository;
@@ -35,24 +31,18 @@ public class ProductService {
     private final ProductVariantRepository productVariantRepository;
     private final VolumeTierRepository volumeTierRepository;
     private final StockRepository stockRepository;
-    private final UnitOfMeasureRepository unitRepository;
-    private final RawMaterialRepository rawMaterialRepository;
 
     public ProductService(
             ProductRepository productRepository,
             CategoryRepository categoryRepository,
             ProductVariantRepository productVariantRepository,
             VolumeTierRepository volumeTierRepository,
-            StockRepository stockRepository,
-            UnitOfMeasureRepository unitRepository,
-            RawMaterialRepository rawMaterialRepository) {
+            StockRepository stockRepository) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
         this.productVariantRepository = productVariantRepository;
         this.volumeTierRepository = volumeTierRepository;
         this.stockRepository = stockRepository;
-        this.unitRepository = unitRepository;
-        this.rawMaterialRepository = rawMaterialRepository;
     }
 
     public PageResponse<ProductResponse> list(String q, Long categoryId, int page, int pageSize) {
@@ -172,10 +162,9 @@ public class ProductService {
         String slug = uniqueSlug(Strings.slugify(name), null);
 
         Product product = new Product();
-        UnitOfMeasure unit = validateFlagsAndResolveUnit(product, code, request);
-        apply(product, code, name, slug, category, unit, request, true);
+        assertNotRawMaterialFlag(request);
+        apply(product, code, name, slug, category, request, true);
         Product saved = productRepository.save(product);
-        syncRawMaterial(saved, null);
         return toResponse(productRepository.findWithCategoryById(saved.getId()).orElse(saved));
     }
 
@@ -196,11 +185,9 @@ public class ProductService {
             slug = uniqueSlug(Strings.slugify(name), id);
         }
 
-        String previousCode = product.getCode();
-        UnitOfMeasure unit = validateFlagsAndResolveUnit(product, code, request);
-        apply(product, code, name, slug, category, unit, request, false);
+        assertNotRawMaterialFlag(request);
+        apply(product, code, name, slug, category, request, false);
         Product saved = productRepository.save(product);
-        syncRawMaterial(saved, previousCode);
         return toResponse(productRepository.findWithCategoryById(saved.getId()).orElse(saved));
     }
 
@@ -247,7 +234,6 @@ public class ProductService {
             String name,
             String slug,
             Category category,
-            UnitOfMeasure unit,
             ProductRequest request,
             boolean creating) {
         product.setCode(code);
@@ -265,67 +251,21 @@ public class ProductService {
         }
         product.setPublished(Boolean.TRUE.equals(request.isPublished()));
         product.setActive(Boolean.TRUE.equals(request.isActive()));
-        product.setRawMaterial(pick(request.isRawMaterial(), product.isRawMaterial()));
+        // Dual-role off for now: catalog product = sellable; NVL stays on RawMaterial CRUD.
+        product.setRawMaterial(false);
         product.setSellable(pick(request.isSellable(), product.isSellable()));
         product.setProducible(pick(request.isProducible(), product.isProducible()));
-        product.setUnit(unit);
+        product.setUnit(null);
     }
 
     private static boolean pick(Boolean requested, boolean current) {
         return requested == null ? current : requested;
     }
 
-    /** At least one flag; raw material requires a unit and a code that fits raw_material.code. */
-    private UnitOfMeasure validateFlagsAndResolveUnit(Product product, String code, ProductRequest request) {
-        boolean raw = pick(request.isRawMaterial(), product.isRawMaterial());
-        boolean sellable = pick(request.isSellable(), product.isSellable());
-        boolean producible = pick(request.isProducible(), product.isProducible());
-        if (!raw && !sellable && !producible) {
-            throw ApiException.badRequest("Chọn ít nhất một loại: nguyên liệu, bán hoặc sản xuất");
-        }
-        if (raw && request.unitId() == null) {
-            throw ApiException.badRequest("Nguyên liệu bắt buộc chọn đơn vị tính");
-        }
-        if (raw && code.length() > RAW_MATERIAL_CODE_MAX) {
-            throw ApiException.badRequest("Mã nguyên liệu tối đa " + RAW_MATERIAL_CODE_MAX + " ký tự");
-        }
-        if (request.unitId() == null) {
-            return null;
-        }
-        UnitOfMeasure unit = unitRepository
-                .findById(request.unitId())
-                .orElseThrow(() -> ApiException.notFound("Không tìm thấy đơn vị tính"));
-        UnitOfMeasure current = product.getUnit();
-        boolean sameAsCurrent = current != null && unit.getId().equals(current.getId());
-        if (!unit.isActive() && !sameAsCurrent) {
-            throw ApiException.badRequest("Đơn vị tính đã ngừng sử dụng");
-        }
-        return unit;
-    }
-
-    /** Upsert the raw_material row sharing this product's code; deactivate it when the raw flag is off. */
-    private void syncRawMaterial(Product product, String previousCode) {
-        RawMaterial raw = rawMaterialRepository
-                .findByCodeIgnoreCase(product.getCode())
-                .orElse(null);
-        if (raw == null && previousCode != null && !previousCode.equalsIgnoreCase(product.getCode())) {
-            raw = rawMaterialRepository.findByCodeIgnoreCase(previousCode).orElse(null);
-        }
-        if (product.isRawMaterial()) {
-            if (raw == null) {
-                raw = new RawMaterial();
-                raw.setQtyOnHand(BigDecimal.ZERO);
-            }
-            UnitOfMeasure unit = product.getUnit();
-            raw.setCode(product.getCode());
-            raw.setName(product.getName());
-            raw.setUnitRef(unit);
-            raw.setUnit(unit.getCode());
-            raw.setActive(product.isActive());
-            rawMaterialRepository.save(raw);
-        } else if (raw != null && raw.isActive()) {
-            raw.setActive(false);
-            rawMaterialRepository.save(raw);
+    /** Mentor: temporarily no “vừa NVL vừa bán” on products. */
+    private static void assertNotRawMaterialFlag(ProductRequest request) {
+        if (Boolean.TRUE.equals(request.isRawMaterial())) {
+            throw ApiException.badRequest("Tạm thời nguyên liệu quản lý riêng, không đánh dấu trên sản phẩm");
         }
     }
 

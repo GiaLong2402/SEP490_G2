@@ -4,7 +4,7 @@ import type * as T from '@/shared/domain/entities';
 import type { OrderState, PaymentMethod, SaleChannel } from '@/shared/domain/enums';
 
 // Tăng phiên bản khi đổi cấu trúc để không đọc nhầm dữ liệu cũ đã lưu trong trình duyệt.
-const STORAGE_KEY = 'hbsisms.mockdb.v3';
+const STORAGE_KEY = 'hbsisms.mockdb.v4';
 const pad = (n: number, width = 2) => String(n).padStart(width, '0');
 
 function isoDate(offsetDays: number) {
@@ -33,6 +33,7 @@ export interface MockDb {
   locations: T.Location[];
   units: T.UnitOfMeasure[];
   rawMaterials: T.RawMaterial[];
+  productBomLines: T.ProductBomLine[];
   suppliers: T.Supplier[];
   lots: T.Lot[];
   stock: T.Stock[];
@@ -174,6 +175,12 @@ function seed(): MockDb {
     { id: 2, code: 'NL-TOM', name: 'Tôm biển nguyên liệu', unit: 'kg', unitId: 1, qtyOnHand: 62, reorderLevel: 80, isActive: true },
     { id: 3, code: 'NL-KHAY', name: 'Khay xốp đóng gói', unit: 'cái', unitId: 2, qtyOnHand: 2400, reorderLevel: 500, isActive: true },
     { id: 4, code: 'NL-MANG', name: 'Màng bọc thực phẩm', unit: 'cuộn', unitId: 3, qtyOnHand: 14, reorderLevel: 20, isActive: true },
+  ];
+
+  // Demo BOM: 1 kg chả mực ≈ 0.85 kg mực + 1 khay (hao hụt 5%).
+  const productBomLines: T.ProductBomLine[] = [
+    { id: 1, productId: 1, rawMaterialId: 1, componentProductId: null, qty: 0.85, unitId: 1, wastePercent: 5, sortOrder: 0 },
+    { id: 2, productId: 1, rawMaterialId: 3, componentProductId: null, qty: 1, unitId: 2, wastePercent: null, sortOrder: 1 },
   ];
 
   const supplier = (id: number, name: string, taxCode: string | null, contactName: string, phone: string, address: string, isActive = true): T.Supplier => ({
@@ -447,7 +454,7 @@ function seed(): MockDb {
   ];
 
   return {
-    roles, users, customers, addresses, categories, products, variants, tiers, customerPrices, warehouses, locations, units, rawMaterials, suppliers, lots, stock, ledger, receipts, stocktakes, stocktakeLines,
+    roles, users, customers, addresses, categories, products, variants, tiers, customerPrices, warehouses, locations, units, rawMaterials, productBomLines, suppliers, lots, stock, ledger, receipts, stocktakes, stocktakeLines,
     damageReports, requests, quotes, quoteLines, orders, orderLines, deliveries, returns, orderEvents, payments, debtLedger, reviews, vouchers, approvals, notifications, config, auditLog,
   };
 }

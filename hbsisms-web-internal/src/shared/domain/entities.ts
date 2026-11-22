@@ -34,7 +34,7 @@ export interface Category {
 export interface Product {
   id: ID; code: string; name: string; slug: string | null; categoryId: ID | null; description: string | null; storageNote: string | null;
   origin: string | null; imageUrl: string | null; gallery: string[] | null; isPublished: boolean; isActive: boolean;
-  /** Cờ loại hàng: nguyên liệu / bán / sản xuất (ít nhất một cờ bật). */
+  /** Cột DB mở rộng; tạm SP = bán, NVL quản lý riêng (không vừa NVL vừa bán). */
   isRawMaterial: boolean; isSellable: boolean; isProducible: boolean; unitId: ID | null;
   createdAt: ISODateTime; updatedAt: ISODateTime;
 }
@@ -55,6 +55,17 @@ export interface Warehouse { id: ID; code: string; name: string; address: string
 export interface Location { id: ID; warehouseId: ID; code: string; zone: string | null; capacity: number; note: string | null }
 export interface UnitOfMeasure { id: ID; code: string; name: string; isActive: boolean }
 export interface RawMaterial { id: ID; code: string; name: string; unit: string; unitId: ID | null; qtyOnHand: number; reorderLevel: number | null; isActive: boolean }
+/** Dòng BOM — qty cho 1 đơn vị thành phẩm. */
+export interface ProductBomLine {
+  id: ID;
+  productId: ID;
+  rawMaterialId: ID | null;
+  componentProductId: ID | null;
+  qty: number;
+  unitId: ID;
+  wastePercent: number | null;
+  sortOrder: number;
+}
 export interface Lot { id: ID; lotCode: string; variantId: ID; mfgDate: ISODate | null; expDate: ISODate | null; receivedAt: ISODateTime | null; note: string | null }
 
 export interface Stock {

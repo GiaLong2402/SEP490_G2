@@ -29,12 +29,14 @@ class UnitOfMeasureServiceTest {
     private ProductRepository productRepository;
     @Mock
     private RawMaterialRepository rawMaterialRepository;
+    @Mock
+    private ProductBomLineRepository bomLineRepository;
 
     private UnitOfMeasureService service;
 
     @BeforeEach
     void setUp() {
-        service = new UnitOfMeasureService(unitRepository, productRepository, rawMaterialRepository);
+        service = new UnitOfMeasureService(unitRepository, productRepository, rawMaterialRepository, bomLineRepository);
     }
 
     @Test
@@ -95,6 +97,7 @@ class UnitOfMeasureServiceTest {
         when(unitRepository.existsByCodeIgnoreCaseAndIdNot("kg", 1L)).thenReturn(false);
         when(productRepository.existsByUnit_Id(1L)).thenReturn(false);
         when(rawMaterialRepository.existsByUnitRef_Id(1L)).thenReturn(false);
+        when(bomLineRepository.existsByUnit_Id(1L)).thenReturn(false);
         when(unitRepository.save(any(UnitOfMeasure.class))).thenAnswer(inv -> inv.getArgument(0));
 
         UnitOfMeasureResponse response = service.update(1L, new UnitOfMeasureRequest("kg", "Ki-lô-gam", false));
