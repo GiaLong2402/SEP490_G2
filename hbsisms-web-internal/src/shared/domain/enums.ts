@@ -169,6 +169,11 @@ export const ledgerEntryMeta: Meta<LedgerEntryType> = {
 
 export type ReceiptType = 'finished' | 'raw';
 export const receiptTypeLabels: Record<ReceiptType, string> = { finished: 'Thành phẩm', raw: 'Nguyên liệu' };
+/** Phiếu NVL: tạo → Chờ nhập (chưa cộng tồn); xác nhận nhập kho → Hoàn thành; phiếu chờ có thể Hủy. */
+export type ReceiptStatus = 'pending' | 'completed' | 'cancelled';
+export const receiptStatusMeta: Meta<ReceiptStatus> = {
+  pending: { label: 'Chờ nhập', tone: 'amber' }, completed: { label: 'Hoàn thành', tone: 'green' }, cancelled: { label: 'Đã hủy', tone: 'neutral' },
+};
 
 export type StocktakeStatus = 'draft' | 'counting' | 'done' | 'cancelled';
 export const stocktakeStatusMeta: Meta<StocktakeStatus> = {

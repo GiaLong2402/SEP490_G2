@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Layers, PackageCheck, Pencil, Plus, Trash2, XCircle } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useLocations } from '@/features/inventory';
 import { useVariantOptions } from '@/features/products';
 import { useAction } from '@/shared/api/useAction';
-import { receiptTypeLabels, type ReceiptType } from '@/shared/domain/enums';
-import { dateTime, num, todayISO } from '@/shared/lib/format';
-import { Button, Card, Chip, DataTable, Field, FilterBar, FilterSelect, IconButton, Input, Modal, PageHeader, Pagination, SearchBox, Select, Tabs, enumOptions, useListParams, type Column } from '@/shared/ui';
+import { receiptStatusMeta, receiptTypeLabels, type ReceiptType } from '@/shared/domain/enums';
+import { date, dateTime, money, num, todayISO } from '@/shared/lib/format';
+import { Button, Card, Chip, ConfirmDialog, DataTable, Field, FilterBar, FilterSelect, IconButton, Input, Modal, PageHeader, Pagination, SearchBox, Select, StatusChip, Tabs, enumOptions, useListParams, type Column } from '@/shared/ui';
 import { receiptsApi } from '../api';
 import { RawMaterialFormModal } from '../components/RawMaterialFormModal';
+import { RawMaterialLotsModal } from '../components/RawMaterialLotsModal';
+import { RawReceiptCompleteModal } from '../components/RawReceiptCompleteModal';
 import { useRawMaterials, useReceipts } from '../hooks';
 import type { RawMaterial, ReceiptListItem } from '../types';
 
@@ -21,10 +23,10 @@ const rawRow = (): RawRow => ({ key: rowKey++, rawMaterialId: '', qty: '' });
 export default function ReceiptsPage() {
   const [params, setParams] = useSearchParams();
   const [tab, setTab] = useState<'receipts' | 'raw'>('receipts');
-  const list = useListParams(['receiptType'] as const);
+  const list = useListParams(['receiptType', 'status'] as const);
   const [rawQ, setRawQ] = useState('');
   const [rawStatus, setRawStatus] = useState('');
-  const { data, isLoading, error, refetch } = useReceipts({ q: list.q, page: list.page, receiptType: list.filters.receiptType });
+  const { data, isLoading, error, refetch } = useReceipts({ q: list.q, page: list.page, receiptType: list.filters.receiptType, status: list.filters.status });
   const raw = useRawMaterials(
     {
       q: rawQ,
@@ -41,14 +43,19 @@ export default function ReceiptsPage() {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<ReceiptType>('finished');
   const [source, setSource] = useState('');
+  const [expectedDate, setExpectedDate] = useState('');
   const [finished, setFinished] = useState<FinishedRow[]>([finishedRow()]);
   const [rawRows, setRawRows] = useState<RawRow[]>([rawRow()]);
   const [touched, setTouched] = useState(false);
   const [materialForm, setMaterialForm] = useState<{ material?: RawMaterial; fromReceipt?: boolean } | null>(null);
+  const [completing, setCompleting] = useState<ReceiptListItem | null>(null);
+  const [cancelling, setCancelling] = useState<ReceiptListItem | null>(null);
+  const [lotsOf, setLotsOf] = useState<RawMaterial | null>(null);
 
   const openForm = () => {
     setType('finished');
     setSource('');
+    setExpectedDate('');
     setFinished([finishedRow()]);
     setRawRows([rawRow()]);
     setTouched(false);
@@ -62,7 +69,7 @@ export default function ReceiptsPage() {
   }, [params]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const finishedValid = finished.every((r) => Number(r.variantId) > 0 && Number(r.locationId) > 0 && r.expDate && Number.isInteger(Number(r.qty)) && Number(r.qty) > 0 && (!r.mfgDate || r.expDate >= r.mfgDate));
-  const rawValid = rawRows.every((r) => Number(r.rawMaterialId) > 0 && Number(r.qty) > 0);
+  const rawValid = rawRows.every((r) => Number(r.rawMaterialId) > 0 && Number(r.qty) > 0) && new Set(rawRows.map((r) => r.rawMaterialId)).size === rawRows.length;
   const linesValid = type === 'finished' ? finishedValid : rawValid;
   const sourceValid = source.trim().length > 0;
 
@@ -74,17 +81,45 @@ export default function ReceiptsPage() {
         note: null,
         finishedLines: type === 'finished' ? finished.map((r) => ({ variantId: Number(r.variantId), lotCode: r.lotCode.trim() || null, mfgDate: r.mfgDate || null, expDate: r.expDate, locationId: Number(r.locationId), qty: Number(r.qty) })) : undefined,
         rawLines: type === 'raw' ? rawRows.map((r) => ({ rawMaterialId: Number(r.rawMaterialId), qty: Number(r.qty) })) : undefined,
+        expectedDate: type === 'raw' ? expectedDate || null : null,
       }),
-    { success: (r) => `Đã tạo phiếu nhập ${r.code}`, onDone: () => setOpen(false) },
+    {
+      success: (r) => (r.status === 'pending' ? `Đã tạo phiếu ${r.code} — chờ nhập kho (chưa cộng tồn)` : `Đã tạo phiếu nhập ${r.code}`),
+      onDone: () => setOpen(false),
+    },
   );
+  const cancel = useAction((note: string) => receiptsApi.cancel(cancelling!.id, note.trim() || null), {
+    success: (r) => `Đã hủy phiếu ${r.code}`,
+    onDone: () => setCancelling(null),
+  });
 
   const columns: Column<ReceiptListItem>[] = [
     { key: 'code', header: 'Mã phiếu', cell: (r) => <span className="num">{r.code}</span> },
     { key: 'type', header: 'Loại', cell: (r) => <Chip tone={r.receiptType === 'raw' ? 'amber' : 'blue'}>{receiptTypeLabels[r.receiptType]}</Chip> },
     { key: 'source', header: 'Nguồn', cell: (r) => <span className="font-medium">{r.source?.trim() || r.supplierName || '—'}</span> },
-    { key: 'items', header: 'Hàng nhập', cell: (r) => <span className="line-clamp-2 min-w-[220px]">{r.items.map((i) => `${i.name}: ${num(i.qty)} ${i.unit}`).join('; ')}</span> },
-    { key: 'at', header: 'Thời gian', hideOnMobile: true, cell: (r) => <span className="whitespace-nowrap">{dateTime(r.receivedAt)}</span> },
-    { key: 'by', header: 'Người nhận', hideOnMobile: true, cell: (r) => r.receiverName ?? '—' },
+    {
+      key: 'items', header: 'Hàng nhập',
+      cell: (r) => (
+        <div className="min-w-[220px]">
+          <span className="line-clamp-2">{r.items.map((i) => `${i.name}: ${num(i.qty)} ${i.unit}`).join('; ')}</span>
+          {r.status === 'pending' && <div className="text-micro text-ink-faint">SL dự kiến{r.expectedDate ? ` · dự kiến về ${date(r.expectedDate)}` : ''}</div>}
+          {r.totalAmount !== null && <div className="text-micro text-ink-faint">Tiền nhập: <span className="num">{money(r.totalAmount)}</span></div>}
+        </div>
+      ),
+    },
+    { key: 'status', header: 'Trạng thái', cell: (r) => <StatusChip meta={receiptStatusMeta} value={r.status} /> },
+    { key: 'at', header: 'Thời gian', hideOnMobile: true, cell: (r) => <span className="whitespace-nowrap">{dateTime(r.completedAt ?? r.receivedAt)}</span> },
+    { key: 'by', header: 'Người nhận', hideOnMobile: true, cell: (r) => (r.status === 'pending' ? <span className="text-ink-faint">Tạo: {r.receiverName ?? '—'}</span> : r.completerName ?? r.receiverName ?? '—') },
+    {
+      key: 'actions', header: '', align: 'right',
+      cell: (r) =>
+        r.status === 'pending' ? (
+          <div className="flex justify-end gap-1.5">
+            {r.receiptType === 'raw' && <Button className="!h-7 !px-2.5 text-small" variant="primary" icon={<PackageCheck size={14} />} onClick={() => setCompleting(r)}>Nhập kho</Button>}
+            <IconButton label={`Hủy phiếu ${r.code}`} onClick={() => setCancelling(r)}><XCircle size={14} /></IconButton>
+          </div>
+        ) : null,
+    },
   ];
   const rawColumns: Column<RawMaterial>[] = [
     { key: 'code', header: 'Mã', cell: (m) => <span className="num">{m.code}</span> },
@@ -92,7 +127,15 @@ export default function ReceiptsPage() {
     { key: 'qty', header: 'Tồn', align: 'right', cell: (m) => <span className="num">{num(m.qtyOnHand)} {m.unit}</span> },
     { key: 'reorder', header: 'Mức đặt lại', align: 'right', cell: (m) => <span className="num">{num(m.reorderLevel)} {m.unit}</span> },
     { key: 'status', header: 'Tình trạng', cell: (m) => (!m.isActive ? <Chip>Ngừng dùng</Chip> : m.reorderLevel !== null && m.qtyOnHand < m.reorderLevel ? <Chip tone="red">Cần đặt thêm</Chip> : <Chip tone="green">Đủ dùng</Chip>) },
-    { key: 'edit', header: '', align: 'right', cell: (m) => <IconButton label={`Sửa ${m.name}`} onClick={() => setMaterialForm({ material: m })}><Pencil size={14} /></IconButton> },
+    {
+      key: 'edit', header: '', align: 'right',
+      cell: (m) => (
+        <div className="flex justify-end gap-1">
+          <IconButton label={`Lô của ${m.name}`} onClick={() => setLotsOf(m)}><Layers size={14} /></IconButton>
+          <IconButton label={`Sửa ${m.name}`} onClick={() => setMaterialForm({ material: m })}><Pencil size={14} /></IconButton>
+        </div>
+      ),
+    },
   ];
 
   const receiptTabs = [
@@ -119,6 +162,7 @@ export default function ReceiptsPage() {
             <FilterBar>
               <SearchBox value={list.q} onChange={list.setQ} placeholder="Tìm mã phiếu, nguồn hàng..." />
               <FilterSelect label="Loại" value={list.filters.receiptType} onChange={(v) => list.setFilter('receiptType', v)}>{enumOptions(receiptTypeLabels)}</FilterSelect>
+              <FilterSelect label="Trạng thái" value={list.filters.status} onChange={(v) => list.setFilter('status', v)}>{enumOptions(receiptStatusMeta)}</FilterSelect>
             </FilterBar>
             <DataTable columns={columns} rows={data?.items} rowKey={(r) => r.id} loading={isLoading} error={error} onRetry={refetch} emptyText="Chưa có phiếu nhập" />
             {data && <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onChange={list.setPage} />}
@@ -147,7 +191,7 @@ export default function ReceiptsPage() {
           setTouched(true);
           if (sourceValid && linesValid) create.mutate();
         }}
-        footer={<><Button onClick={() => setOpen(false)}>Hủy bỏ</Button><Button type="submit" variant="primary" loading={create.isPending}>Lưu phiếu</Button></>}
+        footer={<><Button onClick={() => setOpen(false)}>Hủy bỏ</Button><Button type="submit" variant="primary" loading={create.isPending}>{type === 'raw' ? 'Lưu phiếu chờ nhập' : 'Lưu phiếu'}</Button></>}
       >
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Loại phiếu" required><Select value={type} onChange={(e) => setType(e.target.value as ReceiptType)}>{enumOptions(receiptTypeLabels)}</Select></Field>
@@ -159,6 +203,11 @@ export default function ReceiptsPage() {
           >
             <Input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Ví dụ: Xưởng chế biến Hòa Bình" />
           </Field>
+          {type === 'raw' && (
+            <Field label="Ngày dự kiến về" hint="Phiếu nguyên liệu lưu ở trạng thái Chờ nhập — chưa cộng tồn. Hàng về thì bấm “Nhập kho” để nhập SL thực, lô, HSD, đơn giá." className="sm:col-span-2">
+              <Input type="date" min={todayISO()} className="sm:!w-[200px]" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} />
+            </Field>
+          )}
         </div>
         <div className="mt-4 overflow-x-auto">
           {type === 'finished' ? (
@@ -183,14 +232,14 @@ export default function ReceiptsPage() {
             </table>
           ) : (
             <table className="w-full text-small">
-              <thead><tr className="text-left text-micro font-semibold uppercase text-ink-muted"><th className="pb-1 pr-2">Nguyên liệu</th><th className="w-32 pr-2">Số lượng</th><th className="w-9" /></tr></thead>
+              <thead><tr className="text-left text-micro font-semibold uppercase text-ink-muted"><th className="pb-1 pr-2">Nguyên liệu</th><th className="w-32 pr-2">SL dự kiến</th><th className="w-9" /></tr></thead>
               <tbody>
                 {rawRows.map((r, i) => {
                   const patch = (p: Partial<RawRow>) => setRawRows(rawRows.map((x) => (x.key === r.key ? { ...x, ...p } : x)));
                   return (
                     <tr key={r.key}>
                       <td className="py-1 pr-2"><Select aria-label={`Nguyên liệu dòng ${i + 1}`} value={r.rawMaterialId} onChange={(e) => patch({ rawMaterialId: e.target.value })}><option value="">Chọn...</option>{rawCatalog.data?.filter((m) => m.isActive || String(m.id) === r.rawMaterialId).map((m) => <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)}</Select></td>
-                      <td className="pr-2"><Input aria-label={`Số lượng dòng ${i + 1}`} type="number" min={0} step="0.1" className="text-right" value={r.qty} onChange={(e) => patch({ qty: e.target.value })} /></td>
+                      <td className="pr-2"><Input aria-label={`Số lượng dự kiến dòng ${i + 1}`} type="number" min={0} step="0.1" className="text-right" value={r.qty} onChange={(e) => patch({ qty: e.target.value })} /></td>
                       <td><IconButton label={`Xóa dòng ${i + 1}`} disabled={rawRows.length === 1} onClick={() => setRawRows(rawRows.filter((x) => x.key !== r.key))}><Trash2 size={14} /></IconButton></td>
                     </tr>
                   );
@@ -203,8 +252,23 @@ export default function ReceiptsPage() {
           <Button icon={<Plus size={14} />} onClick={() => (type === 'finished' ? setFinished([...finished, finishedRow()]) : setRawRows([...rawRows, rawRow()]))}>Thêm dòng</Button>
           {type === 'raw' && <Button variant="ghost" onClick={() => setMaterialForm({ fromReceipt: true })}>+ Nguyên liệu mới</Button>}
         </div>
-        {touched && !linesValid && <p className="mt-2 text-small text-red-fg">Mỗi dòng cần đủ thông tin, số lượng lớn hơn 0 và HSD không trước ngày sản xuất.</p>}
+        {touched && !linesValid && <p className="mt-2 text-small text-red-fg">{type === 'raw' ? 'Mỗi dòng cần chọn nguyên liệu (không trùng) và số lượng dự kiến lớn hơn 0.' : 'Mỗi dòng cần đủ thông tin, số lượng lớn hơn 0 và HSD không trước ngày sản xuất.'}</p>}
       </Modal>
+
+      <RawReceiptCompleteModal receipt={completing} onClose={() => setCompleting(null)} />
+      <RawMaterialLotsModal material={lotsOf} onClose={() => setLotsOf(null)} />
+      <ConfirmDialog
+        open={!!cancelling}
+        danger
+        title={cancelling ? `Hủy phiếu ${cancelling.code}` : ''}
+        message="Phiếu đang chờ nhập nên chưa cộng tồn — hủy không làm thay đổi tồn kho."
+        withNote
+        noteLabel="Lý do hủy"
+        confirmLabel="Hủy phiếu"
+        loading={cancel.isPending}
+        onConfirm={(note) => cancel.mutate(note ?? '')}
+        onClose={() => setCancelling(null)}
+      />
 
       <RawMaterialFormModal
         open={!!materialForm}

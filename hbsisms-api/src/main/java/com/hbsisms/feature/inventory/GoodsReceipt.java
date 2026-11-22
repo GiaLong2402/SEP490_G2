@@ -14,11 +14,15 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.LocalDate;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-/** Goods receipt header; its lines are {@code stock_ledger} rows with {@code refType = goods_receipt}. */
+/**
+ * Phiếu nhập. Thành phẩm: dòng là {@code stock_ledger} ({@code refType = goods_receipt}), nhập ngay.
+ * Nguyên liệu: dòng ở {@link GoodsReceiptLine}; tạo phiếu ở trạng thái Chờ nhập, xác nhận mới cộng tồn theo lô.
+ */
 @Entity
 @Table(name = "goods_receipt")
 @Getter
@@ -51,6 +55,25 @@ public class GoodsReceipt {
 
     @Column(columnDefinition = "text")
     private String note;
+
+    /** Trống ở phiếu tạo trước Inter 1 dòng 46 → coi là đã hoàn thành (xem {@link #getStatus()}). */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private ReceiptStatus status;
+
+    /** Ngày hàng dự kiến về (phiếu chờ nhập). */
+    private LocalDate expectedDate;
+
+    /** Lúc xác nhận nhập kho (cộng tồn) hoặc hủy phiếu. */
+    private Instant completedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "completed_by")
+    private AppUser completedBy;
+
+    public ReceiptStatus getStatus() {
+        return status == null ? ReceiptStatus.COMPLETED : status;
+    }
 
     @PrePersist
     void defaultReceivedAt() {
