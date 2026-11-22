@@ -1,15 +1,16 @@
 package com.hbsisms.feature.media;
 
-<<<<<<< HEAD
 import com.cloudinary.Cloudinary;
 import com.cloudinary.utils.ObjectUtils;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
+@EnableConfigurationProperties(CloudinaryProperties.class)
 public class CloudinaryConfig {
 
-    /** Always registered; {@link CloudinaryStorageService} checks {@link CloudinaryProperties#enabled()}. */
+    /** Used by server-side multipart upload; signature flow only needs properties. */
     @Bean
     Cloudinary cloudinary(CloudinaryProperties properties) {
         if (!properties.enabled()) {
@@ -22,11 +23,3 @@ public class CloudinaryConfig {
                 "secure", true));
     }
 }
-=======
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.annotation.Configuration;
-
-@Configuration
-@EnableConfigurationProperties(CloudinaryProperties.class)
-public class CloudinaryConfig {}
->>>>>>> origin/main
