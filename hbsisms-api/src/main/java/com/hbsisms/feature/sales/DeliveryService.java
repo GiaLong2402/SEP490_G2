@@ -386,6 +386,10 @@ public class DeliveryService {
         };
     }
 
+    /**
+     * Đồng bộ trạng thái đơn theo tổng khay đã giao. Đợt giao không có danh sách hàng ({@code items} rỗng —
+     * đợt "Trọn đơn" checkout web tự tạo) được tính là giao đủ cả đơn, giống cách màn Giao hàng hiển thị.
+     */
     private void syncOrderAfterDelivery(SalesOrder order, AppUser actor, Long actorId) {
         Long orderId = order.getId();
         int ordered = salesOrderLineRepository.findByOrder_IdOrderByIdAsc(orderId).stream()
@@ -396,7 +400,12 @@ public class DeliveryService {
             if (d.getState() != DeliveryState.DELIVERED) {
                 continue;
             }
-            for (DeliveryItem item : d.getItems()) {
+            List<DeliveryItem> items = d.getItems();
+            if (items == null || items.isEmpty()) {
+                deliveredKhay = Math.max(deliveredKhay, ordered);
+                continue;
+            }
+            for (DeliveryItem item : items) {
                 deliveredKhay += item.qtyKhay();
             }
         }
