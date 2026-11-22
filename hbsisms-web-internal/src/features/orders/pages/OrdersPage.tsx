@@ -33,6 +33,7 @@ import {
   type Column,
 } from '@/shared/ui';
 import { ordersApi } from '../api';
+import { OrderGroupTabsMenu } from '../components/OrderGroupTabsMenu';
 import { OrderSearchField } from '../components/OrderSearchField';
 import { OwnerInboxPanel } from '../components/OwnerInboxPanel';
 import { useOrderCounts, useOrders } from '../hooks';
@@ -53,6 +54,24 @@ const ORDER_TABS: { key: TabKey; label: string; countKey?: keyof OrderCounts }[]
   { key: 'cancelled', label: 'Đã hủy', countKey: 'cancelled' },
 ];
 
+const GROUP_TAB_OPTIONS = ORDER_TABS.filter((t): t is { key: OrderListGroup; label: string; countKey: keyof OrderCounts } => t.key !== 'all');
+const ALL_GROUP_KEYS = GROUP_TAB_OPTIONS.map((t) => t.key);
+const VISIBLE_GROUPS_KEY = 'orders.visibleGroups';
+
+function readVisibleGroups(): OrderListGroup[] {
+  try {
+    const raw = localStorage.getItem(VISIBLE_GROUPS_KEY);
+    if (!raw) return [...ALL_GROUP_KEYS];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [...ALL_GROUP_KEYS];
+    const allowed = new Set<string>(ALL_GROUP_KEYS);
+    const next = parsed.filter((k): k is OrderListGroup => typeof k === 'string' && allowed.has(k));
+    return next;
+  } catch {
+    return [...ALL_GROUP_KEYS];
+  }
+}
+
 export default function OrdersPage() {
   const { can } = useAuth();
   const toast = useToast();
@@ -71,10 +90,29 @@ export default function OrdersPage() {
   const list = useListParams(filterKeys);
   const [searchKey, setSearchKey] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const [visibleGroups, setVisibleGroups] = useState<OrderListGroup[]>(readVisibleGroups);
 
-  const activeTab: TabKey = (ORDER_TABS.some((t) => t.key === list.filters.group)
+  const requestedTab: TabKey = (ORDER_TABS.some((t) => t.key === list.filters.group)
     ? list.filters.group
     : 'all') as TabKey;
+  const activeTab: TabKey =
+    requestedTab === 'all' || visibleGroups.includes(requestedTab) ? requestedTab : 'all';
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(VISIBLE_GROUPS_KEY, JSON.stringify(visibleGroups));
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, [visibleGroups]);
+
+  // URL đang trỏ group đã ẩn → xóa group, về Tất cả.
+  useEffect(() => {
+    if (requestedTab !== 'all' && !visibleGroups.includes(requestedTab)) {
+      list.setFilters({ group: '', state: list.filters.state });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedTab, visibleGroups]);
 
   // Link/URL lệch khoảng ngày → bỏ "Đến" để tránh lọc trống sai.
   useEffect(() => {
@@ -164,22 +202,31 @@ export default function OrdersPage() {
     { key: 'state', header: 'Trạng thái', cell: (o) => <StatusChip meta={orderStateMeta} value={o.state} /> },
   ];
 
-  const tabItems = ORDER_TABS.map((tab) => {
-    const n = tab.countKey && counts.data ? counts.data[tab.countKey] : undefined;
-    return {
-      key: tab.key,
-      label: (
-        <span className="inline-flex items-center gap-1.5">
-          {tab.label}
-          {tab.countKey != null && (
-            <span className={`rounded-full px-1.5 text-micro tabular-nums ${activeTab === tab.key ? 'bg-primary/10 text-primary' : 'bg-thead text-ink-muted'}`}>
-              {n ?? '—'}
-            </span>
-          )}
-        </span>
-      ),
-    };
-  });
+  const visibleSet = useMemo(() => new Set(visibleGroups), [visibleGroups]);
+  const tabItems = ORDER_TABS
+    .filter((tab) => tab.key === 'all' || visibleSet.has(tab.key))
+    .map((tab) => {
+      const n = tab.countKey && counts.data ? counts.data[tab.countKey] : undefined;
+      return {
+        key: tab.key,
+        label: (
+          <span className="inline-flex items-center gap-1.5">
+            {tab.label}
+            {tab.countKey != null && (
+              <span className={`rounded-full px-1.5 text-micro tabular-nums ${activeTab === tab.key ? 'bg-primary/10 text-primary' : 'bg-thead text-ink-muted'}`}>
+                {n ?? '—'}
+              </span>
+            )}
+          </span>
+        ),
+      };
+    });
+
+  const setVisibleGroupsSafe = (next: OrderListGroup[]) => {
+    // Giữ thứ tự theo ORDER_TABS, không theo thứ tự tick.
+    const order = new Set(next);
+    setVisibleGroups(ALL_GROUP_KEYS.filter((k) => order.has(k)));
+  };
 
   return (
     <>
@@ -197,7 +244,19 @@ export default function OrdersPage() {
         }
       />
       <Card flush>
-        <Tabs label="Nhóm đơn" tabs={tabItems} value={activeTab} onChange={setTab} />
+        <Tabs
+          label="Nhóm đơn"
+          tabs={tabItems}
+          value={activeTab}
+          onChange={setTab}
+          trailing={
+            <OrderGroupTabsMenu
+              options={GROUP_TAB_OPTIONS}
+              visible={visibleGroups}
+              onChange={setVisibleGroupsSafe}
+            />
+          }
+        />
         {activeTab !== 'all' && (
           <div className="border-b border-line bg-thead/40 px-3 py-1.5 text-small text-ink-muted">
             Đang xem:{' '}
