@@ -26,11 +26,11 @@ export interface ProductInput {
   gallery: string[];
   isPublished: boolean;
   isActive: boolean;
-  /** Ít nhất một trong ba cờ phải bật. */
+  /** Giữ field API/DB; tạm thời SP luôn false/true/false — NVL quản lý riêng. */
   isRawMaterial: boolean;
   isSellable: boolean;
   isProducible: boolean;
-  /** Bắt buộc khi là nguyên liệu. */
+  /** Giữ field API/DB; SP bán theo quy cách — tạm không gắn ĐVT. */
   unitId: ID | null;
 }
 
@@ -79,5 +79,41 @@ export interface UnitInput {
   code: string;
   name: string;
   isActive: boolean;
+}
+
+/** Một dòng định mức NVL / SP cấu thành cho 1 đơn vị thành phẩm. */
+export interface BomLine {
+  id: ID;
+  rawMaterialId: ID | null;
+  rawMaterialCode: string | null;
+  rawMaterialName: string | null;
+  componentProductId: ID | null;
+  componentProductCode: string | null;
+  componentProductName: string | null;
+  qty: number;
+  unitId: ID;
+  unitCode: string;
+  unitName: string;
+  wastePercent: number | null;
+  sortOrder: number;
+}
+
+export interface BomDetail {
+  productId: ID;
+  productCode: string;
+  productName: string;
+  lines: BomLine[];
+}
+
+export interface BomLineInput {
+  rawMaterialId: ID | null;
+  componentProductId: ID | null;
+  qty: number;
+  unitId: ID;
+  wastePercent: number | null;
+}
+
+export interface BomReplaceInput {
+  lines: BomLineInput[];
 }
 

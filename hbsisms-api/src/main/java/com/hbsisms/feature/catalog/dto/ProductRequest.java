@@ -36,7 +36,10 @@ public record ProductRequest(
         @NotNull(message = "Trạng thái kinh doanh là bắt buộc")
         Boolean isActive,
 
-        /** Null = false on create, keep existing on update. */
+        /**
+         * Dual-role temporarily disabled: {@code true} is rejected.
+         * Null = keep false (NVL managed separately).
+         */
         Boolean isRawMaterial,
 
         /** Null = true on create, keep existing on update. */
@@ -45,6 +48,6 @@ public record ProductRequest(
         /** Null = false on create, keep existing on update. */
         Boolean isProducible,
 
-        /** Required when {@code isRawMaterial}; otherwise optional. */
+        /** Ignored for now (sell by pack/variant); column kept for later expansion. */
         Long unitId) {
 }

@@ -12,7 +12,6 @@ import static org.mockito.Mockito.when;
 import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.feature.catalog.dto.ProductRequest;
 import com.hbsisms.feature.catalog.dto.ProductResponse;
-import com.hbsisms.feature.inventory.RawMaterialRepository;
 import com.hbsisms.feature.inventory.StockRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -39,10 +38,6 @@ class ProductServiceTest {
     private VolumeTierRepository volumeTierRepository;
     @Mock
     private StockRepository stockRepository;
-    @Mock
-    private UnitOfMeasureRepository unitRepository;
-    @Mock
-    private RawMaterialRepository rawMaterialRepository;
 
     private ProductService productService;
 
@@ -53,9 +48,7 @@ class ProductServiceTest {
                 categoryRepository,
                 productVariantRepository,
                 volumeTierRepository,
-                stockRepository,
-                unitRepository,
-                rawMaterialRepository);
+                stockRepository);
     }
 
     // --- create ---
@@ -481,79 +474,34 @@ class ProductServiceTest {
         verify(productRepository, never()).save(any());
     }
 
-    // --- flags / unit / raw material sync ---
+    // --- dual-role temporarily disabled (mentor) ---
 
     @Test
-    void create_rejectsWhenNoFlagSelected() {
+    void create_rejectsWhenMarkedAsRawMaterial() {
+        when(productRepository.existsByCodeIgnoreCase("NL-TOM")).thenReturn(false);
+
+        assertBadRequest(() -> productService.create(new ProductRequest(
+                "NL-TOM", "Tôm", null, null, null, null, null, null, false, true, true, true, false, 3L)));
+        verify(productRepository, never()).save(any());
+    }
+
+    @Test
+    void create_forcesCatalogFlagsAndClearsUnit() {
         when(productRepository.existsByCodeIgnoreCase("P-TOM")).thenReturn(false);
         when(productRepository.existsBySlugIgnoreCase("tom")).thenReturn(false);
-
-        assertBadRequest(() -> productService.create(new ProductRequest(
-                "P-TOM", "Tôm", null, null, null, null, null, null, false, true, false, false, false, null)));
-        verify(productRepository, never()).save(any());
-    }
-
-    @Test
-    void create_rawMaterialRequiresUnit() {
-        when(productRepository.existsByCodeIgnoreCase("NL-TOM")).thenReturn(false);
-        when(productRepository.existsBySlugIgnoreCase("tom")).thenReturn(false);
-
-        assertBadRequest(() -> productService.create(new ProductRequest(
-                "NL-TOM", "Tôm", null, null, null, null, null, null, false, true, true, false, false, null)));
-        verify(productRepository, never()).save(any());
-    }
-
-    @Test
-    void create_rawMaterialUpsertsRawMaterialWithZeroStock() {
-        UnitOfMeasure kg = new UnitOfMeasure();
-        kg.setCode("kg");
-        kg.setName("Ki-lô-gam");
-        when(productRepository.existsByCodeIgnoreCase("NL-TOM")).thenReturn(false);
-        when(productRepository.existsBySlugIgnoreCase("tom")).thenReturn(false);
-        when(unitRepository.findById(3L)).thenAnswer(inv -> {
-            org.springframework.test.util.ReflectionTestUtils.setField(kg, "id", 3L);
-            return Optional.of(kg);
-        });
         when(productRepository.save(any(Product.class))).thenAnswer(inv -> withId((Product) inv.getArgument(0), 30L));
         when(productRepository.findWithCategoryById(30L)).thenReturn(Optional.empty());
-        when(rawMaterialRepository.findByCodeIgnoreCase("NL-TOM")).thenReturn(Optional.empty());
 
         productService.create(new ProductRequest(
-                "NL-TOM", "Tôm", null, null, null, null, null, null, false, true, true, false, false, 3L));
+                "P-TOM", "Tôm", null, null, null, null, null, null, false, true, false, true, false, 3L));
 
-        ArgumentCaptor<com.hbsisms.feature.inventory.RawMaterial> captor =
-                ArgumentCaptor.forClass(com.hbsisms.feature.inventory.RawMaterial.class);
-        verify(rawMaterialRepository).save(captor.capture());
-        com.hbsisms.feature.inventory.RawMaterial raw = captor.getValue();
-        assertThat(raw.getCode()).isEqualTo("NL-TOM");
-        assertThat(raw.getUnit()).isEqualTo("kg");
-        assertThat(raw.getUnitRef()).isEqualTo(kg);
-        assertThat(raw.getQtyOnHand()).isEqualByComparingTo("0");
-        assertThat(raw.isActive()).isTrue();
-    }
-
-    @Test
-    void update_flagOffDeactivatesRawMaterial() {
-        Product existing = withId(new Product(), 7L);
-        existing.setCode("NL-TOM");
-        existing.setName("Tôm");
-        existing.setSlug("tom");
-        existing.setRawMaterial(true);
-        com.hbsisms.feature.inventory.RawMaterial raw = new com.hbsisms.feature.inventory.RawMaterial();
-        raw.setCode("NL-TOM");
-        raw.setActive(true);
-
-        when(productRepository.findWithCategoryById(7L)).thenReturn(Optional.of(existing));
-        when(productRepository.existsByCodeIgnoreCaseAndIdNot("NL-TOM", 7L)).thenReturn(false);
-        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(productVariantRepository.findByProduct_IdOrderByIdAsc(7L)).thenReturn(List.of());
-        when(rawMaterialRepository.findByCodeIgnoreCase("NL-TOM")).thenReturn(Optional.of(raw));
-
-        productService.update(7L, new ProductRequest(
-                "NL-TOM", "Tôm", null, null, null, null, null, null, false, true, false, true, false, null));
-
-        verify(rawMaterialRepository).save(raw);
-        assertThat(raw.isActive()).isFalse();
+        ArgumentCaptor<Product> captor = ArgumentCaptor.forClass(Product.class);
+        verify(productRepository).save(captor.capture());
+        Product saved = captor.getValue();
+        assertThat(saved.isRawMaterial()).isFalse();
+        assertThat(saved.isSellable()).isTrue();
+        assertThat(saved.isProducible()).isFalse();
+        assertThat(saved.getUnit()).isNull();
     }
 
     private static ProductRequest req(

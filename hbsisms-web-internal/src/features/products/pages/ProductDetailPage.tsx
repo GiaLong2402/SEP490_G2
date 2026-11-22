@@ -3,16 +3,19 @@ import { Pencil, Plus } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { money, num } from '@/shared/lib/format';
 import { Button, Card, Chip, DataTable, ErrorState, IconButton, InfoList, PageHeader, PageLoading, type Column } from '@/shared/ui';
+import { BomFormModal } from '../components/BomFormModal';
 import { ProductFormModal } from '../components/ProductFormModal';
 import { VariantFormModal } from '../components/VariantFormModal';
-import { useProduct } from '../hooks';
-import type { VariantWithTiers } from '../types';
+import { useProduct, useProductBom } from '../hooks';
+import type { BomLine, VariantWithTiers } from '../types';
 
 export default function ProductDetailPage() {
   const id = Number(useParams().id);
   const { data: product, isLoading, error, refetch } = useProduct(id);
+  const bomQuery = useProductBom(id, Number.isFinite(id) && id > 0);
   const [editing, setEditing] = useState(false);
   const [variantModal, setVariantModal] = useState<{ variant?: VariantWithTiers } | null>(null);
+  const [bomOpen, setBomOpen] = useState(false);
 
   if (isLoading) return <PageLoading />;
   if (error || !product) return <ErrorState error={error} onRetry={refetch} />;
@@ -35,6 +38,34 @@ export default function ProductDetailPage() {
     { key: 'edit', header: '', align: 'right', cell: (v) => <IconButton label={`Sửa ${v.sku}`} onClick={() => setVariantModal({ variant: v })}><Pencil size={14} /></IconButton> },
   ];
 
+  const bomLines = bomQuery.data?.lines ?? [];
+  const bomColumns: Column<BomLine>[] = [
+    {
+      key: 'material',
+      header: 'Nguyên liệu',
+      cell: (line) =>
+        line.rawMaterialName ? (
+          <span>
+            {line.rawMaterialName} <span className="num text-ink-faint">({line.rawMaterialCode})</span>
+          </span>
+        ) : line.componentProductName ? (
+          <span>
+            {line.componentProductName} <span className="num text-ink-faint">({line.componentProductCode})</span>
+          </span>
+        ) : (
+          '—'
+        ),
+    },
+    { key: 'qty', header: 'Định mức', align: 'right', cell: (line) => <span className="num">{num(line.qty)}</span> },
+    { key: 'unit', header: 'ĐVT', cell: (line) => line.unitCode },
+    {
+      key: 'waste',
+      header: '% hao hụt',
+      align: 'right',
+      cell: (line) => <span className="num">{line.wastePercent != null ? num(line.wastePercent) : '—'}</span>,
+    },
+  ];
+
   return (
     <>
       <PageHeader
@@ -43,9 +74,26 @@ export default function ProductDetailPage() {
         actions={<Button icon={<Pencil size={14} />} onClick={() => setEditing(true)}>Sửa sản phẩm</Button>}
       />
       <div className="grid items-start gap-4 lg:grid-cols-[1fr_320px]">
-        <Card flush title="Quy cách và bậc giá" actions={<Button icon={<Plus size={14} />} onClick={() => setVariantModal({})}>Thêm quy cách</Button>}>
-          <DataTable columns={columns} rows={product.variants} rowKey={(v) => v.id} emptyText="Sản phẩm chưa có quy cách" />
-        </Card>
+        <div className="space-y-4">
+          <Card flush title="Quy cách và bậc giá" actions={<Button icon={<Plus size={14} />} onClick={() => setVariantModal({})}>Thêm quy cách</Button>}>
+            <DataTable columns={columns} rows={product.variants} rowKey={(v) => v.id} emptyText="Sản phẩm chưa có quy cách" />
+          </Card>
+          <Card
+            flush
+            title="Định mức NVL (BOM)"
+            actions={<Button icon={<Pencil size={14} />} onClick={() => setBomOpen(true)}>{bomLines.length ? 'Sửa định mức' : 'Thiết lập BOM'}</Button>}
+          >
+            {bomQuery.isLoading ? (
+              <p className="p-4 text-small text-ink-faint">Đang tải định mức…</p>
+            ) : bomQuery.error ? (
+              <div className="p-4">
+                <ErrorState error={bomQuery.error} onRetry={bomQuery.refetch} />
+              </div>
+            ) : (
+              <DataTable columns={bomColumns} rows={bomLines} rowKey={(line) => line.id} emptyText="Chưa có định mức nguyên liệu" />
+            )}
+          </Card>
+        </div>
         <Card title="Thông tin">
           {product.imageUrl ? (
             <img
@@ -89,6 +137,13 @@ export default function ProductDetailPage() {
         productActive={product.isActive}
         variant={variantModal?.variant}
         onClose={() => setVariantModal(null)}
+      />
+      <BomFormModal
+        open={bomOpen}
+        productId={product.id}
+        productCode={product.code}
+        bom={bomQuery.data}
+        onClose={() => setBomOpen(false)}
       />
     </>
   );

@@ -74,7 +74,7 @@ public class Product extends AuditableEntity {
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 
-    /** Also tracked as a raw material (same code) in inventory. */
+    /** Reserved for future dual-role; currently unused — NVL is managed separately. */
     @Column(name = "is_raw_material", nullable = false)
     private boolean rawMaterial;
 

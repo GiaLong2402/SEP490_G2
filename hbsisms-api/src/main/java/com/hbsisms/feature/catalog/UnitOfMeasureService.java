@@ -16,14 +16,17 @@ public class UnitOfMeasureService {
     private final UnitOfMeasureRepository unitRepository;
     private final ProductRepository productRepository;
     private final RawMaterialRepository rawMaterialRepository;
+    private final ProductBomLineRepository bomLineRepository;
 
     public UnitOfMeasureService(
             UnitOfMeasureRepository unitRepository,
             ProductRepository productRepository,
-            RawMaterialRepository rawMaterialRepository) {
+            RawMaterialRepository rawMaterialRepository,
+            ProductBomLineRepository bomLineRepository) {
         this.unitRepository = unitRepository;
         this.productRepository = productRepository;
         this.rawMaterialRepository = rawMaterialRepository;
+        this.bomLineRepository = bomLineRepository;
     }
 
     public List<UnitOfMeasureResponse> list(Boolean activeOnly) {
@@ -59,7 +62,7 @@ public class UnitOfMeasureService {
         }
         boolean active = Boolean.TRUE.equals(request.isActive());
         if (unit.isActive() && !active && isInUse(id)) {
-            throw ApiException.conflict("Không thể ngừng sử dụng đơn vị đang được dùng bởi sản phẩm hoặc nguyên liệu");
+            throw ApiException.conflict("Không thể ngừng sử dụng đơn vị đang được dùng bởi sản phẩm, nguyên liệu hoặc BOM");
         }
         unit.setCode(code);
         unit.setName(name);
@@ -68,7 +71,9 @@ public class UnitOfMeasureService {
     }
 
     private boolean isInUse(Long unitId) {
-        return productRepository.existsByUnit_Id(unitId) || rawMaterialRepository.existsByUnitRef_Id(unitId);
+        return productRepository.existsByUnit_Id(unitId)
+                || rawMaterialRepository.existsByUnitRef_Id(unitId)
+                || bomLineRepository.existsByUnit_Id(unitId);
     }
 
     private static String requireCode(String code) {

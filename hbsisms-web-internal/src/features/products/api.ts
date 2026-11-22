@@ -1,6 +1,28 @@
 import { api, type ListQuery, type Page } from '@/shared/api/client';
 import type { ID } from '@/shared/domain/entities';
-import type { CategoryInput, CategoryListItem, ProductDetail, ProductInput, ProductListItem, UnitInput, UnitOfMeasure, VariantInput, VariantOption } from './types';
+import type {
+  BomDetail,
+  BomReplaceInput,
+  CategoryInput,
+  CategoryListItem,
+  ProductDetail,
+  ProductInput,
+  ProductListItem,
+  UnitInput,
+  UnitOfMeasure,
+  VariantInput,
+  VariantOption,
+} from './types';
+
+/** NVL rút gọn cho dropdown BOM — gọi thẳng /raw-materials (tránh import vòng receipts). */
+export interface BomRawMaterialOption {
+  id: ID;
+  code: string;
+  name: string;
+  unit: string;
+  unitId: ID | null;
+  isActive: boolean;
+}
 
 export const productsApi = {
   list: (query: ListQuery & { categoryId?: string }, signal?: AbortSignal) => api.get<Page<ProductListItem>>('/products', query, signal),
@@ -16,4 +38,8 @@ export const productsApi = {
   units: (query: { activeOnly?: boolean } = {}, signal?: AbortSignal) => api.get<UnitOfMeasure[]>('/units', query, signal),
   createUnit: (body: UnitInput) => api.post<UnitOfMeasure>('/units', body),
   updateUnit: (id: ID, body: UnitInput) => api.put<UnitOfMeasure>(`/units/${id}`, body),
+  getBom: (productId: ID, signal?: AbortSignal) => api.get<BomDetail>(`/products/${productId}/bom`, undefined, signal),
+  replaceBom: (productId: ID, body: BomReplaceInput) => api.put<BomDetail>(`/products/${productId}/bom`, body),
+  bomRawMaterials: (signal?: AbortSignal) =>
+    api.get<BomRawMaterialOption[]>('/raw-materials', { activeOnly: true }, signal),
 };
