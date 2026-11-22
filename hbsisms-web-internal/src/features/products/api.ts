@@ -29,6 +29,12 @@ export const productsApi = {
   get: (id: ID) => api.get<ProductDetail>(`/products/${id}`),
   create: (body: ProductInput) => api.post<ProductDetail>('/products', body),
   update: (id: ID, body: ProductInput) => api.put<ProductDetail>(`/products/${id}`, body),
+  /** Multipart upload → Cloudinary; pick one URL as cover (`imageUrl`), rest as `gallery`. */
+  uploadImages: (files: File[]) => {
+    const form = new FormData();
+    files.forEach((file) => form.append('files', file));
+    return api.post<{ urls: string[] }>('/products/images', form);
+  },
   addVariant: (productId: ID, body: VariantInput) => api.post<void>(`/products/${productId}/variants`, body),
   updateVariant: (variantId: ID, body: VariantInput) => api.put<void>(`/variants/${variantId}`, body),
   variantOptions: () => api.get<VariantOption[]>('/variants'),

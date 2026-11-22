@@ -153,4 +153,21 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
             where s.variant.id = :variantId
             """)
     long sumQtyAvailableByVariantId(@Param("variantId") Long variantId);
+
+    /** Tổng khay khả dụng mọi variant của một sản phẩm. */
+    @Query("""
+            select coalesce(sum(s.qtyAvailable), 0)
+            from Stock s
+            where s.variant.product.id = :productId
+            """)
+    long sumQtyAvailableByProductId(@Param("productId") Long productId);
+
+    /** Stock rows for product detail lot list (aggregate in service by lotId). */
+    @Query("""
+            select distinct s from Stock s
+            join fetch s.lot
+            join fetch s.variant
+            where s.variant.product.id = :productId
+            """)
+    List<Stock> findByProductIdWithLotVariant(@Param("productId") Long productId);
 }

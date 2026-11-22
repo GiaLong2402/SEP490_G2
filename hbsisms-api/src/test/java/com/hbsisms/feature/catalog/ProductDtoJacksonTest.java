@@ -89,6 +89,8 @@ class ProductDtoJacksonTest {
                 Instant.parse("2026-01-01T00:00:00Z"),
                 Instant.parse("2026-01-02T00:00:00Z"),
                 "Hải sản",
+                List.of(),
+                12L,
                 List.of());
 
         JsonNode json = objectMapper.readTree(objectMapper.writeValueAsString(response));
@@ -101,5 +103,7 @@ class ProductDtoJacksonTest {
         assertThat(json.get("gallery").isArray()).isTrue();
         assertThat(json.get("categoryName").asText()).isEqualTo("Hải sản");
         assertThat(json.get("variants").isArray()).isTrue();
+        assertThat(json.get("totalStockQty").asLong()).isEqualTo(12L);
+        assertThat(json.get("lots").isArray()).isTrue();
     }
 }

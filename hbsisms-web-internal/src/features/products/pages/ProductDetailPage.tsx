@@ -7,7 +7,15 @@ import { BomFormModal } from '../components/BomFormModal';
 import { ProductFormModal } from '../components/ProductFormModal';
 import { VariantFormModal } from '../components/VariantFormModal';
 import { useProduct, useProductBom } from '../hooks';
-import type { BomLine, VariantWithTiers } from '../types';
+import type { BomLine, ProductLotRow, VariantWithTiers } from '../types';
+
+function ExpiryChip({ daysLeft }: { daysLeft: number | null }) {
+  if (daysLeft === null) return <Chip>Không có HSD</Chip>;
+  if (daysLeft < 0) return <Chip tone="red">Quá hạn {-daysLeft} ngày</Chip>;
+  if (daysLeft === 0) return <Chip tone="red">Hết hạn hôm nay</Chip>;
+  if (daysLeft <= 5) return <Chip tone="amber">Còn {daysLeft} ngày</Chip>;
+  return <Chip tone="green">Còn {daysLeft} ngày</Chip>;
+}
 
 export default function ProductDetailPage() {
   const id = Number(useParams().id);
@@ -66,6 +74,17 @@ export default function ProductDetailPage() {
     },
   ];
 
+  const lotColumns: Column<ProductLotRow>[] = [
+    { key: 'lot', header: 'Mã lô', cell: (l) => <span className="num">{l.lotCode}</span> },
+    { key: 'sku', header: 'SKU', cell: (l) => <span className="num">{l.sku}</span> },
+    { key: 'mfg', header: 'NSX', hideOnMobile: true, cell: (l) => <span className="num">{l.mfgDate ?? '—'}</span> },
+    { key: 'exp', header: 'HSD', cell: (l) => <span className="num">{l.expDate ?? '—'}</span> },
+    { key: 'left', header: 'Thời hạn', cell: (l) => <ExpiryChip daysLeft={l.daysLeft} /> },
+    { key: 'avail', header: 'Khả dụng', align: 'right', cell: (l) => <span className="num">{num(l.available)}</span> },
+  ];
+
+  const lots = product.lots ?? [];
+
   return (
     <>
       <PageHeader
@@ -77,6 +96,9 @@ export default function ProductDetailPage() {
         <div className="space-y-4">
           <Card flush title="Quy cách và bậc giá" actions={<Button icon={<Plus size={14} />} onClick={() => setVariantModal({})}>Thêm quy cách</Button>}>
             <DataTable columns={columns} rows={product.variants} rowKey={(v) => v.id} emptyText="Sản phẩm chưa có quy cách" />
+          </Card>
+          <Card flush title="Lô hàng (chỉ xem)">
+            <DataTable columns={lotColumns} rows={lots} rowKey={(l) => l.lotId} emptyText="Chưa có tồn theo lô" />
           </Card>
           <Card
             flush
@@ -121,6 +143,7 @@ export default function ProductDetailPage() {
               ['Mã', <span className="num">{product.code}</span>],
               ['Loại', product.categoryName],
               ['Xuất xứ', product.origin],
+              ['Tổng tồn khả dụng', <span className="num">{num(product.totalStockQty ?? 0)}</span>],
               ['Cổng B2C', product.isPublished ? 'Đang hiển thị' : 'Ẩn'],
               ['Kinh doanh', product.isActive ? 'Đang bán' : 'Ngừng bán'],
               ['Gallery', product.gallery?.length ? `${product.gallery.length} ảnh` : '—'],

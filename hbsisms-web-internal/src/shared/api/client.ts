@@ -50,14 +50,16 @@ export function createHttpTransport(baseUrl: string): Transport {
       if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
     });
     const token = tokenStore.get();
+    const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
     const res = await fetch(url, {
       method,
       signal,
       headers: {
-        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        // Let the browser set multipart boundary when body is FormData.
+        ...(body !== undefined && !isFormData ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : isFormData ? (body as FormData) : JSON.stringify(body),
     });
     if (!res.ok) {
       const payload = await res.json().catch(() => null);

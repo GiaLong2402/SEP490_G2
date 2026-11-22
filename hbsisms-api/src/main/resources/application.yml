@@ -4,6 +4,10 @@ spring:
   # Load local secrets from .env (KEY=value) when present; real env vars still win.
   config:
     import: optional:file:.env[.properties]
+  servlet:
+    multipart:
+      max-file-size: ${MULTIPART_MAX_FILE_SIZE:5MB}
+      max-request-size: ${MULTIPART_MAX_REQUEST_SIZE:20MB}
 
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/hbsisms}
@@ -95,3 +99,9 @@ app:
     shop-latitude: ${SHOP_LATITUDE:20.951248}
     shop-longitude: ${SHOP_LONGITUDE:107.080502}
     delivery-radius-km: ${DELIVERY_RADIUS_KM:8}
+  cloudinary:
+    # Empty cloud-name/api-key/api-secret = upload endpoint returns 503 until configured.
+    cloud-name: ${CLOUDINARY_CLOUD_NAME:}
+    api-key: ${CLOUDINARY_API_KEY:}
+    api-secret: ${CLOUDINARY_API_SECRET:}
+    folder: ${CLOUDINARY_FOLDER:products}
