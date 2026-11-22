@@ -2,15 +2,55 @@ import { fail, matches, mock, paginate } from '@/shared/api/mockServer';
 import { db, nextId } from '@/shared/mock/db';
 import { audit, availableQty } from '@/shared/mock/services';
 
-const toItem = (product: (typeof db.products)[number]) => ({
-  ...product,
-  categoryName: db.categories.find((c) => c.id === product.categoryId)?.name ?? null,
-  unitCode: db.units.find((u) => u.id === product.unitId)?.code ?? null,
-  unitName: db.units.find((u) => u.id === product.unitId)?.name ?? null,
-  variants: db.variants
+const dayMs = 86_400_000;
+const daysLeft = (exp: string | null) =>
+  exp ? Math.round((new Date(`${exp}T00:00:00`).getTime() - new Date(new Date().toDateString()).getTime()) / dayMs) : null;
+
+function lotRowsForProduct(productId: number) {
+  const variantIds = new Set(db.variants.filter((v) => v.productId === productId).map((v) => v.id));
+  const byLot = new Map<number, {
+    lotId: number; lotCode: string; variantId: number; sku: string;
+    mfgDate: string | null; expDate: string | null; daysLeft: number | null; available: number;
+  }>();
+  for (const row of db.stock) {
+    if (!variantIds.has(row.variantId)) continue;
+    const lot = db.lots.find((l) => l.id === row.lotId);
+    if (!lot) continue;
+    const variant = db.variants.find((v) => v.id === row.variantId);
+    const existing = byLot.get(lot.id);
+    const available = (existing?.available ?? 0) + row.qtyAvailable;
+    byLot.set(lot.id, {
+      lotId: lot.id,
+      lotCode: lot.lotCode,
+      variantId: row.variantId,
+      sku: variant?.sku ?? '—',
+      mfgDate: lot.mfgDate,
+      expDate: lot.expDate,
+      daysLeft: daysLeft(lot.expDate),
+      available,
+    });
+  }
+  return [...byLot.values()].sort((a, b) => (a.expDate ?? '9999-12-31').localeCompare(b.expDate ?? '9999-12-31') || a.lotId - b.lotId);
+}
+
+const toItem = (product: (typeof db.products)[number], { includeLots = false } = {}) => {
+  const variants = db.variants
     .filter((v) => v.productId === product.id)
-    .map((v) => ({ ...v, tiers: db.tiers.filter((t) => t.variantId === v.id).sort((a, b) => a.minQtyKhay - b.minQtyKhay), available: availableQty(v.id) })),
-});
+    .map((v) => ({ ...v, tiers: db.tiers.filter((t) => t.variantId === v.id).sort((a, b) => a.minQtyKhay - b.minQtyKhay), available: availableQty(v.id) }));
+  const lots = includeLots ? lotRowsForProduct(product.id) : [];
+  const totalStockQty = includeLots
+    ? lots.reduce((sum, lot) => sum + lot.available, 0)
+    : variants.reduce((sum, v) => sum + v.available, 0);
+  return {
+    ...product,
+    categoryName: db.categories.find((c) => c.id === product.categoryId)?.name ?? null,
+    unitCode: db.units.find((u) => u.id === product.unitId)?.code ?? null,
+    unitName: db.units.find((u) => u.id === product.unitId)?.name ?? null,
+    variants,
+    totalStockQty,
+    lots,
+  };
+};
 
 function validateVariant(body: any, currentId: number | null) {
   if (!body.sku?.trim() || !body.packLabel?.trim()) fail(400, 'Thiếu SKU hoặc quy cách');
@@ -260,7 +300,16 @@ mock('GET', '/products', ({ query }) => {
 mock('GET', '/products/:id', ({ params }) => {
   const product = db.products.find((p) => p.id === Number(params.id));
   if (!product) fail(404, 'Không tìm thấy sản phẩm');
-  return toItem(product);
+  return toItem(product, { includeLots: true });
+});
+
+mock('POST', '/products/images', ({ body }) => {
+  if (!(typeof FormData !== 'undefined' && body instanceof FormData)) fail(400, 'Cần gửi multipart form-data');
+  const files = body.getAll('files').filter((entry) => entry instanceof File || (typeof Blob !== 'undefined' && entry instanceof Blob));
+  if (!files.length) fail(400, 'Chọn ít nhất một ảnh để tải lên');
+  return {
+    urls: files.map((_, index) => `https://res.cloudinary.com/demo/image/upload/v1/products/mock-${Date.now()}-${index}.jpg`),
+  };
 });
 
 mock('POST', '/products', ({ body, userId }) => {
@@ -295,7 +344,7 @@ mock('POST', '/products', ({ body, userId }) => {
   };
   db.products.push(product);
   audit(userId, 'create', 'product', product.id);
-  return toItem(product);
+  return toItem(product, { includeLots: true });
 });
 
 mock('PUT', '/products/:id', ({ params, body, userId }) => {
@@ -329,7 +378,7 @@ mock('PUT', '/products/:id', ({ params, body, userId }) => {
     updatedAt: new Date().toISOString(),
   });
   audit(userId, 'update', 'product', product.id);
-  return toItem(product);
+  return toItem(product, { includeLots: true });
 });
 
 mock('POST', '/products/:id/variants', ({ params, body, userId }) => {

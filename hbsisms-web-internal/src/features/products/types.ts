@@ -5,11 +5,27 @@ export interface VariantWithTiers extends ProductVariant {
   available: number;
 }
 
+/** Lô tồn trên chi tiết sản phẩm (gom theo lotId, không theo vị trí). */
+export interface ProductLotRow {
+  lotId: ID;
+  lotCode: string;
+  variantId: ID;
+  sku: string;
+  mfgDate: string | null;
+  expDate: string | null;
+  daysLeft: number | null;
+  available: number;
+}
+
 export interface ProductListItem extends Product {
   categoryName: string | null;
   unitCode: string | null;
   unitName: string | null;
   variants: VariantWithTiers[];
+  /** Tổng qtyAvailable mọi variant — list/detail. */
+  totalStockQty: number;
+  /** Chỉ đầy đủ ở GET /products/:id (staff); list thường []). */
+  lots: ProductLotRow[];
 }
 
 export type ProductDetail = ProductListItem;

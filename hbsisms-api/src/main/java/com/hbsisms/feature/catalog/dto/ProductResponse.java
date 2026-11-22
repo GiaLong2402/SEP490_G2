@@ -29,9 +29,15 @@ public record ProductResponse(
         Instant createdAt,
         Instant updatedAt,
         String categoryName,
-        List<VariantWithTiersResponse> variants) {
+        List<VariantWithTiersResponse> variants,
+        long totalStockQty,
+        List<ProductLotRowResponse> lots) {
 
-    public static ProductResponse from(Product product, List<VariantWithTiersResponse> variants) {
+    public static ProductResponse from(
+            Product product,
+            List<VariantWithTiersResponse> variants,
+            long totalStockQty,
+            List<ProductLotRowResponse> lots) {
         Category category = product.getCategory();
         UnitOfMeasure unit = product.getUnit();
         return new ProductResponse(
@@ -56,6 +62,8 @@ public record ProductResponse(
                 product.getCreatedAt(),
                 product.getUpdatedAt(),
                 category == null ? null : category.getName(),
-                variants);
+                variants,
+                totalStockQty,
+                lots == null ? List.of() : lots);
     }
 }

@@ -49,6 +49,12 @@ class ProductServiceTest {
                 productVariantRepository,
                 volumeTierRepository,
                 stockRepository);
+        org.mockito.Mockito.lenient().when(stockRepository.sumQtyAvailableByProductId(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(0L);
+        org.mockito.Mockito.lenient().when(stockRepository.findByProductIdWithLotVariant(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(java.util.List.of());
+        org.mockito.Mockito.lenient().when(productVariantRepository.findByProduct_IdOrderByIdAsc(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(java.util.List.of());
     }
 
     // --- create ---

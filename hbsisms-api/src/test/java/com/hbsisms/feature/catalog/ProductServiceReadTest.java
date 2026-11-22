@@ -11,8 +11,11 @@ import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.common.text.Strings;
 import com.hbsisms.common.web.PageResponse;
 import com.hbsisms.feature.catalog.dto.ProductResponse;
+import com.hbsisms.feature.inventory.Lot;
+import com.hbsisms.feature.inventory.Stock;
 import com.hbsisms.feature.inventory.StockRepository;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,6 +59,12 @@ class ProductServiceReadTest {
                 productVariantRepository,
                 volumeTierRepository,
                 stockRepository);
+        org.mockito.Mockito.lenient()
+                .when(stockRepository.sumQtyAvailableByProductId(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(0L);
+        org.mockito.Mockito.lenient()
+                .when(stockRepository.findByProductIdWithLotVariant(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(List.of());
     }
 
     @Test
@@ -149,11 +158,15 @@ class ProductServiceReadTest {
         when(productVariantRepository.findByProduct_IdOrderByIdAsc(10L)).thenReturn(List.of(variant));
         when(volumeTierRepository.findByVariant_IdOrderByMinQtyKhayAsc(20L)).thenReturn(List.of(tier));
         when(stockRepository.sumQtyAvailableByVariantId(20L)).thenReturn(42L);
+        when(stockRepository.sumQtyAvailableByProductId(10L)).thenReturn(42L);
+        when(stockRepository.findByProductIdWithLotVariant(10L)).thenReturn(List.of());
 
         ProductResponse response = productService.get(10L);
 
         assertThat(response.id()).isEqualTo(10L);
         assertThat(response.categoryName()).isEqualTo("Hải sản");
+        assertThat(response.totalStockQty()).isEqualTo(42L);
+        assertThat(response.lots()).isEmpty();
         assertThat(response.variants()).hasSize(1);
         assertThat(response.variants().get(0).sku()).isEqualTo("TOM-05");
         assertThat(response.variants().get(0).available()).isEqualTo(42L);
@@ -179,12 +192,45 @@ class ProductServiceReadTest {
         Product product = product(11L, "P-EMPTY", "Chưa có quy cách", null);
         when(productRepository.findWithCategoryById(11L)).thenReturn(Optional.of(product));
         when(productVariantRepository.findByProduct_IdOrderByIdAsc(11L)).thenReturn(List.of());
+        when(stockRepository.sumQtyAvailableByProductId(11L)).thenReturn(0L);
+        when(stockRepository.findByProductIdWithLotVariant(11L)).thenReturn(List.of());
 
         ProductResponse response = productService.get(11L);
 
         assertThat(response.variants()).isEmpty();
+        assertThat(response.totalStockQty()).isZero();
+        assertThat(response.lots()).isEmpty();
         verify(volumeTierRepository, never()).findByVariant_IdOrderByMinQtyKhayAsc(any());
         verify(stockRepository, never()).sumQtyAvailableByVariantId(any());
+    }
+
+    @Test
+    void get_aggregatesLotsAcrossLocations_andSortsByExpDate() {
+        Product product = product(10L, "P-TOM", "Tôm sú", null);
+        ProductVariant variant = variant(20L, product, "TOM-05");
+        Lot early = lot(100L, variant, "LOT-A", LocalDate.now().plusDays(3));
+        Lot late = lot(101L, variant, "LOT-B", LocalDate.now().plusDays(10));
+        Stock earlyLoc1 = stock(1L, variant, early, 5);
+        Stock earlyLoc2 = stock(2L, variant, early, 7);
+        Stock lateLoc = stock(3L, variant, late, 4);
+
+        when(productRepository.findWithCategoryById(10L)).thenReturn(Optional.of(product));
+        when(productVariantRepository.findByProduct_IdOrderByIdAsc(10L)).thenReturn(List.of(variant));
+        when(volumeTierRepository.findByVariant_IdOrderByMinQtyKhayAsc(20L)).thenReturn(List.of());
+        when(stockRepository.sumQtyAvailableByVariantId(20L)).thenReturn(16L);
+        when(stockRepository.sumQtyAvailableByProductId(10L)).thenReturn(16L);
+        when(stockRepository.findByProductIdWithLotVariant(10L))
+                .thenReturn(List.of(earlyLoc1, earlyLoc2, lateLoc));
+
+        ProductResponse response = productService.get(10L);
+
+        assertThat(response.totalStockQty()).isEqualTo(16L);
+        assertThat(response.lots()).hasSize(2);
+        assertThat(response.lots().get(0).lotCode()).isEqualTo("LOT-A");
+        assertThat(response.lots().get(0).available()).isEqualTo(12);
+        assertThat(response.lots().get(0).daysLeft()).isEqualTo(3);
+        assertThat(response.lots().get(1).lotCode()).isEqualTo("LOT-B");
+        assertThat(response.lots().get(1).available()).isEqualTo(4);
     }
 
     @Test
@@ -301,6 +347,24 @@ class ProductServiceReadTest {
         tier.setMinQtyKhay(minQty);
         tier.setUnitPrice(new BigDecimal(price));
         return tier;
+    }
+
+    private static Lot lot(Long id, ProductVariant variant, String lotCode, LocalDate expDate) {
+        Lot lot = new Lot();
+        setId(lot, id);
+        lot.setLotCode(lotCode);
+        lot.setVariant(variant);
+        lot.setExpDate(expDate);
+        return lot;
+    }
+
+    private static Stock stock(Long id, ProductVariant variant, Lot lot, int qtyAvailable) {
+        Stock stock = new Stock();
+        setId(stock, id);
+        stock.setVariant(variant);
+        stock.setLot(lot);
+        stock.setQtyAvailable(qtyAvailable);
+        return stock;
     }
 
     private static void setId(Object entity, Long id) {

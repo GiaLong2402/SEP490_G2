@@ -4,8 +4,13 @@ import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
 import com.hbsisms.feature.catalog.dto.ProductRequest;
 import com.hbsisms.feature.catalog.dto.ProductResponse;
+import com.hbsisms.feature.media.CloudinaryStorageService;
+import com.hbsisms.feature.media.dto.ImageUploadResponse;
 import jakarta.validation.Valid;
+import java.util.Arrays;
+import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -19,15 +24,18 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/products")
 public class ProductController {
 
     private final ProductService productService;
+    private final CloudinaryStorageService cloudinaryStorageService;
 
-    public ProductController(ProductService productService) {
+    public ProductController(ProductService productService, CloudinaryStorageService cloudinaryStorageService) {
         this.productService = productService;
+        this.cloudinaryStorageService = cloudinaryStorageService;
     }
 
     @GetMapping
@@ -56,6 +64,17 @@ public class ProductController {
             return productService.getPublic(id);
         }
         return productService.get(id);
+    }
+
+    /**
+     * Upload product images to Cloudinary. Caller picks one URL as cover ({@code imageUrl})
+     * and the rest as {@code gallery} when creating/updating the product.
+     */
+    @PostMapping(value = "/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAuthority('products')")
+    public ImageUploadResponse uploadImages(@RequestParam("files") MultipartFile[] files) {
+        List<MultipartFile> list = files == null ? List.of() : Arrays.asList(files);
+        return new ImageUploadResponse(cloudinaryStorageService.uploadImages(list));
     }
 
     @PostMapping

@@ -4,14 +4,21 @@ import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.common.text.Strings;
 import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
+import com.hbsisms.feature.catalog.dto.ProductLotRowResponse;
 import com.hbsisms.feature.catalog.dto.ProductRequest;
 import com.hbsisms.feature.catalog.dto.ProductResponse;
 import com.hbsisms.feature.catalog.dto.VariantWithTiersResponse;
+import com.hbsisms.feature.inventory.Lot;
+import com.hbsisms.feature.inventory.Stock;
 import com.hbsisms.feature.inventory.StockRepository;
 import jakarta.persistence.criteria.Predicate;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -79,7 +86,7 @@ public class ProductService {
         };
         return PageResponse.from(productRepository
                 .findAll(spec, PageRequests.of(page, pageSize, LIST_SORT))
-                .map(publicView ? this::toPublicListResponse : this::toResponse));
+                .map(publicView ? this::toPublicListResponse : this::toListResponse));
     }
 
     /** Selected category plus every descendant in the category tree. */
@@ -191,25 +198,33 @@ public class ProductService {
         return toResponse(productRepository.findWithCategoryById(saved.getId()).orElse(saved));
     }
 
+    /** Staff detail / create / update — includes lot rows. */
     private ProductResponse toResponse(Product product) {
-        return toResponse(product, false, false);
+        return toResponse(product, false, false, true);
+    }
+
+    /** Staff list — total stock only, no per-lot payload. */
+    private ProductResponse toListResponse(Product product) {
+        return toResponse(product, false, false, false);
     }
 
     /** Guest list card: hide inactive variants; mask stock as còn/hết (0|1). */
     private ProductResponse toPublicListResponse(Product product) {
-        return toResponse(product, true, true);
+        return toResponse(product, true, true, false);
     }
 
     /** Guest product detail: hide inactive variants; expose real available trays. */
     private ProductResponse toPublicDetailResponse(Product product) {
-        return toResponse(product, true, false);
+        return toResponse(product, true, false, false);
     }
 
     /**
      * @param publicView only active variants; used for B2C guest payloads
      * @param maskStockBinary when true, {@code available} is 0 or 1 (list); when false, real qty (detail/staff)
+     * @param includeLots when true, embed aggregated lot rows (staff product detail)
      */
-    private ProductResponse toResponse(Product product, boolean publicView, boolean maskStockBinary) {
+    private ProductResponse toResponse(
+            Product product, boolean publicView, boolean maskStockBinary, boolean includeLots) {
         List<ProductVariant> variants = product.getId() == null
                 ? List.of()
                 : productVariantRepository.findByProduct_IdOrderByIdAsc(product.getId());
@@ -225,7 +240,52 @@ public class ProductService {
             }
             variantRows.add(VariantWithTiersResponse.from(variant, tiers, available));
         }
-        return ProductResponse.from(product, variantRows);
+        long totalStockQty;
+        List<ProductLotRowResponse> lots = List.of();
+        if (product.getId() == null) {
+            totalStockQty = 0;
+        } else if (publicView || maskStockBinary) {
+            totalStockQty = variantRows.stream().mapToLong(VariantWithTiersResponse::available).sum();
+        } else {
+            totalStockQty = stockRepository.sumQtyAvailableByProductId(product.getId());
+            if (includeLots) {
+                lots = lotRowsForProduct(product.getId());
+            }
+        }
+        return ProductResponse.from(product, variantRows, totalStockQty, lots);
+    }
+
+    /** Aggregate stock by lot across locations; FEFO by expDate (nulls last). */
+    private List<ProductLotRowResponse> lotRowsForProduct(Long productId) {
+        LocalDate today = LocalDate.now();
+        Map<Long, ProductLotRowResponse> byLotId = new LinkedHashMap<>();
+        for (Stock stock : stockRepository.findByProductIdWithLotVariant(productId)) {
+            Lot lot = stock.getLot();
+            ProductVariant variant = stock.getVariant();
+            ProductLotRowResponse existing = byLotId.get(lot.getId());
+            int available = existing == null ? stock.getQtyAvailable() : existing.available() + stock.getQtyAvailable();
+            Integer daysLeft = lot.getExpDate() == null
+                    ? null
+                    : (int) ChronoUnit.DAYS.between(today, lot.getExpDate());
+            byLotId.put(
+                    lot.getId(),
+                    new ProductLotRowResponse(
+                            lot.getId(),
+                            lot.getLotCode(),
+                            variant.getId(),
+                            variant.getSku(),
+                            lot.getMfgDate(),
+                            lot.getExpDate(),
+                            daysLeft,
+                            available));
+        }
+        return byLotId.values().stream()
+                .sorted(Comparator
+                        .comparing(
+                                (ProductLotRowResponse r) ->
+                                        r.expDate() == null ? LocalDate.of(9999, 12, 31) : r.expDate())
+                        .thenComparing(ProductLotRowResponse::lotId))
+                .toList();
     }
 
     private void apply(
