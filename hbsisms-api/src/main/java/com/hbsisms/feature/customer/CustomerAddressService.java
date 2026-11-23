@@ -45,8 +45,46 @@ public class CustomerAddressService {
     public List<AddressResponse> list(Long customerId) {
         requireCustomer(customerId);
         return addressRepository.findByCustomerIdOrderByDefaultAddressDescIdAsc(customerId).stream()
-                .map(AddressResponse::from)
+                .map(this::toResponse)
                 .toList();
+    }
+
+    /**
+     * Nếu đã có pin (lat/lng) thì luôn tính lại km theo shop hiện tại — tránh khoảng cách
+     * cũ lưu khi shop còn đặt ở tọa độ mặc định Hải Phòng.
+     */
+    AddressResponse toResponse(CustomerAddress address) {
+        if (address.getLatitude() != null && address.getLongitude() != null) {
+            GeoPoint dest = new GeoPoint(address.getLatitude(), address.getLongitude());
+            BigDecimal km = GeoDistance.kmBetween(goongGeocodeService.shopLocation(), dest);
+            BigDecimal radius = goongGeocodeService.deliveryRadiusKm() != null
+                    ? goongGeocodeService.deliveryRadiusKm()
+                    : DELIVERY_RADIUS_KM;
+            return AddressResponse.from(address, km, isInDeliveryRadius(km, radius));
+        }
+        return AddressResponse.from(address);
+    }
+
+    /** Cập nhật lại distanceKm / inDeliveryRadius trên entity khi đã có pin. */
+    public boolean refreshDistanceFromShop(CustomerAddress address) {
+        if (address.getLatitude() == null || address.getLongitude() == null) {
+            return false;
+        }
+        GeoPoint dest = new GeoPoint(address.getLatitude(), address.getLongitude());
+        BigDecimal km = GeoDistance.kmBetween(goongGeocodeService.shopLocation(), dest);
+        BigDecimal radius = goongGeocodeService.deliveryRadiusKm() != null
+                ? goongGeocodeService.deliveryRadiusKm()
+                : DELIVERY_RADIUS_KM;
+        boolean inRadius = isInDeliveryRadius(km, radius);
+        boolean changed = address.getDistanceKm() == null
+                || address.getDistanceKm().compareTo(km) != 0
+                || address.isInDeliveryRadius() != inRadius;
+        if (!changed) {
+            return false;
+        }
+        address.setDistanceKm(km);
+        address.setInDeliveryRadius(inRadius);
+        return true;
     }
 
     @Transactional
@@ -60,7 +98,7 @@ public class CustomerAddressService {
         CustomerAddress address = new CustomerAddress();
         address.setCustomer(customer);
         apply(address, request, makeDefault);
-        return AddressResponse.from(addressRepository.save(address));
+        return toResponse(addressRepository.save(address));
     }
 
     @Transactional
@@ -74,7 +112,7 @@ public class CustomerAddressService {
         // Cannot unset default via isDefault=false alone — keep current default until another is chosen.
         boolean defaultFlag = makeDefault || address.isDefaultAddress();
         apply(address, request, defaultFlag);
-        return AddressResponse.from(addressRepository.save(address));
+        return toResponse(addressRepository.save(address));
     }
 
     @Transactional

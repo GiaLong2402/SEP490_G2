@@ -96,8 +96,9 @@ app:
     # Empty api-key = skip geocode; FE may still send distanceKm manually.
     api-key: ${GOONG_API_KEY:}
     base-url: ${GOONG_BASE_URL:https://rsapi.goong.io}
-    shop-latitude: ${SHOP_LATITUDE:20.951248}
-    shop-longitude: ${SHOP_LONGITUDE:107.080502}
+    # Default = ĐH FPT Hòa Lạc (khớp .env); tránh fallback cũ Hải Phòng (~160 km lệch).
+    shop-latitude: ${SHOP_LATITUDE:21.012728}
+    shop-longitude: ${SHOP_LONGITUDE:105.525905}
     delivery-radius-km: ${DELIVERY_RADIUS_KM:8}
   cloudinary:
     # Signed upload + server multipart. Empty = signature/upload APIs báo lỗi / 503.
