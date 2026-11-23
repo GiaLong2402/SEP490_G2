@@ -59,7 +59,8 @@ public record GoodsReceiptResponse(
                 receipt.getReceivedBy() == null ? null : receipt.getReceivedBy().getFullName(),
                 source == null || source.isBlank() ? "—" : source,
                 items,
-                receipt.getStatus(),
+                // getStatus() đã coalesce null → COMPLETED (phiếu cũ trước khi có cột status).
+                Objects.requireNonNullElse(receipt.getStatus(), ReceiptStatus.COMPLETED),
                 receipt.getExpectedDate(),
                 receipt.getCompletedAt(),
                 receipt.getCompletedBy() == null ? null : receipt.getCompletedBy().getFullName(),
