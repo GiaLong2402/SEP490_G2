@@ -148,8 +148,8 @@ function seed(): MockDb {
     { id: 3, customerId: 3, variantId: 4, unitPrice: 112000, pendingPrice: 110000, status: 'pending', effectiveFrom: isoDate(-30), effectiveTo: null, approvedBy: 2, approvedAt: isoTime(-30), updatedAt: isoTime(-1) },
   ];
 
-  // Capacity kho >= tổng capacity vị trí (120*5 + 160 + 500 = 1260).
-  const warehouses: T.Warehouse[] = [{ id: 1, code: 'WH1', name: 'Kho Hải sản Hòa Bình', address: 'TP Hạ Long, Quảng Ninh', capacity: 1260, isActive: true }];
+  // Capacity kho >= tổng capacity vị trí (120*5 + 160 + 500 = 1060). Không còn khu hàng trả/cách ly.
+  const warehouses: T.Warehouse[] = [{ id: 1, code: 'WH1', name: 'Kho Hải sản Hòa Bình', address: 'TP Hạ Long, Quảng Ninh', capacity: 1060, isActive: true }];
   const locations: T.Location[] = ([
     ['A-01', 'Khu A', 120],
     ['A-02', 'Khu A', 120],
@@ -158,7 +158,6 @@ function seed(): MockDb {
     ['B-04', 'Khu B', 120],
     ['B-06', 'Khu B', 160],
     ['C-01', 'Kho lạnh C', 500],
-    ['HT-01', 'Khu hàng trả', 200],
   ] as const)
     .map(([code, zone, capacity], i) => ({ id: i + 1, warehouseId: 1, code, zone, capacity, note: null }));
 
@@ -197,20 +196,20 @@ function seed(): MockDb {
   const lots: T.Lot[] = [];
   const stock: T.Stock[] = [];
   const ledger: T.StockLedger[] = [];
-  const lotSpec: [number, number, number, number, number, number][] = [
-    // variantId, ngày đến HSD, locationId, khả dụng, giữ, cách ly
-    [1, 2, 1, 18, 6, 0], [1, 9, 2, 60, 12, 0], [1, 13, 7, 140, 0, 0],
-    [2, 4, 3, 9, 3, 0], [2, 11, 7, 3, 0, 0],
-    [3, 6, 4, 22, 4, 2], [3, 12, 7, 95, 10, 0],
-    [4, 1, 5, 6, 2, 0], [4, 5, 6, 5, 0, 0], [4, -1, 6, 0, 0, 4],
+  const lotSpec: [number, number, number, number, number][] = [
+    // variantId, ngày đến HSD, locationId, khả dụng, giữ
+    [1, 2, 1, 18, 6], [1, 9, 2, 60, 12], [1, 13, 7, 140, 0],
+    [2, 4, 3, 9, 3], [2, 11, 7, 3, 0],
+    [3, 6, 4, 24, 4], [3, 12, 7, 95, 10],
+    [4, 1, 5, 6, 2], [4, 5, 6, 5, 0], [4, -1, 6, 0, 0],
   ];
-  lotSpec.forEach(([variantId, expIn, locationId, available, held, quarantine], i) => {
+  lotSpec.forEach(([variantId, expIn, locationId, available, held], i) => {
     const id = i + 1;
     const shelf = variantId === 4 ? 7 : 14;
     const receivedAt = isoTime(expIn - shelf, 7, 30);
     lots.push({ id, lotCode: `LOT-${isoDate(expIn - shelf).replace(/-/g, '').slice(2)}-${pad(id)}`, variantId, mfgDate: isoDate(expIn - shelf), expDate: isoDate(expIn), receivedAt, note: null });
-    stock.push({ id, variantId, lotId: id, locationId, qtyAvailable: available, qtyHeld: held, qtyQuarantine: quarantine, qtyExpired: expIn < 0 ? 3 : 0, updatedAt: now });
-    const total = available + held + quarantine + (expIn < 0 ? 3 : 0);
+    stock.push({ id, variantId, lotId: id, locationId, qtyAvailable: available, qtyHeld: held, qtyQuarantine: 0, qtyExpired: expIn < 0 ? 3 : 0, updatedAt: now });
+    const total = available + held + (expIn < 0 ? 3 : 0);
     ledger.push({ id: ledger.length + 1, variantId, lotId: id, locationId, toLocationId: null, entryType: 'in', qtyDelta: total, balanceAfter: total, refType: 'goods_receipt', refId: id, note: 'Nhập thành phẩm', createdBy: 4, createdAt: receivedAt });
     if (held > 0) ledger.push({ id: ledger.length + 1, variantId, lotId: id, locationId, toLocationId: null, entryType: 'hold', qtyDelta: -held, balanceAfter: available, refType: 'sales_order_line', refId: null, note: 'Giữ hàng theo FEFO', createdBy: 3, createdAt: isoTime(-1, 10) });
   });

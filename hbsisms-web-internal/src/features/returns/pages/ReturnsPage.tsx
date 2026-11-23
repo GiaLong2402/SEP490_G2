@@ -25,6 +25,10 @@ function statusToast(status: ReturnStatus, receiveBack?: boolean) {
       return receiveBack
         ? 'Đã nhận về — nhả HOLD (nếu còn) hoặc cộng tồn về vị trí đã xuất. F5 Tồn kho.'
         : 'Đã nhận hàng — cộng tồn về vị trí đã xuất. F5 Tồn kho.';
+    case 'discarded':
+      return receiveBack
+        ? 'Đã bỏ hàng — trừ HOLD (không cộng khả dụng). Không nhập bán lại.'
+        : 'Đã bỏ hàng — không nhập tồn (hàng đã xuất trước đó). Có thể hoàn tiền sau.';
     case 'rejected':
       return 'Đã hủy phiếu — không thay đổi tồn kho.';
     case 'refunded':
@@ -208,10 +212,16 @@ export default function ReturnsPage() {
           {r.status === 'pending' && (
             <>
               <Button variant="ghost" onClick={() => setConfirm({ id: r.id, status: 'rejected', code: r.code })}>Hủy phiếu</Button>
+              <Button
+                variant="ghost"
+                onClick={() => setConfirm({ id: r.id, status: 'discarded', code: r.code, receiveBack: r.deliveryId != null })}
+              >
+                Bỏ hàng
+              </Button>
               <Button onClick={() => askReceive(r)}>Nhận hàng</Button>
             </>
           )}
-          {r.status === 'received' && (
+          {(r.status === 'received' || r.status === 'discarded') && (
             <Button variant="primary" onClick={() => setConfirm({ id: r.id, status: 'refunded', code: r.code })}>Hoàn tiền</Button>
           )}
         </div>
@@ -226,21 +236,30 @@ export default function ReturnsPage() {
         confirmLabel: 'Hủy phiếu',
         danger: true,
       }
-    : confirm?.status === 'received'
+    : confirm?.status === 'discarded'
       ? {
-          title: 'Nhận hàng?',
+          title: 'Bỏ hàng trên phiếu trả?',
           message: confirm.receiveBack
-            ? `Phiếu ${confirm.code ?? ''}: còn HOLD → nhả giữ về kệ; đã xuất → cộng tồn về vị trí đã xuất.`
-            : `Phiếu ${confirm.code ?? ''}: cộng tồn khả dụng về vị trí đã xuất. Không chọn kệ khác.`,
-          confirmLabel: 'Nhận hàng',
-          danger: false,
+            ? `Phiếu ${confirm.code ?? ''}: bỏ cả số trên phiếu — trừ hàng đang giữ, không cộng khả dụng. Không dùng Báo hỏng kho.`
+            : `Phiếu ${confirm.code ?? ''}: bỏ cả số trên phiếu — không nhập lại tồn (hàng không bán lại). Không dùng Báo hỏng kho.`,
+          confirmLabel: 'Bỏ hàng',
+          danger: true,
         }
-      : {
-          title: 'Xác nhận hoàn tiền?',
-          message: `Phiếu ${confirm?.code ?? ''}: ghi nhận hoàn theo giá trị phiếu (TM/CK hoặc giảm nợ nếu công nợ). Tồn kho không đổi.`,
-          confirmLabel: 'Đã hoàn tiền',
-          danger: false,
-        };
+      : confirm?.status === 'received'
+        ? {
+            title: 'Nhận hàng?',
+            message: confirm.receiveBack
+              ? `Phiếu ${confirm.code ?? ''}: còn HOLD → nhả giữ về kệ; đã xuất → cộng tồn về vị trí đã xuất.`
+              : `Phiếu ${confirm.code ?? ''}: cộng tồn khả dụng về vị trí đã xuất. Không chọn kệ khác.`,
+            confirmLabel: 'Nhận hàng',
+            danger: false,
+          }
+        : {
+            title: 'Xác nhận hoàn tiền?',
+            message: `Phiếu ${confirm?.code ?? ''}: ghi nhận hoàn theo giá trị phiếu (TM/CK hoặc giảm nợ nếu công nợ). Tồn kho không đổi.`,
+            confirmLabel: 'Đã hoàn tiền',
+            danger: false,
+          };
 
   return (
     <>

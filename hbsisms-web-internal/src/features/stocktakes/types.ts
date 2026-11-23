@@ -21,7 +21,7 @@ export interface StocktakeDetail extends StocktakeListItem {
 }
 
 export interface StocktakeInput {
-  /** Kho cần kiểm — nên chọn khi có nhiều kho (mỗi kho một HT-01). */
+  /** Kho cần kiểm — nên chọn khi có nhiều kho. */
   warehouseId: number | null;
   /** Bỏ trống: toàn kho đã chọn. */
   zone: string | null;

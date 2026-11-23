@@ -13,7 +13,7 @@ public enum LedgerEntryType {
     ADJUST,
     DAMAGE,
     EXPIRE,
-    /** Hàng trả về (nhập lại hoặc vào cách ly). */
+    /** Hàng trả về — cộng lại tồn khả dụng. */
     RETURN;
 
     @JsonValue

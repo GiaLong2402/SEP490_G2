@@ -287,7 +287,6 @@ class SalesReturnServiceTest {
         service.setStatus(50L, ReturnStatus.RECEIVED, null, 7L);
 
         verify(stockService).receiveReturn(any());
-        verify(stockService, never()).quarantineReturn(any());
         assertThat(row.getStatus()).isEqualTo(ReturnStatus.RECEIVED);
         assertThat(row.getInspectedBy()).isEqualTo(actor);
         assertThat(row.getInspectedAt()).isEqualTo(NOW);
@@ -308,7 +307,6 @@ class SalesReturnServiceTest {
         service.setStatus(50L, ReturnStatus.RECEIVED, null, 7L);
 
         verify(orderAllocationService).releaseHeldForVariants(eq(order), any(), eq(7L), any());
-        verify(stockService, never()).quarantineReturn(any());
         verify(stockService, never()).receiveReturn(any());
     }
 
@@ -323,8 +321,40 @@ class SalesReturnServiceTest {
         verify(paymentService)
                 .recordRefundForSalesReturn(100L, new BigDecimal("200000.00"), "TH-2026-0001", 7L);
         assertThat(row.getStatus()).isEqualTo(ReturnStatus.REFUNDED);
-        verify(stockService, never()).quarantineReturn(any());
         verify(stockService, never()).receiveReturn(any());
+    }
+
+    @Test
+    void setStatus_discarded_alreadyOut_doesNotRestock() {
+        SalesReturn row = pendingReturn(null);
+        when(salesReturnRepository.findWithDetailsById(50L)).thenReturn(Optional.of(row));
+        when(orderAllocationService.netHeldByLot(100L)).thenReturn(Map.of());
+
+        service.setStatus(50L, ReturnStatus.DISCARDED, null, 7L);
+
+        verify(stockService, never()).receiveReturn(any());
+        verify(orderAllocationService, never()).discardHeldForVariants(any(), any(), any(), any());
+        assertThat(row.getStatus()).isEqualTo(ReturnStatus.DISCARDED);
+        assertThat(row.getInspectedBy()).isEqualTo(actor);
+    }
+
+    @Test
+    void setStatus_discarded_failedDeliveryWritesOffHold() {
+        Delivery delivery = new Delivery();
+        ReflectionTestUtils.setField(delivery, "id", 9L);
+        delivery.setOrder(order);
+        delivery.setState(DeliveryState.FAILED);
+        SalesReturn row = pendingReturn(delivery);
+        when(salesReturnRepository.findWithDetailsById(50L)).thenReturn(Optional.of(row));
+        when(orderAllocationService.netHeldByLot(100L))
+                .thenReturn(Map.of(new OrderAllocationService.HoldKey(11L, 3L, 4L), 2));
+        when(orderAllocationService.discardHeldForVariants(eq(order), any(), eq(7L), any())).thenReturn(2);
+
+        service.setStatus(50L, ReturnStatus.DISCARDED, null, 7L);
+
+        verify(orderAllocationService).discardHeldForVariants(eq(order), any(), eq(7L), any());
+        verify(stockService, never()).receiveReturn(any());
+        assertThat(row.getStatus()).isEqualTo(ReturnStatus.DISCARDED);
     }
 
     private SalesReturn pendingReturn(Delivery delivery) {
