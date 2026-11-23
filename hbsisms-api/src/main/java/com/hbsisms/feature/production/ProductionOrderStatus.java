@@ -9,6 +9,10 @@ import java.util.Locale;
 public enum ProductionOrderStatus {
     DRAFT,
     APPROVED,
+    /** Đã xuất NVL cho xưởng (task 50). */
+    IN_PROGRESS,
+    /** Đã báo hoàn thành — chờ nhập kho thành phẩm (task 51). */
+    AWAITING_RECEIPT,
     CANCELLED;
 
     @JsonValue

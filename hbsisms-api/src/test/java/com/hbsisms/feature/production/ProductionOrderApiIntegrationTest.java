@@ -12,9 +12,13 @@ import com.hbsisms.feature.catalog.Product;
 import com.hbsisms.feature.catalog.ProductBomLine;
 import com.hbsisms.feature.catalog.ProductBomLineRepository;
 import com.hbsisms.feature.catalog.ProductRepository;
+import com.hbsisms.feature.catalog.ProductVariant;
+import com.hbsisms.feature.catalog.ProductVariantRepository;
 import com.hbsisms.feature.catalog.UnitOfMeasure;
 import com.hbsisms.feature.catalog.UnitOfMeasureRepository;
 import com.hbsisms.feature.inventory.RawMaterial;
+import com.hbsisms.feature.inventory.RawMaterialLot;
+import com.hbsisms.feature.inventory.RawMaterialLotRepository;
 import com.hbsisms.feature.inventory.RawMaterialRepository;
 import com.hbsisms.feature.role.DefaultRoles;
 import com.hbsisms.feature.role.RoleRepository;
@@ -70,6 +74,10 @@ class ProductionOrderApiIntegrationTest {
     private ProductBomLineRepository bomLineRepository;
     @Autowired
     private RawMaterialRepository rawMaterialRepository;
+    @Autowired
+    private RawMaterialLotRepository rawMaterialLotRepository;
+    @Autowired
+    private ProductVariantRepository productVariantRepository;
     @Autowired
     private UnitOfMeasureRepository unitOfMeasureRepository;
     @Autowired
@@ -195,6 +203,58 @@ class ProductionOrderApiIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void confirmIssue_thenComplete_createsPendingFinishedReceipt() throws Exception {
+        Fixture fx = fixture(new BigDecimal("100"), new BigDecimal("0.4"));
+
+        long orderId = objectMapper
+                .readTree(mockMvc.perform(post("/production-orders")
+                                .header(HttpHeaders.AUTHORIZATION, bearer(adminToken))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(createBody(fx.productId, "10"))))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString())
+                .get("id")
+                .asLong();
+
+        JsonNode approved = objectMapper.readTree(mockMvc.perform(post("/production-orders/" + orderId + "/approve")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        long issueId = approved.get("materialIssueId").asLong();
+
+        mockMvc.perform(post("/material-issues/" + issueId + "/confirm")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("completed"));
+
+        mockMvc.perform(get("/production-orders/" + orderId).header(HttpHeaders.AUTHORIZATION, bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("in_progress"));
+
+        Map<String, Object> completeBody = new LinkedHashMap<>();
+        completeBody.put("actualQty", new BigDecimal("9.5"));
+        completeBody.put("actualProductionCost", new BigDecimal("120000"));
+
+        mockMvc.perform(post("/production-orders/" + orderId + "/complete")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(completeBody)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("awaiting_receipt"))
+                .andExpect(jsonPath("$.actualQty").value(9.5))
+                .andExpect(jsonPath("$.finishedReceiptCode").value(org.hamcrest.Matchers.startsWith("PN-")));
+
+        RawMaterial after = rawMaterialRepository.findById(fx.rawMaterialId).orElseThrow();
+        assertThat(after.getQtyOnHand()).isEqualByComparingTo("96"); // 100 - 4 (10*0.4)
+    }
+
     private Fixture fixture(BigDecimal onHand, BigDecimal bomQty) {
         String suffix = SEQ.incrementAndGet() + "-" + UUID.randomUUID().toString().substring(0, 6);
 
@@ -204,6 +264,14 @@ class ProductionOrderApiIntegrationTest {
         product.setActive(true);
         product = productRepository.save(product);
 
+        ProductVariant variant = new ProductVariant();
+        variant.setProduct(product);
+        variant.setSku("SKU-LSX-" + suffix);
+        variant.setPackLabel("Khay");
+        variant.setListPrice(new BigDecimal("50000"));
+        variant.setActive(true);
+        productVariantRepository.save(variant);
+
         RawMaterial raw = new RawMaterial();
         raw.setCode("NL-LSX-" + suffix);
         raw.setName("NVL LSX " + suffix);
@@ -212,6 +280,14 @@ class ProductionOrderApiIntegrationTest {
         raw.setQtyOnHand(onHand);
         raw.setActive(true);
         raw = rawMaterialRepository.save(raw);
+
+        RawMaterialLot lot = new RawMaterialLot();
+        lot.setRawMaterial(raw);
+        lot.setLotCode("LOT-" + suffix);
+        lot.setQtyReceived(onHand);
+        lot.setQtyRemaining(onHand);
+        lot.setUnitPrice(new BigDecimal("1000"));
+        rawMaterialLotRepository.save(lot);
 
         ProductBomLine line = new ProductBomLine();
         line.setProduct(product);

@@ -5,6 +5,11 @@ import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
 import com.hbsisms.feature.catalog.Product;
 import com.hbsisms.feature.catalog.ProductRepository;
+import com.hbsisms.feature.catalog.ProductVariant;
+import com.hbsisms.feature.catalog.ProductVariantRepository;
+import com.hbsisms.feature.inventory.GoodsReceipt;
+import com.hbsisms.feature.inventory.GoodsReceiptService;
+import com.hbsisms.feature.production.dto.ProductionOrderCompleteRequest;
 import com.hbsisms.feature.production.dto.ProductionOrderCreateRequest;
 import com.hbsisms.feature.production.dto.ProductionOrderMaterialLineResponse;
 import com.hbsisms.feature.production.dto.ProductionOrderResponse;
@@ -12,6 +17,7 @@ import com.hbsisms.feature.production.dto.ProductionOrderUpdateRequest;
 import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.data.domain.Page;
@@ -26,8 +32,10 @@ public class ProductionOrderService {
     private final ProductionOrderRepository productionOrderRepository;
     private final ProductionOrderMaterialLineRepository materialLineRepository;
     private final ProductRepository productRepository;
+    private final ProductVariantRepository productVariantRepository;
     private final BomExplosionService bomExplosionService;
     private final MaterialIssueService materialIssueService;
+    private final GoodsReceiptService goodsReceiptService;
     private final BusinessCodeService businessCodeService;
     private final UserRepository userRepository;
 
@@ -35,15 +43,19 @@ public class ProductionOrderService {
             ProductionOrderRepository productionOrderRepository,
             ProductionOrderMaterialLineRepository materialLineRepository,
             ProductRepository productRepository,
+            ProductVariantRepository productVariantRepository,
             BomExplosionService bomExplosionService,
             MaterialIssueService materialIssueService,
+            GoodsReceiptService goodsReceiptService,
             BusinessCodeService businessCodeService,
             UserRepository userRepository) {
         this.productionOrderRepository = productionOrderRepository;
         this.materialLineRepository = materialLineRepository;
         this.productRepository = productRepository;
+        this.productVariantRepository = productVariantRepository;
         this.bomExplosionService = bomExplosionService;
         this.materialIssueService = materialIssueService;
+        this.goodsReceiptService = goodsReceiptService;
         this.businessCodeService = businessCodeService;
         this.userRepository = userRepository;
     }
@@ -156,6 +168,65 @@ public class ProductionOrderService {
         materialIssueService.cancelIfPending(issue);
         order.setStatus(ProductionOrderStatus.CANCELLED);
         return toResponse(order);
+    }
+
+    /**
+     * Task 51: báo hoàn thành SX + sinh phiếu nhập TP Pending.
+     * Đã có finishedReceipt → trả detail (idempotent).
+     */
+    @Transactional
+    public ProductionOrderResponse complete(Long id, ProductionOrderCompleteRequest request, Long actorId) {
+        if (request == null || request.actualQty() == null || request.actualQty().signum() <= 0) {
+            throw ApiException.badRequest("Số lượng thành phẩm phải lớn hơn 0");
+        }
+        ProductionOrder order = productionOrderRepository
+                .findByIdForUpdate(id)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy lệnh sản xuất"));
+
+        if (order.getFinishedReceipt() != null
+                || order.getStatus() == ProductionOrderStatus.AWAITING_RECEIPT) {
+            return toResponse(requireOrder(id));
+        }
+        if (order.getStatus() != ProductionOrderStatus.IN_PROGRESS) {
+            throw ApiException.conflict("Chỉ báo hoàn thành khi lệnh đang sản xuất (đã xuất NVL)");
+        }
+        MaterialIssue issue = order.getMaterialIssue();
+        if (issue == null || issue.getStatus() != MaterialIssueStatus.COMPLETED) {
+            throw ApiException.conflict("Phiếu xuất NVL chưa hoàn thành — không thể báo hoàn thành");
+        }
+
+        ProductVariant variant = resolveFinishedVariant(order, request.variantId());
+        order.setActualQty(request.actualQty());
+        order.setActualProductionCost(
+                request.actualProductionCost() == null ? BigDecimal.ZERO : request.actualProductionCost());
+        order.setFinishedVariant(variant);
+
+        GoodsReceipt receipt = goodsReceiptService.createPendingFinishedFromProduction(
+                order.getId(), order.getCode(), variant, request.actualQty(), actorId);
+        order.setFinishedReceipt(receipt);
+        order.setStatus(ProductionOrderStatus.AWAITING_RECEIPT);
+        productionOrderRepository.save(order);
+        return toResponse(requireOrder(id));
+    }
+
+    private ProductVariant resolveFinishedVariant(ProductionOrder order, Long variantId) {
+        if (variantId != null) {
+            ProductVariant variant = productVariantRepository
+                    .findById(variantId)
+                    .orElseThrow(() -> ApiException.notFound("Không tìm thấy quy cách sản phẩm"));
+            if (!variant.getProduct().getId().equals(order.getProduct().getId())) {
+                throw ApiException.badRequest("Quy cách không thuộc sản phẩm của lệnh");
+            }
+            if (!variant.isActive()) {
+                throw ApiException.conflict("Quy cách đã ngừng bán");
+            }
+            return variant;
+        }
+        return productVariantRepository.findByProduct_IdOrderByIdAsc(order.getProduct().getId()).stream()
+                .filter(ProductVariant::isActive)
+                .findFirst()
+                .orElseThrow(() -> ApiException.conflict(
+                        "Sản phẩm chưa có quy cách đang bán — chọn variantId khi báo hoàn thành"));
     }
 
     private ProductionOrder requireOrder(Long id) {

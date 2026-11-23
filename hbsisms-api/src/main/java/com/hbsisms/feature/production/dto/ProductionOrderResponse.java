@@ -1,5 +1,6 @@
 package com.hbsisms.feature.production.dto;
 
+import com.hbsisms.feature.inventory.GoodsReceipt;
 import com.hbsisms.feature.production.MaterialIssue;
 import com.hbsisms.feature.production.ProductionOrder;
 import com.hbsisms.feature.production.ProductionOrderStatus;
@@ -20,6 +21,13 @@ public record ProductionOrderResponse(
         String note,
         BigDecimal estimatedProductionCost,
         BigDecimal estimatedMaterialCost,
+        BigDecimal actualQty,
+        BigDecimal actualProductionCost,
+        BigDecimal actualMaterialCost,
+        Long finishedVariantId,
+        String finishedVariantSku,
+        Long finishedReceiptId,
+        String finishedReceiptCode,
         boolean allMaterialsSufficient,
         int materialLineCount,
         Long materialIssueId,
@@ -33,6 +41,8 @@ public record ProductionOrderResponse(
     public static ProductionOrderResponse from(
             ProductionOrder order, List<ProductionOrderMaterialLineResponse> materials) {
         MaterialIssue issue = order.getMaterialIssue();
+        GoodsReceipt finished = order.getFinishedReceipt();
+        var variant = order.getFinishedVariant();
         return new ProductionOrderResponse(
                 order.getId(),
                 order.getCode(),
@@ -45,6 +55,13 @@ public record ProductionOrderResponse(
                 order.getNote(),
                 order.getEstimatedProductionCost(),
                 order.getEstimatedMaterialCost(),
+                order.getActualQty(),
+                order.getActualProductionCost(),
+                order.getActualMaterialCost(),
+                variant == null ? null : variant.getId(),
+                variant == null ? null : variant.getSku(),
+                finished == null ? null : finished.getId(),
+                finished == null ? null : finished.getCode(),
                 order.allMaterialsSufficient(),
                 materials.size(),
                 issue == null ? null : issue.getId(),

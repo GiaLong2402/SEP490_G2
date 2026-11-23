@@ -1,15 +1,22 @@
 package com.hbsisms.feature.inventory;
 
+import jakarta.persistence.LockModeType;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface RawMaterialLotRepository extends JpaRepository<RawMaterialLot, Long> {
 
     boolean existsByRawMaterial_IdAndLotCodeIgnoreCase(Long rawMaterialId, String lotCode);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select l from RawMaterialLot l where l.id = :id")
+    Optional<RawMaterialLot> findByIdForUpdate(@Param("id") Long id);
 
     /**
      * Lô của 1 NVL theo thứ tự FEFO: HSD gần nhất trước (lô không có HSD xếp cuối), cùng HSD thì nhập trước.

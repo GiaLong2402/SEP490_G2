@@ -12,9 +12,7 @@ public enum ReturnStatus {
     /** Hàng trả không nhập bán lại — bỏ toàn bộ số trên phiếu (không cách ly). */
     DISCARDED,
     REFUNDED,
-    REJECTED,
-    /** Hàng nhận về bị loại / không nhập lại kho (dữ liệu demo / lịch sử DB). */
-    DISCARDED;
+    REJECTED;
 
     @JsonValue
     public String code() {

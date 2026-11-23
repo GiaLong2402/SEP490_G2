@@ -2,6 +2,8 @@ package com.hbsisms.feature.production;
 
 import com.hbsisms.common.persistence.AuditableEntity;
 import com.hbsisms.feature.catalog.Product;
+import com.hbsisms.feature.catalog.ProductVariant;
+import com.hbsisms.feature.inventory.GoodsReceipt;
 import com.hbsisms.feature.user.AppUser;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -63,6 +65,26 @@ public class ProductionOrder extends AuditableEntity {
     /** Chi phí NVL tạm tính (server). */
     @Column(name = "estimated_material_cost", precision = 14, scale = 2)
     private BigDecimal estimatedMaterialCost = BigDecimal.ZERO;
+
+    /** SL thành phẩm thực tế đạt (task 51). */
+    @Column(name = "actual_qty", precision = 14, scale = 4)
+    private BigDecimal actualQty;
+
+    /** Chi phí SX thực tế do xưởng nhập (task 51). */
+    @Column(name = "actual_production_cost", precision = 14, scale = 2)
+    private BigDecimal actualProductionCost;
+
+    /** Chi phí NVL thực tế sau khi xuất (task 50). */
+    @Column(name = "actual_material_cost", precision = 14, scale = 2)
+    private BigDecimal actualMaterialCost;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "finished_variant_id")
+    private ProductVariant finishedVariant;
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "finished_receipt_id", unique = true)
+    private GoodsReceipt finishedReceipt;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

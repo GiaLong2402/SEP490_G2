@@ -218,6 +218,51 @@ public class GoodsReceiptService {
     }
 
     /**
+     * Task 51 (Cường): phiếu nhập thành phẩm Pending từ lệnh SX — chưa cộng tồn.
+     * Long sẽ xác nhận nhập (lô / vị trí / giá vốn) ở bước sau.
+     */
+    @Transactional
+    public GoodsReceipt createPendingFinishedFromProduction(
+            Long productionOrderId,
+            String productionOrderCode,
+            ProductVariant variant,
+            BigDecimal qty,
+            Long actorId) {
+        if (productionOrderId == null) {
+            throw ApiException.badRequest("Thiếu lệnh sản xuất");
+        }
+        if (variant == null) {
+            throw ApiException.badRequest("Thiếu quy cách thành phẩm");
+        }
+        if (qty == null || qty.signum() <= 0) {
+            throw ApiException.badRequest("Số lượng thành phẩm phải lớn hơn 0");
+        }
+        AppUser actor = actorId == null ? null : userRepository.findById(actorId).orElse(null);
+        Instant now = Instant.now(clock);
+        GoodsReceipt receipt = new GoodsReceipt();
+        receipt.setCode(nextPnCode());
+        receipt.setReceiptType(ReceiptType.FINISHED);
+        receipt.setStatus(ReceiptStatus.PENDING);
+        receipt.setProductionOrderId(productionOrderId);
+        receipt.setSource(productionOrderCode);
+        receipt.setNote(
+                "Chờ nhập TP từ lệnh "
+                        + productionOrderCode
+                        + " · "
+                        + variant.getSku()
+                        + " × "
+                        + qty.stripTrailingZeros().toPlainString());
+        receipt.setReceivedBy(actor);
+        receipt.setReceivedAt(now);
+        GoodsReceipt saved = goodsReceiptRepository.saveAndFlush(receipt);
+        auditLogService.record(actorId, "create", REF_TYPE, saved.getId(), Map.of(
+                "receiptType", ReceiptType.FINISHED.code(),
+                "status", ReceiptStatus.PENDING.code(),
+                "productionOrderId", productionOrderId));
+        return saved;
+    }
+
+    /**
      * Inter 1 dòng 47: thủ kho xác nhận nhập kho phiếu NVL — mỗi dòng nhập SL thực nhận (có thể khác dự kiến,
      * 0 = không về), mã lô (trống = tự sinh), NSX/HSD, đơn giá. Cộng tồn theo lô NVL, phiếu → Hoàn thành.
      * Khóa phiếu để 2 người xác nhận cùng lúc không cộng tồn 2 lần.

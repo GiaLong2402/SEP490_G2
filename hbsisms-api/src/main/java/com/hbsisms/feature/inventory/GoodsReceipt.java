@@ -71,6 +71,13 @@ public class GoodsReceipt {
     @JoinColumn(name = "completed_by")
     private AppUser completedBy;
 
+    /**
+     * Lệnh sản xuất sinh phiếu nhập thành phẩm Pending (task 51). Chỉ lưu id để tránh phụ thuộc
+     * entity {@code production} từ module inventory.
+     */
+    @Column(name = "production_order_id", unique = true)
+    private Long productionOrderId;
+
     public ReceiptStatus getStatus() {
         return status == null ? ReceiptStatus.COMPLETED : status;
     }

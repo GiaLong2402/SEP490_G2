@@ -4,13 +4,16 @@ import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.common.text.Strings;
 import com.hbsisms.feature.user.AppUser;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -29,7 +32,13 @@ public class RawMaterialStockService {
     /** refType trên sổ kho NVL cho lô tồn đầu kỳ (tồn có từ trước khi quản lý theo lô). */
     public static final String REF_OPENING = "opening_balance";
 
+    /** refType xuất NVL cho lệnh sản xuất (phiếu xuất). */
+    public static final String REF_MATERIAL_ISSUE = "material_issue";
+
     static final String OPENING_LOT_CODE = "TON-DAU";
+
+    /** Một lát xuất từ đúng một lô (task 50). */
+    public record IssueSlice(RawMaterialLot lot, BigDecimal qty, BigDecimal unitCost) {}
 
     private static final ZoneId VN = ZoneId.of("Asia/Ho_Chi_Minh");
     private static final DateTimeFormatter LOT_DAY = DateTimeFormatter.ofPattern("yyMMdd");
@@ -117,6 +126,105 @@ public class RawMaterialStockService {
             throw ApiException.notFound("Không tìm thấy nguyên liệu");
         }
         return rawMaterialLotRepository.findFefo(rawMaterialId, availableOnly);
+    }
+
+    /**
+     * Xuất đúng một lô. {@code material} phải đã khóa {@code findByIdForUpdate}.
+     * Lô được khóa lại trong method.
+     */
+    @Transactional
+    public IssueSlice issueFromLot(
+            RawMaterial material,
+            Long lotId,
+            BigDecimal qty,
+            String refType,
+            Long refId,
+            AppUser actor,
+            String note) {
+        Objects.requireNonNull(material, "material");
+        Objects.requireNonNull(material.getId(), "material id");
+        if (qty == null || qty.signum() <= 0) {
+            throw ApiException.badRequest("Số lượng xuất phải lớn hơn 0");
+        }
+        RawMaterialLot lot = rawMaterialLotRepository
+                .findByIdForUpdate(lotId)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy lô nguyên liệu"));
+        if (!lot.getRawMaterial().getId().equals(material.getId())) {
+            throw ApiException.badRequest("Lô không thuộc nguyên liệu " + material.getName());
+        }
+        if (lot.getQtyRemaining().compareTo(qty) < 0) {
+            throw ApiException.conflict(
+                    "Lô " + lot.getLotCode() + " không đủ tồn (còn " + lot.getQtyRemaining() + ")");
+        }
+        Instant now = Instant.now(clock);
+        lot.setQtyRemaining(lot.getQtyRemaining().subtract(qty));
+        rawMaterialLotRepository.save(lot);
+
+        BigDecimal balance = material.getQtyOnHand().subtract(qty);
+        if (balance.signum() < 0) {
+            throw ApiException.conflict("Không đủ tồn nguyên liệu " + material.getName());
+        }
+        material.setQtyOnHand(balance);
+        rawMaterialRepository.save(material);
+
+        BigDecimal unitCost = lot.getUnitPrice() == null ? BigDecimal.ZERO : lot.getUnitPrice();
+        RawMaterialLedger entry = new RawMaterialLedger();
+        entry.setRawMaterial(material);
+        entry.setLot(lot);
+        entry.setEntryType(RawLedgerEntryType.OUT);
+        entry.setQtyDelta(qty.negate());
+        entry.setBalanceAfter(balance);
+        entry.setUnitPrice(unitCost);
+        entry.setRefType(refType);
+        entry.setRefId(refId);
+        entry.setNote(note);
+        entry.setCreatedBy(actor);
+        entry.setCreatedAt(now);
+        rawMaterialLedgerRepository.save(entry);
+        return new IssueSlice(lot, qty, unitCost);
+    }
+
+    /**
+     * Xuất theo FEFO đủ {@code qty}. {@code material} phải đã khóa.
+     *
+     * @return các lát (một phần tử / lô)
+     */
+    @Transactional
+    public List<IssueSlice> issueFefo(
+            RawMaterial material,
+            BigDecimal qty,
+            String refType,
+            Long refId,
+            AppUser actor,
+            String note) {
+        Objects.requireNonNull(material, "material");
+        if (qty == null || qty.signum() <= 0) {
+            throw ApiException.badRequest("Số lượng xuất phải lớn hơn 0");
+        }
+        if (material.getQtyOnHand().compareTo(qty) < 0) {
+            throw ApiException.conflict(
+                    "Không đủ tồn nguyên liệu " + material.getName()
+                            + " (còn " + material.getQtyOnHand() + ")");
+        }
+        BigDecimal remaining = qty;
+        List<IssueSlice> slices = new ArrayList<>();
+        for (RawMaterialLot listed : rawMaterialLotRepository.findFefo(material.getId(), true)) {
+            if (remaining.signum() <= 0) {
+                break;
+            }
+            BigDecimal take = listed.getQtyRemaining().min(remaining);
+            if (take.signum() <= 0) {
+                continue;
+            }
+            slices.add(issueFromLot(material, listed.getId(), take, refType, refId, actor, note));
+            remaining = remaining.subtract(take);
+        }
+        if (remaining.signum() > 0) {
+            throw ApiException.conflict(
+                    "Không đủ tồn theo lô cho " + material.getName()
+                            + " — còn thiếu " + remaining.setScale(3, RoundingMode.HALF_UP));
+        }
+        return slices;
     }
 
     /**
