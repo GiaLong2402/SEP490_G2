@@ -189,7 +189,7 @@ export default function OrdersPage() {
       cell: (o) => (
         <div>
           <div className="font-medium">{o.customerName}</div>
-          {o.isOverLimit && !o.approvedBy && o.state !== 'cancelled' && <span className="text-micro text-coral">Vượt hạn mức, chờ duyệt</span>}
+          {o.isOverLimit && !o.approvedBy && o.state !== 'cancelled' && o.state !== 'expired' && <span className="text-micro text-coral">Vượt hạn mức, chờ duyệt</span>}
         </div>
       ),
     },

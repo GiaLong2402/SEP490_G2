@@ -50,7 +50,7 @@ export const staffOrderTypeLabels: Record<string, string> = Object.fromEntries(
   staffOrderTypes.map((t) => [t, orderTypeLabels[t]]),
 );
 
-export type OrderState = 'pending' | 'confirmed' | 'preparing' | 'to_ship' | 'partial' | 'delivered' | 'completed' | 'cancelled';
+export type OrderState = 'pending' | 'confirmed' | 'preparing' | 'to_ship' | 'partial' | 'delivered' | 'completed' | 'cancelled' | 'expired';
 export const orderStateMeta: Meta<OrderState> = {
   pending: { label: 'Chờ xác nhận', tone: 'amber' }, confirmed: { label: 'Đã xác nhận', tone: 'blue' }, preparing: { label: 'Đang chuẩn bị', tone: 'blue' },
   to_ship: { label: 'Chờ giao', tone: 'blue' },
@@ -58,6 +58,7 @@ export const orderStateMeta: Meta<OrderState> = {
   partial: { label: 'Chờ giao', tone: 'blue' },
   delivered: { label: 'Đã giao', tone: 'green' },
   completed: { label: 'Hoàn tất', tone: 'green' }, cancelled: { label: 'Đã hủy', tone: 'neutral' },
+  expired: { label: 'Hết hạn giữ hàng', tone: 'neutral' },
 };
 
 export type PaymentMethod = 'cash' | 'payos' | 'bank_transfer' | 'cod' | 'credit_net';
@@ -88,7 +89,7 @@ export const orderListPaymentStatusMeta: Record<string, { label: string; tone: T
  * Enum gốc vẫn giữ để hiển thị dữ liệu cũ nếu có.
  */
 export const orderListOrderStates: OrderState[] = [
-  'pending', 'confirmed', 'preparing', 'to_ship', 'delivered', 'completed', 'cancelled',
+  'pending', 'confirmed', 'preparing', 'to_ship', 'delivered', 'completed', 'cancelled', 'expired',
 ];
 export const orderListOrderStateMeta: Record<string, { label: string; tone: Tone }> = Object.fromEntries(
   orderListOrderStates.map((s) => [s, orderStateMeta[s]]),
@@ -129,6 +130,7 @@ export const deliveryStateMeta: Meta<DeliveryState> = {
   ready: { label: 'Sẵn sàng', tone: 'neutral' }, going: { label: 'Đang giao', tone: 'blue' }, delivered: { label: 'Đã giao', tone: 'green' }, failed: { label: 'Thất bại', tone: 'red' },
 };
 
+<<<<<<< Updated upstream
 export type ReturnStatus = 'pending' | 'received' | 'discarded' | 'refunded' | 'rejected';
 export const returnStatusMeta: Meta<ReturnStatus> = {
   pending: { label: 'Chờ nhận', tone: 'amber' },
@@ -136,6 +138,12 @@ export const returnStatusMeta: Meta<ReturnStatus> = {
   discarded: { label: 'Đã bỏ hàng', tone: 'red' },
   refunded: { label: 'Đã hoàn tiền', tone: 'green' },
   rejected: { label: 'Đã hủy', tone: 'red' },
+=======
+export type ReturnStatus = 'pending' | 'received' | 'refunded' | 'rejected' | 'discarded';
+export const returnStatusMeta: Meta<ReturnStatus> = {
+  pending: { label: 'Chờ nhận', tone: 'amber' }, received: { label: 'Đã nhận hàng', tone: 'blue' }, refunded: { label: 'Đã hoàn tiền', tone: 'green' }, rejected: { label: 'Đã hủy', tone: 'red' },
+  discarded: { label: 'Đã loại', tone: 'neutral' },
+>>>>>>> Stashed changes
 };
 
 export type PayDirection = 'in' | 'refund';
