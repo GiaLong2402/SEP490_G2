@@ -140,6 +140,11 @@ public class InventoryQueryService {
         boolean multiWarehouse = warehouseRepository.count() > 1;
         return locationRepository.findAllWithWarehouse().stream()
                 .filter(l -> l.getWarehouse() != null && l.getWarehouse().isActive())
+                .filter(l -> !QuarantineLocationSeeder.isQuarantineZone(l))
+                .filter(l -> {
+                    String zone = l.getZone() == null ? "" : l.getZone();
+                    return !zone.equalsIgnoreCase("Ngừng dùng");
+                })
                 .map(l -> {
                     String locationCode = formatLocationCode(l, multiWarehouse);
                     String label = l.getZone() == null || l.getZone().isBlank()

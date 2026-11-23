@@ -10,16 +10,24 @@ class GeoDistanceTest {
 
     @Test
     void kmBetween_samePoint_isZero() {
-        GeoPoint p = new GeoPoint(new BigDecimal("20.95"), new BigDecimal("107.08"));
+        GeoPoint p = new GeoPoint(new BigDecimal("21.01"), new BigDecimal("105.53"));
         assertThat(GeoDistance.kmBetween(p, p)).isEqualByComparingTo("0.00");
     }
 
     @Test
     void kmBetween_knownShortHop_isReasonable() {
-        // ~1.1 km apart near Hạ Long
-        GeoPoint a = new GeoPoint(new BigDecimal("20.951248"), new BigDecimal("107.080502"));
-        GeoPoint b = new GeoPoint(new BigDecimal("20.960000"), new BigDecimal("107.085000"));
+        // ~1 km apart near ĐH FPT Hòa Lạc
+        GeoPoint a = new GeoPoint(new BigDecimal("21.012728"), new BigDecimal("105.525905"));
+        GeoPoint b = new GeoPoint(new BigDecimal("21.020000"), new BigDecimal("105.530000"));
         double km = GeoDistance.kmBetween(a, b).doubleValue();
-        assertThat(km).isCloseTo(1.1, within(0.5));
+        assertThat(km).isCloseTo(1.0, within(0.5));
+    }
+
+    @Test
+    void kmBetween_fptToHoaLacCenter_isUnderDeliveryRadius() {
+        GeoPoint fpt = new GeoPoint(new BigDecimal("21.012728"), new BigDecimal("105.525905"));
+        GeoPoint hoaLac = new GeoPoint(new BigDecimal("20.983236"), new BigDecimal("105.530996"));
+        double km = GeoDistance.kmBetween(fpt, hoaLac).doubleValue();
+        assertThat(km).isLessThan(8.0);
     }
 }

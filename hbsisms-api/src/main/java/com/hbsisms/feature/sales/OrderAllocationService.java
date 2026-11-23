@@ -185,6 +185,50 @@ public class OrderAllocationService {
         return released;
     }
 
+    /**
+     * Bỏ hàng đang HOLD theo variant — trừ giữ, không cộng khả dụng (phiếu trả «Bỏ hàng»).
+     *
+     * @return số khay đã ghi bỏ
+     */
+    @Transactional
+    public int discardHeldForVariants(SalesOrder order, Map<Long, Integer> qtyByVariant, Long actorId, String note) {
+        Objects.requireNonNull(order.getId(), "order id");
+        if (qtyByVariant == null || qtyByVariant.isEmpty()) {
+            return 0;
+        }
+        Map<Long, Integer> remaining = new LinkedHashMap<>(qtyByVariant);
+        Map<HoldKey, Integer> net = netHeldByLot(order.getId());
+        int discarded = 0;
+        for (Map.Entry<HoldKey, Integer> entry : net.entrySet()) {
+            HoldKey key = entry.getKey();
+            Integer want = remaining.get(key.variantId());
+            if (want == null || want <= 0) {
+                continue;
+            }
+            int take = Math.min(want, entry.getValue());
+            if (take <= 0) {
+                continue;
+            }
+            stockService.writeOffHeld(StockMutation.of(
+                    key.variantId(),
+                    key.lotId(),
+                    key.locationId(),
+                    take,
+                    REF_TYPE,
+                    order.getId(),
+                    note != null ? note : "Bỏ hàng đang giữ — đơn " + order.getCode(),
+                    actorId));
+            remaining.merge(key.variantId(), -take, Integer::sum);
+            discarded += take;
+        }
+        SalesOrder current = salesOrderRepository
+                .findWithDetailsById(order.getId())
+                .orElse(order);
+        refreshAllocationStatus(current);
+        salesOrderRepository.save(current);
+        return discarded;
+    }
+
     /** Giải phóng toàn bộ HOLD còn lại của đơn (hủy / hết hạn). */
     @Transactional
     public int releaseForOrder(SalesOrder order, Long actorId, String note) {
@@ -379,7 +423,7 @@ public class OrderAllocationService {
             int delta =
                     switch (entry.getEntryType()) {
                         case HOLD -> abs;
-                        case RELEASE, OUT -> -abs;
+                        case RELEASE, OUT, DAMAGE -> -abs;
                         default -> 0;
                     };
             if (delta == 0) {

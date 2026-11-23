@@ -338,7 +338,7 @@ export default function OrderDetailPage() {
               </ol>
             )}
           </Card>
-          <Card title="Ai sửa lúc nào" flush>
+          <Card title="Nhật ký thay đổi" flush>
             <DataTable
               columns={auditColumns}
               rows={order.auditTrail ?? []}

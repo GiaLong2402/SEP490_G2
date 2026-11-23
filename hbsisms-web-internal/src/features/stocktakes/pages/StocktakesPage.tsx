@@ -33,13 +33,7 @@ export default function StocktakesPage() {
     const zoneNames = [...new Set(scoped.map((l) => l.zone).filter(Boolean))] as string[];
     return zoneNames.map((z) => {
       const bins = scoped.filter((l) => l.zone === z).map((l) => l.code);
-      const isCl = /cách ly|cach ly|quarantine|hàng trả|hang tra/i.test(z);
-      // Demo rõ: khu hàng trả = vị trí HT-01 trong kho, không phải “kho con”.
-      const hint = isCl && bins.length
-        ? `${z} (${bins.join(', ')})`
-        : bins.length === 1
-          ? `${z} · ${bins[0]}`
-          : z;
+      const hint = bins.length === 1 ? `${z} · ${bins[0]}` : z;
       return { value: z, label: hint };
     });
   }, [locations, warehouseId]);
@@ -77,7 +71,7 @@ export default function StocktakesPage() {
     <>
       <PageHeader
         title="Kiểm kê"
-        subtitle="Đối chiếu số đếm với tồn — chọn Kho, rồi zone trong kho (Khu hàng trả = HT-01 của kho đó)"
+        subtitle="Đối chiếu số đếm với tồn — chọn kho, rồi khu (zone) trong kho"
         actions={<Button variant="primary" icon={<Plus size={15} />} onClick={openCreate}>Tạo phiếu kiểm kê</Button>}
       />
       <Card flush>
@@ -96,7 +90,7 @@ export default function StocktakesPage() {
         footer={<><Button onClick={() => setOpen(false)}>Hủy bỏ</Button><Button type="submit" variant="primary" loading={create.isPending}>Tạo phiếu</Button></>}
       >
         <div className="space-y-3">
-          <Field label="Kho" hint="Tầng lớn nhất. Trong kho có vị trí (A-01, HT-01…); zone chỉ là nhãn nhóm vị trí." required={activeWarehouses.length > 1}>
+          <Field label="Kho" hint="Trong kho có vị trí (A-01, B-02…); zone là nhãn nhóm vị trí." required={activeWarehouses.length > 1}>
             <Select
               value={warehouseId}
               onChange={(e) => {
@@ -110,7 +104,7 @@ export default function StocktakesPage() {
               ))}
             </Select>
           </Field>
-          <Field label="Phạm vi khu (zone)" hint="Chọn zone trong kho trên — vd. Khu hàng trả (HT-01), không phải kho khác">
+          <Field label="Phạm vi khu (zone)" hint="Chọn zone trong kho đã chọn — hoặc để trống = toàn kho">
             <Select value={zone} onChange={(e) => setZone(e.target.value)} disabled={!warehouseId && activeWarehouses.length > 1}>
               <option value="">Toàn kho</option>
               {zonesForWarehouse.map((z) => <option key={z.value} value={z.value}>{z.label}</option>)}
