@@ -1,5 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { ChevronDownIcon, ChevronUpIcon, InfoIcon, TruckIcon } from '@/components/icons/Icons'
+import { salesRequestsApi } from '@/api/salesRequests'
+import { useAuth } from '@/context/AuthContext'
+import { ROUTES, requestDetailPath } from '@/constants/routes'
 import './BulkOrderForm.css'
 
 const EMPTY_FORM = {
@@ -30,44 +34,107 @@ function validate(form) {
   }
 
   // Số VN: bắt đầu bằng 0 hoặc +84, sau đó 8–10 chữ số
-  if (!/^(0|\+84)\d{8,10}$/.test(form.phone.replace(/\s/g, ''))) {
+  if (!/^(0|\+84)\d{8,10}$/.test(String(form.phone || '').replace(/\s/g, ''))) {
     errors.phone = 'Số điện thoại chưa hợp lệ.'
   }
 
   return errors
 }
 
+function buildSummary({ productName, variantLabel, trays, phone, note }) {
+  const parts = [
+    `${productName} · ${variantLabel} × ${trays} khay`,
+    `SĐT liên hệ: ${phone.replace(/\s/g, '')}`,
+  ]
+  const noteText = String(note || '').trim()
+  if (noteText) parts.push(`Ghi chú: ${noteText}`)
+  return parts.join(' — ')
+}
+
 /**
- * Nút "Đặt số lượng lớn" + form yêu cầu tư vấn (bấm nút để mở/đóng).
+ * Nút "Đặt số lượng lớn" + form gửi yêu cầu tư vấn → POST /me/sales-requests.
  *
  * props:
- * - productName:  tên sản phẩm, ví dụ "Tôm sú sơ chế"
- * - variantLabel: quy cách đang chọn, ví dụ "Khay 500 g"
+ * - productName, variantLabel
+ * - availableQty: tồn khay hiện tại (để lưu kèm; không bắt vượt tồn)
  */
-export default function BulkOrderForm({ productName, variantLabel }) {
+export default function BulkOrderForm({ productName, variantLabel, availableQty = 0 }) {
+  const navigate = useNavigate()
+  const { isLoggedIn, user } = useAuth()
   const [isOpen, setIsOpen] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [errors, setErrors] = useState({})
   const [status, setStatus] = useState('idle') // idle | sending | sent
+  const [submitError, setSubmitError] = useState('')
+  const [created, setCreated] = useState(null)
 
-  // Cập nhật 1 ô trong form, ví dụ updateField('phone', '0901...')
+  useEffect(() => {
+    if (!isOpen || !user?.phone) return
+    setForm((prev) => (prev.phone ? prev : { ...prev, phone: user.phone }))
+  }, [isOpen, user?.phone])
+
   function updateField(field, value) {
-    setForm({ ...form, [field]: value })
+    setForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  function handleSubmit(e) {
+  function openPanel() {
+    if (!isLoggedIn) {
+      navigate(ROUTES.LOGIN, {
+        state: { from: typeof window !== 'undefined' ? window.location.pathname : ROUTES.PRODUCTS },
+      })
+      return
+    }
+    setIsOpen((open) => !open)
+  }
+
+  async function handleSubmit(e) {
     e.preventDefault()
+    setSubmitError('')
+    setCreated(null)
+
+    if (!isLoggedIn) {
+      navigate(ROUTES.LOGIN, {
+        state: { from: typeof window !== 'undefined' ? window.location.pathname : ROUTES.PRODUCTS },
+      })
+      return
+    }
 
     const newErrors = validate(form)
     setErrors(newErrors)
     if (Object.keys(newErrors).length > 0) return
 
+    const trays = Number(form.trays)
+    const stock = Math.max(0, Number(availableQty) || 0)
+    // Portal cho phép chỉ requestedQty; nếu gửi cả available thì API yêu cầu vượt tồn.
+    // Đặt số lượng lớn / tư vấn: chỉ gửi requestedQty (+ summary, ngày, SĐT).
+    const payload = {
+      summary: buildSummary({
+        productName,
+        variantLabel,
+        trays,
+        phone: form.phone,
+        note: form.note,
+      }),
+      neededDate: form.date,
+      requestedQty: trays,
+      contactPhone: form.phone.replace(/\s/g, ''),
+    }
+    // Khi khách chọn nhiều hơn tồn, gắn availableQty để Sales thấy thiếu hàng (checkout-shortage style).
+    if (trays > stock) {
+      payload.availableQty = stock
+    }
+
     setStatus('sending')
-    // DEMO: giả lập gửi mất 0.6 giây — sau này thay bằng gọi API Spring Boot
-    window.setTimeout(() => {
+    try {
+      const result = await salesRequestsApi.create(payload)
+      setCreated(result)
       setStatus('sent')
-      setForm(EMPTY_FORM)
-    }, 600)
+      setForm({ ...EMPTY_FORM, phone: user?.phone || '' })
+      setErrors({})
+    } catch (err) {
+      setStatus('idle')
+      setSubmitError(err?.message || 'Không gửi được yêu cầu. Vui lòng thử lại.')
+    }
   }
 
   return (
@@ -77,7 +144,7 @@ export default function BulkOrderForm({ productName, variantLabel }) {
         className="bulk-order__toggle"
         aria-expanded={isOpen}
         aria-controls="bulk-order-panel"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={openPanel}
       >
         <TruckIcon size={26} />
         <span>Đặt số lượng lớn</span>
@@ -93,7 +160,6 @@ export default function BulkOrderForm({ productName, variantLabel }) {
             {productName} &nbsp;-&nbsp; {variantLabel}
           </p>
 
-          {/* Hàng 1: số khay + ngày nhận (2 cột) */}
           <div className="bulk-order__row">
             <label className="bulk-order__field">
               Số khay dự kiến
@@ -146,11 +212,20 @@ export default function BulkOrderForm({ productName, variantLabel }) {
             {status === 'sending' ? 'Đang gửi...' : 'Gửi yêu cầu'}
           </button>
 
-          {status === 'sent' && (
-            <p className="bulk-order__success" role="status">
-              Đã nhận yêu cầu. Cửa hàng sẽ liên hệ lại sớm.
+          {submitError ? (
+            <p className="bulk-order__error" role="alert">
+              {submitError}
             </p>
-          )}
+          ) : null}
+
+          {status === 'sent' && created ? (
+            <p className="bulk-order__success" role="status">
+              Đã tạo yêu cầu <strong>{created.code}</strong>. Cửa hàng sẽ liên hệ lại sớm.{' '}
+              <Link to={requestDetailPath(created.code)}>Xem yêu cầu</Link>
+              {' · '}
+              <Link to={ROUTES.ORDERS}>Đơn &amp; yêu cầu của tôi</Link>
+            </p>
+          ) : null}
 
           <p className="bulk-order__note">
             <InfoIcon size={22} />

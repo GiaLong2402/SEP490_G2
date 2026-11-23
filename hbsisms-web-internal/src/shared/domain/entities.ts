@@ -106,6 +106,8 @@ export interface SalesRequest {
   contactPhone: string | null; contactAddress: string | null;
   channel: E.SaleChannel; summary: string | null;
   status: E.RequestStatus; receivedAt: ISODateTime; handledBy: ID | null; note: string | null;
+  /** Ngày khách muốn nhận hàng (portal / bulk). */
+  neededDate: ISODate | null;
   /** Kết quả khả thi: true=Có, false=Không, null=chưa đánh giá. */
   feasible: boolean | null;
   fulfillableQty: number | null;

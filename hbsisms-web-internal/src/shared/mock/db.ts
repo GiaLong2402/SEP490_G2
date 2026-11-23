@@ -249,6 +249,7 @@ function seed(): MockDb {
     id: i + 1, code: `YC-${pad(i + 1, 4)}`, customerId, customerName: customerId ? customers[customerId - 1].name : 'Khách vãng lai',
     contactPhone: customerId ? null : '0900000000', contactAddress: customerId ? null : null,
     channel, summary, status, receivedAt: isoTime(day, 9 + i), handledBy: status === 'new' ? null : 3, note: null,
+    neededDate: status === 'new' || status === 'quoting' ? isoDate(day + 3) : null,
     feasible: status === 'rejected' ? false : null,
     fulfillableQty: null,
     shortageQty: status === 'rejected' ? 500 : null,

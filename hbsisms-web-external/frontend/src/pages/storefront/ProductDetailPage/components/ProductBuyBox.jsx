@@ -167,7 +167,11 @@ export default function ProductBuyBox({ product, variant, onVariantChange, onAdd
         </button>
       </div>
 
-      <BulkOrderForm productName={product.name} variantLabel={formatTrayLabel(variant.weightGrams)} />
+      <BulkOrderForm
+        productName={product.name}
+        variantLabel={formatTrayLabel(variant.weightGrams)}
+        availableQty={availableTrays}
+      />
 
       <ul className="buy-box__benefits">
         {BENEFITS.map((item) => {

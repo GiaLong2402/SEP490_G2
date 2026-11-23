@@ -18,6 +18,8 @@ public record SalesRequestResponse(
         String summary,
         RequestStatus status,
         Instant receivedAt,
+        /** Ngày khách muốn nhận hàng (portal / form bulk). */
+        LocalDate neededDate,
         Long handledBy,
         String handlerName,
         String note,
@@ -49,6 +51,7 @@ public record SalesRequestResponse(
                 request.getSummary(),
                 request.getStatus(),
                 request.getReceivedAt(),
+                request.getNeededDate(),
                 handler == null ? null : handler.getId(),
                 handler == null ? null : handler.getFullName(),
                 request.getNote(),

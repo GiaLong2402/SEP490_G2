@@ -73,6 +73,8 @@ public class MeSalesRequestService {
         row.setCode(businessCodeService.nextSalesRequestCode());
         row.setCustomer(customer);
         row.setCustomerName(customer.getName());
+        // SĐT liên hệ trên form bulk (có thể khác SĐT hồ sơ).
+        row.setContactPhone(Strings.trimToNull(request.contactPhone()));
         row.setChannel(SaleChannel.WEB);
         row.setSummary(summary);
         row.setStatus(RequestStatus.NEW);
@@ -83,14 +85,18 @@ public class MeSalesRequestService {
         return MeSalesRequestResponse.from(row);
     }
 
+    /**
+     * Portal: cho phép chỉ {@code requestedQty} (đặt số lượng lớn / tư vấn).
+     * Khi gửi cả hai (checkout thiếu hàng) vẫn yêu cầu requested &gt; available.
+     */
     private static void validateQty(Integer requestedQty, Integer availableQty) {
         if (requestedQty == null && availableQty == null) {
             return;
         }
-        if (requestedQty == null || availableQty == null) {
-            throw ApiException.badRequest("Cần gửi đủ số lượng yêu cầu và số lượng còn hàng");
+        if (requestedQty == null) {
+            throw ApiException.badRequest("Vui lòng nhập số lượng yêu cầu");
         }
-        if (requestedQty <= availableQty) {
+        if (availableQty != null && requestedQty <= availableQty) {
             throw ApiException.badRequest("Số lượng yêu cầu phải lớn hơn số còn hàng (vượt tồn)");
         }
     }

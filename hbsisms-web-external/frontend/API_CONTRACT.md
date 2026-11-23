@@ -147,7 +147,8 @@ File FE: `src/api/salesRequests.js`, mapper `mappers/salesRequest.js`. Dùng ở
 }
 ```
 
-- Body lưu: `summary`, `neededDate`, `requestedQty`, `availableQty` (channel portal cố định `WEB`). `items` chưa persist.
+- Body lưu: `summary`, `neededDate`, `requestedQty`, `availableQty?`, `contactPhone?` (channel portal cố định `WEB`). `items` chưa persist.
+- Portal bulk (“Đặt số lượng lớn”): có thể chỉ gửi `requestedQty` (không bắt vượt tồn). Khi gửi cả `availableQty` (checkout thiếu hàng) vẫn yêu cầu `requestedQty > availableQty`.
 - Response: `code, summary, status, receivedAt, neededDate, requestedQty, availableQty, feasible, fulfillableQty, shortageQty, expectedDate, rejectReason, note, orderCode` (`orderCode` khi Sales chốt `ORDERED`).
 - Nhãn: `NEW` Đang xem xét · `QUOTING` Đang báo giá · `ORDERED` Đã chốt · `REJECTED` Không đáp ứng được · `CLOSED` Đã đóng.
 

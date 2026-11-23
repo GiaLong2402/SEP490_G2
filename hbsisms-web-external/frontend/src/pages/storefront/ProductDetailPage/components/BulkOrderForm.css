@@ -129,6 +129,13 @@
   cursor: not-allowed;
 }
 
+.bulk-order__error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
 .bulk-order__success {
   color: var(--color-success);
   font-size: 14px;
