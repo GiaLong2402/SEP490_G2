@@ -130,7 +130,7 @@ mock('GET', '/goods-receipts', ({ query }) => {
     .filter((r) => !query.receiptType || r.receiptType === query.receiptType)
     .map(toItem)
     .filter((r) => !query.status || r.status === query.status)
-    .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+    .sort((a, b) => (query.sort === 'asc' ? a.id - b.id : b.id - a.id));
   return paginate(rows, query);
 });
 

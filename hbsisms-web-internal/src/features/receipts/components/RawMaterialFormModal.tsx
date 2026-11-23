@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react';
+import { Boxes } from 'lucide-react';
 import { useAction } from '@/shared/api/useAction';
 import { num } from '@/shared/lib/format';
 import { useUnits } from '@/features/products';
-import { Button, Checkbox, Field, Input, Modal, Select } from '@/shared/ui';
+import { Button, Checkbox, Field, InfoTip, Input, Modal, Select } from '@/shared/ui';
 import { receiptsApi } from '../api';
+import { useUnitLabel } from '../hooks';
 import type { RawMaterial } from '../types';
 
 const empty = { code: '', name: '', unitId: '', reorderLevel: '', isActive: true };
 
 export function RawMaterialFormModal({ open, material, onClose, onSaved }: { open: boolean; material?: RawMaterial; onClose: () => void; onSaved?: (id: number) => void }) {
   const units = useUnits();
+  const unitLabel = useUnitLabel();
   const [form, setForm] = useState(empty);
   const [touched, setTouched] = useState(false);
   useEffect(() => {
@@ -58,10 +61,22 @@ export function RawMaterialFormModal({ open, material, onClose, onSaved }: { ope
             {(units.data ?? []).filter((u) => u.isActive || String(u.id) === form.unitId).map((u) => <option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}
           </Select>
         </Field>
-        <Field label="Mức đặt lại" error={touched ? errors.reorderLevel : undefined} hint="Tồn dưới mức này sẽ hiện cảnh báo"><Input type="number" min={0} step="0.1" value={form.reorderLevel} onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })} /></Field>
+        <Field label="Mức đặt lại" error={touched ? errors.reorderLevel : undefined} tip="Khi tồn kho xuống dưới số này, hệ thống sẽ báo “Cần đặt thêm”."><Input type="number" min={0} step="0.1" value={form.reorderLevel} onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })} /></Field>
         <div className="sm:col-span-2">
           <Checkbox label="Đang sử dụng" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />
-          <p className="mt-2 text-small text-ink-faint">{material ? `Tồn hiện tại ${num(material.qtyOnHand)} ${material.unit}. Tồn chỉ tăng qua phiếu nhập, không sửa trực tiếp.` : 'Nguyên liệu mới có tồn bằng 0; tạo phiếu nhập để tăng tồn.'}</p>
+          <div className="mt-3 flex items-center gap-3 rounded-md border border-line bg-rowalt/60 px-3 py-2.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary" aria-hidden><Boxes size={17} /></span>
+            <div>
+              <div className="flex items-center gap-1 text-small text-ink-muted">
+                {material ? 'Tồn hiện tại' : 'Tồn ban đầu'}
+                <InfoTip label="Ghi chú về tồn">Không sửa tồn ở đây. Tồn chỉ tăng khi bấm nút “Nhập kho” ở phiếu nhập nguyên liệu.</InfoTip>
+              </div>
+              <div className="text-h1 tabular-nums text-ink">
+                {num(material?.qtyOnHand ?? 0)}
+                {material && <span className="ml-1 text-body font-normal text-ink-muted">{unitLabel(material.unit)}</span>}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </Modal>
