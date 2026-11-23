@@ -99,11 +99,15 @@ Contract FE: `features/deliveries/api.ts`. **Không có người giao nội bộ
 
 ## notifications
 
-| Phương thức | Đường dẫn |
-|---|---|
-| GET | `/notifications` |
-| POST | `/notifications/read-all` |
-| POST | `/notifications/:id/read` |
+JWT bất kỳ role (staff + customer). Chỉ thấy / đánh dấu thông báo của chính mình.
+
+| Phương thức | Đường dẫn | Ghi chú |
+|---|---|---|
+| GET | `/notifications` | Tối đa 30 mới nhất; `{ id, userId, type, title, body, link, isRead, createdAt }` |
+| POST | `/notifications/read-all` | 204 |
+| POST | `/notifications/:id/read` | 204; không phải của mình → 404 |
+
+`quote-sent`: khi `PATCH /quotes/:id/status` → `sent`, gửi cho `customer.accountUser` (portal).
 
 ## orders
 
@@ -172,6 +176,22 @@ Jackson khóa tên field `isPublished` / `isActive` (không `published` / `activ
 | PUT | `/variants/:id` | **204**; body `VariantInput` |
 | GET | `/products/:id/bom` | `BomDetail` — định mức NVL (Task BOM) |
 | PUT | `/products/:id/bom` | **200** + `BomDetail`; body `{ lines: BomLineInput[] }` full replace; chặn chọn chính SP làm NVL của nó |
+
+## production
+
+Quyền `inventory`. **Duy (48–49):** tạo/sửa/duyệt/hủy lệnh + sinh phiếu xuất NVL `pending`. **Cường (50–51):** xác nhận xuất FEFO; báo hoàn thành + PN thành phẩm `pending`.
+
+| Phương thức | Đường dẫn | Ghi chú |
+|---|---|---|
+| GET | `/production-orders` | Lọc `q`, `status` (`draft`/`approved`/`in_progress`/`awaiting_receipt`/`cancelled`) |
+| POST | `/production-orders` | **201** — bản nháp + explode BOM |
+| GET | `/production-orders/:id` | Chi tiết + `materials[]`; sau task 51 có `actualQty`, `actualMaterialCost`, `finishedReceiptId/code` |
+| PUT | `/production-orders/:id` | Chỉ `draft` |
+| POST | `/production-orders/:id/approve` | Duy — đủ NVL → `approved` + phiếu xuất `pending` |
+| POST | `/production-orders/:id/cancel` | `draft` / `approved` (chưa xuất) |
+| POST | `/production-orders/:id/complete` | **Cường** — body `{ actualQty, actualProductionCost?, variantId? }`; chỉ `in_progress`; tạo `goods-receipt` FINISHED **pending**; PO → `awaiting_receipt` (idempotent nếu đã có PN) |
+| GET | `/material-issues/:id` | Phiếu xuất NVL |
+| POST | `/material-issues/:id/confirm` | **Cường** — body tùy chọn `{ allocations: [{ rawMaterialId, lotId, qty }] }`; trống = FEFO đủ `qtyRequired`; trừ tồn lô + ledger `OUT` `refType=material_issue`; PO → `in_progress`; idempotent nếu đã `completed` |
 
 ## quotes
 

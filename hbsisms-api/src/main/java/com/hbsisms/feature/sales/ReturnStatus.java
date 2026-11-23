@@ -10,7 +10,9 @@ public enum ReturnStatus {
     PENDING,
     RECEIVED,
     REFUNDED,
-    REJECTED;
+    REJECTED,
+    /** Legacy/demo rows in DB; keep for Hibernate load compatibility. */
+    DISCARDED;
 
     @JsonValue
     public String code() {

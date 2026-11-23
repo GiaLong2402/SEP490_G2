@@ -2,6 +2,7 @@ package com.hbsisms.feature.production;
 
 import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
+import com.hbsisms.feature.production.dto.ProductionOrderCompleteRequest;
 import com.hbsisms.feature.production.dto.ProductionOrderCreateRequest;
 import com.hbsisms.feature.production.dto.ProductionOrderResponse;
 import com.hbsisms.feature.production.dto.ProductionOrderUpdateRequest;
@@ -68,5 +69,14 @@ public class ProductionOrderController {
     @PostMapping("/{id}/cancel")
     public ProductionOrderResponse cancel(@PathVariable Long id) {
         return productionOrderService.cancel(id);
+    }
+
+    /** Task 51 (Cường): báo hoàn thành + sinh phiếu nhập TP Pending. */
+    @PostMapping("/{id}/complete")
+    public ProductionOrderResponse complete(
+            @PathVariable Long id,
+            @Valid @RequestBody ProductionOrderCompleteRequest request,
+            @AuthenticationPrincipal AuthUser actor) {
+        return productionOrderService.complete(id, request, actor == null ? null : actor.id());
     }
 }

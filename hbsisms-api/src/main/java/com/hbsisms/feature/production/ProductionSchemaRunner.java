@@ -78,6 +78,37 @@ public class ProductionSchemaRunner implements ApplicationRunner {
                         + "qty_issued numeric(14,4), "
                         + "raw_material_lot_id bigint references " + T + "raw_material_lot (id), "
                         + "sort_order int not null default 0)");
+        // Task 50–51 (Cường): cột hoàn thành SX + PN thành phẩm.
+        alterAdd("production_order", "actual_qty", "alter table " + T + "production_order add column if not exists actual_qty numeric(14,4)");
+        alterAdd(
+                "production_order",
+                "actual_production_cost",
+                "alter table " + T + "production_order add column if not exists actual_production_cost numeric(14,2)");
+        alterAdd(
+                "production_order",
+                "actual_material_cost",
+                "alter table " + T + "production_order add column if not exists actual_material_cost numeric(14,2)");
+        alterAdd(
+                "production_order",
+                "finished_variant_id",
+                "alter table " + T + "production_order add column if not exists finished_variant_id bigint");
+        alterAdd(
+                "production_order",
+                "finished_receipt_id",
+                "alter table " + T + "production_order add column if not exists finished_receipt_id bigint");
+        alterAdd(
+                "goods_receipt",
+                "production_order_id",
+                "alter table " + T + "goods_receipt add column if not exists production_order_id bigint");
+    }
+
+    private void alterAdd(String table, String column, String sql) {
+        try {
+            jdbc.execute(sql);
+            log.info("Ensured {}.{}", table, column);
+        } catch (Exception ex) {
+            log.warn("Could not ensure {}.{}: {}", table, column, ex.getMessage());
+        }
     }
 
     private void exec(String what, String sql) {

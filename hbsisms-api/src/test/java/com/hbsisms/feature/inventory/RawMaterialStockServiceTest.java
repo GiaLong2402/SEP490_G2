@@ -160,6 +160,48 @@ class RawMaterialStockServiceTest {
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
     }
 
+    @Test
+    void issueFefo_outsAcrossLotsInOrder_andWritesOutLedger() {
+        ice.setQtyOnHand(new BigDecimal("10"));
+        RawMaterialLot first = lot(11L, ice, "L1", new BigDecimal("4"), new BigDecimal("1000"));
+        RawMaterialLot second = lot(12L, ice, "L2", new BigDecimal("6"), new BigDecimal("2000"));
+        when(rawMaterialLotRepository.findFefo(3L, true)).thenReturn(List.of(first, second));
+        when(rawMaterialLotRepository.findByIdForUpdate(11L)).thenReturn(Optional.of(first));
+        when(rawMaterialLotRepository.findByIdForUpdate(12L)).thenReturn(Optional.of(second));
+
+        var slices = service.issueFefo(
+                ice, new BigDecimal("5"), RawMaterialStockService.REF_MATERIAL_ISSUE, 99L, null, "xuất");
+
+        assertThat(slices).hasSize(2);
+        assertThat(slices.get(0).qty()).isEqualByComparingTo("4");
+        assertThat(slices.get(1).qty()).isEqualByComparingTo("1");
+        assertThat(first.getQtyRemaining()).isEqualByComparingTo("0");
+        assertThat(second.getQtyRemaining()).isEqualByComparingTo("5");
+        assertThat(ice.getQtyOnHand()).isEqualByComparingTo("5");
+        verify(rawMaterialLedgerRepository, org.mockito.Mockito.times(2)).save(any(RawMaterialLedger.class));
+    }
+
+    @Test
+    void issueFefo_whenOnHandShort_returns409() {
+        ice.setQtyOnHand(new BigDecimal("2"));
+
+        assertThatThrownBy(() -> service.issueFefo(
+                        ice, new BigDecimal("3"), RawMaterialStockService.REF_MATERIAL_ISSUE, 1L, null, null))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.CONFLICT));
+    }
+
+    private static RawMaterialLot lot(Long id, RawMaterial material, String code, BigDecimal remaining, BigDecimal price) {
+        RawMaterialLot lot = new RawMaterialLot();
+        setId(lot, id);
+        lot.setRawMaterial(material);
+        lot.setLotCode(code);
+        lot.setQtyReceived(remaining);
+        lot.setQtyRemaining(remaining);
+        lot.setUnitPrice(price);
+        return lot;
+    }
+
     private static void setId(Object entity, Long id) {
         try {
             var field = entity.getClass().getDeclaredField("id");

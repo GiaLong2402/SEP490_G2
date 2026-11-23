@@ -12,6 +12,8 @@ import static org.mockito.Mockito.when;
 import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.feature.catalog.Product;
 import com.hbsisms.feature.catalog.ProductRepository;
+import com.hbsisms.feature.catalog.ProductVariantRepository;
+import com.hbsisms.feature.inventory.GoodsReceiptService;
 import com.hbsisms.feature.production.dto.ProductionOrderCreateRequest;
 import com.hbsisms.feature.production.dto.ProductionOrderResponse;
 import com.hbsisms.feature.production.dto.ProductionOrderUpdateRequest;
@@ -40,9 +42,13 @@ class ProductionOrderServiceTest {
     @Mock
     private ProductRepository productRepository;
     @Mock
+    private ProductVariantRepository productVariantRepository;
+    @Mock
     private BomExplosionService bomExplosionService;
     @Mock
     private MaterialIssueService materialIssueService;
+    @Mock
+    private GoodsReceiptService goodsReceiptService;
     @Mock
     private BusinessCodeService businessCodeService;
     @Mock
@@ -56,8 +62,10 @@ class ProductionOrderServiceTest {
                 productionOrderRepository,
                 materialLineRepository,
                 productRepository,
+                productVariantRepository,
                 bomExplosionService,
                 materialIssueService,
+                goodsReceiptService,
                 businessCodeService,
                 userRepository);
     }
