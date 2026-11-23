@@ -6,6 +6,8 @@ export interface ReceiptQuery extends ListQuery {
   receiptType?: string;
   /** pending | completed | cancelled */
   status?: string;
+  /** asc = mã phiếu tăng dần; mặc định giảm dần */
+  sort?: string;
 }
 
 export interface RawMaterialQuery extends Query {

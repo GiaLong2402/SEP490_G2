@@ -36,9 +36,10 @@ public class GoodsReceiptController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String receiptType,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String sort,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "" + PageRequests.DEFAULT_PAGE_SIZE) int pageSize) {
-        return goodsReceiptService.list(q, receiptType, status, page, pageSize);
+        return goodsReceiptService.list(q, receiptType, status, sort, page, pageSize);
     }
 
     @PostMapping
