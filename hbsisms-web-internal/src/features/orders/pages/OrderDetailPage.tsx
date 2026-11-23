@@ -44,7 +44,7 @@ export default function OrderDetailPage() {
   const [pickingSlip, setPickingSlip] = useState<OrderPickingSlip | null>(null);
   const [deciding, setDeciding] = useState<'approved' | 'rejected' | null>(null);
 
-  const needsOrderApproval = !!order && order.isOverLimit && !order.approvedBy && order.state !== 'cancelled';
+  const needsOrderApproval = !!order && order.isOverLimit && !order.approvedBy && order.state !== 'cancelled' && order.state !== 'expired';
   const pendingApproval = useQuery({
     queryKey: ['approvals', 'pending-for-order', id],
     queryFn: ({ signal }) => approvalsApi.list({ status: 'pending', pageSize: 50 }, signal),
@@ -83,6 +83,7 @@ export default function OrderDetailPage() {
   const canPay =
     (can('orders') || can('debt'))
     && order.state !== 'cancelled'
+    && order.state !== 'expired'
     && outstanding > 0
     && !(order.paymentMethod === 'credit_net' && order.state === 'pending')
     && !hasPendingPayos;
@@ -91,12 +92,14 @@ export default function OrderDetailPage() {
     order.fulfillmentMethod === 'pickup'
     && order.state !== 'completed'
     && order.state !== 'cancelled'
+    && order.state !== 'expired'
     && order.state !== 'pending'
     && order.paymentStatus === 'paid';
   const canEdit = ['pending', 'confirmed'].includes(order.state) && !['paid', 'partial'].includes(order.paymentStatus);
   const canPrintReceipt = order.paymentStatus === 'paid';
   const canPrintPicking =
     order.state !== 'cancelled'
+    && order.state !== 'expired'
     && order.state !== 'pending'
     && (order.allocationStatus === 'full' || order.allocationStatus === 'held');
   const collectOnDelivery = isCollectOnDelivery(order.paymentMethod, order.fulfillmentMethod);
@@ -110,7 +113,7 @@ export default function OrderDetailPage() {
   const showCodHint =
     collectOnDelivery
     && order.paymentStatus !== 'paid'
-    && !['cancelled', 'completed'].includes(order.state)
+    && !['cancelled', 'expired', 'completed'].includes(order.state)
     && outstanding > 0;
 
   const lineColumns: Column<OrderLineView>[] = [
@@ -185,7 +188,7 @@ export default function OrderDetailPage() {
             <span className="font-mono">{order.code}</span>
             <StatusChip meta={orderStateMeta} value={order.state} />
             <StatusChip meta={paymentStatusMeta} value={order.paymentStatus} />
-            {order.state !== 'cancelled' && <StatusChip meta={allocationStatusMeta} value={order.allocationStatus} />}
+            {order.state !== 'cancelled' && order.state !== 'expired' && <StatusChip meta={allocationStatusMeta} value={order.allocationStatus} />}
           </span>
         }
         actions={

@@ -5,7 +5,7 @@ import { orderStateMeta, type OrderState } from '@/shared/domain/enums';
 const BASE_FLOW: OrderState[] = ['pending', 'confirmed', 'preparing', 'to_ship', 'delivered', 'completed'];
 
 export function OrderProgress({ state }: { state: OrderState }) {
-  if (state === 'cancelled') return null;
+  if (state === 'cancelled' || state === 'expired') return null;
   const flow: OrderState[] =
     state === 'partial'
       ? ['pending', 'confirmed', 'preparing', 'to_ship', 'partial', 'delivered', 'completed']
