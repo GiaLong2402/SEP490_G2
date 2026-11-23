@@ -12,9 +12,7 @@ public enum ReturnStatus {
     /** Hàng trả không nhập bán lại — bỏ toàn bộ số trên phiếu (không cách ly). */
     DISCARDED,
     REFUNDED,
-    REJECTED,
-    /** Hủy / bỏ phiếu trả (có trên DB Neon; seeder đọc được khi khởi động). */
-    DISCARDED;
+    REJECTED;
 
     @JsonValue
     public String code() {
