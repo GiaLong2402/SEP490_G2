@@ -10,7 +10,9 @@ public enum ReturnStatus {
     PENDING,
     RECEIVED,
     REFUNDED,
-    REJECTED;
+    REJECTED,
+    /** Hủy / bỏ phiếu trả (có trên DB Neon; seeder đọc được khi khởi động). */
+    DISCARDED;
 
     @JsonValue
     public String code() {

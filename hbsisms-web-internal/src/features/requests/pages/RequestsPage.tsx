@@ -3,7 +3,7 @@ import { CheckCircle2, FileText, Plus, XCircle } from 'lucide-react';
 import { CustomerSearchField } from '@/features/customers';
 import { useAction } from '@/shared/api/useAction';
 import { requestStatusMeta, saleChannelLabels, staffSaleChannelLabels, type SaleChannel } from '@/shared/domain/enums';
-import { dateTime } from '@/shared/lib/format';
+import { date, dateTime } from '@/shared/lib/format';
 import { Button, Card, Chip, ConfirmDialog, DataTable, Field, FilterBar, FilterSelect, Input, LinkButton, Modal, PageHeader, Pagination, SearchBox, Select, StatusChip, Textarea, enumOptions, useListParams, type Column } from '@/shared/ui';
 import { requestsApi } from '../api';
 import { useRequests } from '../hooks';
@@ -97,6 +97,17 @@ export default function RequestsPage() {
         ),
     },
     { key: 'at', header: 'Tiếp nhận', hideOnMobile: true, cell: (r) => <span className="whitespace-nowrap">{dateTime(r.receivedAt)}</span> },
+    {
+      key: 'neededDate',
+      header: 'Ngày cần giao',
+      hideOnMobile: true,
+      cell: (r) =>
+        r.neededDate ? (
+          <span className="whitespace-nowrap">{date(r.neededDate)}</span>
+        ) : (
+          <span className="text-ink-faint">—</span>
+        ),
+    },
     { key: 'handler', header: 'Phụ trách', hideOnMobile: true, cell: (r) => r.handlerName ?? <span className="text-ink-faint">Chưa có</span> },
     {
       key: 'status',

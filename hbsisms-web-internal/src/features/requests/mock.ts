@@ -28,6 +28,7 @@ mock('POST', '/sales-requests', ({ body, userId }) => {
     receivedAt: new Date().toISOString(),
     handledBy: userId,
     note: null,
+    neededDate: body.neededDate ?? null,
     feasible: null,
     fulfillableQty: null,
     shortageQty: null,
