@@ -247,14 +247,14 @@ public class GoodsReceiptService {
                     throw ApiException.badRequest("HSD của " + name + " không được trước ngày sản xuất");
                 }
                 if (input.expDate() != null && input.expDate().isBefore(today)) {
-                    throw ApiException.badRequest("HSD của " + name + " đã qua — không nhập kho lô hết hạn");
+                    throw ApiException.badRequest("HSD của " + name + " đã qua - không nhập kho lô hết hạn");
                 }
             }
             totalReceived = totalReceived.add(input.qtyReceived());
         }
         if (totalReceived.signum() <= 0) {
             throw ApiException.badRequest(
-                    "Phải có ít nhất một dòng thực nhận lớn hơn 0 — nếu hàng không về, hãy hủy phiếu");
+                    "Phải có ít nhất một dòng thực nhận lớn hơn 0 - nếu hàng không về, hãy hủy phiếu");
         }
 
         AppUser actor = actorId == null ? null : userRepository.findById(actorId).orElse(null);
@@ -301,7 +301,7 @@ public class GoodsReceiptService {
         receipt.setCompletedBy(actor);
         String note = Strings.trimToNull(request.note());
         if (note != null) {
-            receipt.setNote(receipt.getNote() == null ? note : receipt.getNote() + " — " + note);
+            receipt.setNote(receipt.getNote() == null ? note : receipt.getNote() + " - " + note);
         }
         goodsReceiptRepository.save(receipt);
 
@@ -327,7 +327,7 @@ public class GoodsReceiptService {
         receipt.setCompletedBy(actor);
         if (why != null) {
             String cancelNote = "Hủy: " + why;
-            receipt.setNote(receipt.getNote() == null ? cancelNote : receipt.getNote() + " — " + cancelNote);
+            receipt.setNote(receipt.getNote() == null ? cancelNote : receipt.getNote() + " - " + cancelNote);
         }
         goodsReceiptRepository.save(receipt);
         Map<String, Object> detail = new LinkedHashMap<>();

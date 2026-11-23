@@ -381,7 +381,7 @@ class GoodsReceiptServiceTest {
         GoodsReceiptResponse cancelled = service.cancel(30L, "  Nhà cung cấp hết hàng ", 1L);
 
         assertThat(cancelled.status()).isEqualTo(ReceiptStatus.CANCELLED);
-        assertThat(cancelled.note()).isEqualTo("Giao sáng — Hủy: Nhà cung cấp hết hàng");
+        assertThat(cancelled.note()).isEqualTo("Giao sáng - Hủy: Nhà cung cấp hết hàng");
         verify(rawMaterialStockService, never()).receive(any(), any(), any(), any(), any(), any(), any(), any(), any());
         verify(auditLogService).record(eq(1L), eq("cancel"), eq("goods_receipt"), eq(30L), anyMap());
     }

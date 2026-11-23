@@ -41,12 +41,12 @@ export function dateTime(value: string | null | undefined) {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** dd/mm/yyyy hh:mm:ss — đầy đủ năm và giây (dùng ở khu Nhập kho). */
+/** dd/mm/yyyy - hh:mm:ss: đầy đủ năm và giây (dùng ở khu Nhập kho). */
 export function dateTimeFull(value: string | null | undefined) {
-  if (!value) return '—';
+  if (!value) return '-';
   const d = new Date(value);
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} - ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 export function daysUntil(value: string | null | undefined) {

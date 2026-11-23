@@ -180,6 +180,6 @@ public class RawMaterialStockService {
                 return candidate;
             }
         }
-        throw ApiException.conflict("Không sinh được mã lô — vui lòng nhập mã lô");
+        throw ApiException.conflict("Không sinh được mã lô - vui lòng nhập mã lô");
     }
 }

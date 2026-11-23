@@ -81,7 +81,7 @@ export function LocationPicker({ warehouses, value, need, roomFor, onChange, ...
           {selected ? (
             <>
               {selected.l.code}
-              {selected.l.zone ? ` · ${selected.l.zone}` : ''} <span className="text-ink-faint">— {selected.w.code}</span>
+              {selected.l.zone ? ` · ${selected.l.zone}` : ''} <span className="text-ink-faint">- {selected.w.code}</span>
             </>
           ) : (
             'Chọn vị trí...'
@@ -108,8 +108,8 @@ export function LocationPicker({ warehouses, value, need, roomFor, onChange, ...
           }}
         >
           <div className="border-b border-line bg-rowalt/60 px-3 py-2 text-small text-ink-muted">
-            Cần chỗ cho <span className="font-semibold text-ink">{num(needed)} khay</span>
-            {!(need > 0) && ' — nhập số khay trước để lọc đúng chỗ'}
+            Cần chỗ để <span className="font-semibold text-ink">{num(needed)} khay</span>
+            {need > 0 ? ' - chỉ hiện những chỗ còn đủ trống' : ' - hãy nhập số khay trước để lọc đúng chỗ'}
           </div>
           {options.length === 0 || !active ? (
             <p className="px-3 py-6 text-center text-small text-ink-muted">Không còn vị trí nào đủ chỗ cho {num(needed)} khay.</p>
@@ -129,7 +129,8 @@ export function LocationPicker({ warehouses, value, need, roomFor, onChange, ...
                       >
                         <span className="min-w-0 flex-1">
                           <span className={`block truncate font-medium ${isActive ? 'text-primary' : 'text-ink'}`}>{w.name}</span>
-                          <span className="block text-small text-ink-faint">{w.code} · còn {num(room)} khay · {locations.length} vị trí đủ chỗ</span>
+                          <span className="block text-small text-ink-muted">Kho còn trống {num(room)} khay</span>
+                          <span className="block text-small text-ink-faint">{locations.length} chỗ đủ để {num(needed)} khay</span>
                         </span>
                         <ChevronRight size={14} className="shrink-0 text-ink-faint" aria-hidden />
                       </button>
@@ -156,7 +157,8 @@ export function LocationPicker({ warehouses, value, need, roomFor, onChange, ...
                             {l.code}
                             {l.zone ? <span className="font-normal text-ink-muted"> · {l.zone}</span> : null}
                           </span>
-                          <span className="block text-small text-ink-faint">Còn {num(roomFor(Number(l.id)))} / {num(l.capacity)} khay</span>
+                          <span className="block text-small text-ink-muted">Còn trống {num(roomFor(Number(l.id)))} khay</span>
+                          <span className="block text-small text-ink-faint">Nhập xong còn trống {num(roomFor(Number(l.id)) - needed)} khay</span>
                         </span>
                         {isSelected && <Check size={15} className="shrink-0 text-primary" aria-hidden />}
                       </button>

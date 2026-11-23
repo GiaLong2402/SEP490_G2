@@ -32,8 +32,8 @@ const lineView = (line: MockLine) => {
   const material = db.rawMaterials.find((m) => m.id === line.rawMaterialId);
   return {
     ...line,
-    rawMaterialCode: material?.code ?? '—',
-    rawMaterialName: material?.name ?? '—',
+    rawMaterialCode: material?.code ?? '-',
+    rawMaterialName: material?.name ?? '-',
     unit: material?.unit ?? '',
     amount: line.qtyReceived !== null && line.unitPrice !== null ? line.qtyReceived * line.unitPrice : null,
   };
@@ -46,7 +46,7 @@ const toItem = (r: ReceiptRow) => {
   return {
     ...r,
     receiverName: userName(r.receivedBy),
-    supplierName: r.source?.trim() || '—',
+    supplierName: r.source?.trim() || '-',
     status: extra?.status ?? ('completed' as ReceiptStatus),
     expectedDate: extra?.expectedDate ?? null,
     completedAt: extra?.completedAt ?? null,
@@ -217,11 +217,11 @@ mock('POST', '/goods-receipts/:id/complete', ({ params, body, userId }) => {
     if (qty > 0) {
       if (!(Number(input.unitPrice) > 0)) fail(400, `Vui lòng nhập đơn giá nhập lớn hơn 0 cho ${name}`);
       if (input.mfgDate && input.expDate && input.expDate < input.mfgDate) fail(400, `HSD của ${name} không được trước ngày sản xuất`);
-      if (input.expDate && input.expDate < today) fail(400, `HSD của ${name} đã qua — không nhập kho lô hết hạn`);
+      if (input.expDate && input.expDate < today) fail(400, `HSD của ${name} đã qua - không nhập kho lô hết hạn`);
     }
     total += qty;
   });
-  if (!(total > 0)) fail(400, 'Phải có ít nhất một dòng thực nhận lớn hơn 0 — nếu hàng không về, hãy hủy phiếu');
+  if (!(total > 0)) fail(400, 'Phải có ít nhất một dòng thực nhận lớn hơn 0 - nếu hàng không về, hãy hủy phiếu');
   ensureOpeningLots();
   const now = new Date().toISOString();
   extra.lines.forEach((line) => {
@@ -252,7 +252,7 @@ mock('POST', '/goods-receipts/:id/complete', ({ params, body, userId }) => {
   extra.completedBy = userId;
   row.receivedAt = now;
   row.items = extra.lines.map((l) => ({ name: lineView(l).rawMaterialName, qty: l.qtyReceived ?? 0, unit: lineView(l).unit }));
-  if (body.note) row.note = row.note ? `${row.note} — ${body.note}` : body.note;
+  if (body.note) row.note = row.note ? `${row.note} - ${body.note}` : body.note;
   audit(userId, 'complete', 'goods_receipt', row.id);
   return toItem(row);
 });
@@ -263,7 +263,7 @@ mock('POST', '/goods-receipts/:id/cancel', ({ params, body, userId }) => {
   extra.completedAt = new Date().toISOString();
   extra.completedBy = userId;
   const reason = String(body?.reason ?? '').trim();
-  if (reason) row.note = row.note ? `${row.note} — Hủy: ${reason}` : `Hủy: ${reason}`;
+  if (reason) row.note = row.note ? `${row.note} - Hủy: ${reason}` : `Hủy: ${reason}`;
   audit(userId, 'cancel', 'goods_receipt', row.id);
   return toItem(row);
 });

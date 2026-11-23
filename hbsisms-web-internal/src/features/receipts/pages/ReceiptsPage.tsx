@@ -103,7 +103,7 @@ export default function ReceiptsPage() {
         expectedDate: type === 'raw' ? expectedDate || null : null,
       }),
     {
-      success: (r) => (r.status === 'pending' ? `Đã tạo phiếu ${r.code} — chờ nhập kho (chưa cộng tồn)` : `Đã tạo phiếu nhập ${r.code}`),
+      success: (r) => (r.status === 'pending' ? `Đã tạo phiếu ${r.code} - chờ nhập kho (chưa cộng tồn)` : `Đã tạo phiếu nhập ${r.code}`),
       onDone: () => setOpen(false),
     },
   );
@@ -122,7 +122,7 @@ export default function ReceiptsPage() {
           type="button"
           className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-ink"
           onClick={() => list.setFilter('sort', codeAsc ? '' : 'asc')}
-          title={codeAsc ? 'Đang xếp mã tăng dần — bấm để xếp giảm dần' : 'Đang xếp mã giảm dần — bấm để xếp tăng dần'}
+          title={codeAsc ? 'Đang xếp mã tăng dần - bấm để xếp giảm dần' : 'Đang xếp mã giảm dần - bấm để xếp tăng dần'}
           aria-label={codeAsc ? 'Mã phiếu, tăng dần. Bấm để xếp giảm dần' : 'Mã phiếu, giảm dần. Bấm để xếp tăng dần'}
         >
           Mã phiếu {codeAsc ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
@@ -132,7 +132,7 @@ export default function ReceiptsPage() {
       cell: (r) => <span className="num text-body text-primary">{r.code}</span>,
     },
     { key: 'type', header: 'Loại', cell: (r) => <Chip tone={r.receiptType === 'raw' ? 'amber' : 'blue'}>{receiptTypeLabels[r.receiptType]}</Chip> },
-    { key: 'source', header: 'Nguồn', cell: (r) => <div className="min-w-[120px] max-w-[200px] text-ink">{r.source?.trim() || r.supplierName || '—'}</div> },
+    { key: 'source', header: 'Nguồn', cell: (r) => <div className="min-w-[120px] max-w-[200px] text-ink">{r.source?.trim() || r.supplierName || '-'}</div> },
     {
       key: 'items', header: 'Hàng nhập',
       cell: (r) => (
@@ -169,7 +169,7 @@ export default function ReceiptsPage() {
     },
     {
       key: 'amount', header: 'Tiền nhập', align: 'right', hideOnMobile: true,
-      cell: (r) => (r.totalAmount !== null ? <span className="whitespace-nowrap font-medium tabular-nums text-ink">{money(r.totalAmount)}</span> : <span className="text-ink-faint">—</span>),
+      cell: (r) => (r.totalAmount !== null ? <span className="whitespace-nowrap font-medium tabular-nums text-ink">{money(r.totalAmount)}</span> : <span className="text-ink-faint">-</span>),
     },
     {
       key: 'status', header: 'Trạng thái',
@@ -188,7 +188,7 @@ export default function ReceiptsPage() {
     {
       key: 'at', header: 'Cập nhật', hideOnMobile: true,
       cell: (r) => {
-        const who = (r.status === 'pending' ? r.receiverName : r.completerName ?? r.receiverName) ?? '—';
+        const who = (r.status === 'pending' ? r.receiverName : r.completerName ?? r.receiverName) ?? '-';
         const verb = r.status === 'pending' ? 'Tạo bởi' : r.status === 'cancelled' ? 'Hủy bởi' : 'Nhập bởi';
         return (
           <div className="whitespace-nowrap">
@@ -371,7 +371,7 @@ export default function ReceiptsPage() {
                         label="Nguyên liệu"
                         required
                         className="sm:col-span-8"
-                        error={touched && duplicate ? 'Nguyên liệu này đã chọn ở trên — gộp số lượng vào một dòng.' : undefined}
+                        error={touched && duplicate ? 'Nguyên liệu này đã chọn ở trên - gộp số lượng vào một dòng.' : undefined}
                         hint={material ? <>Đang tồn <span className="font-medium tabular-nums text-ink-muted">{num(material.qtyOnHand)} {unit}</span></> : undefined}
                       >
                         <Select value={r.rawMaterialId} onChange={(e) => patch({ rawMaterialId: e.target.value })}>
@@ -415,7 +415,7 @@ export default function ReceiptsPage() {
         open={!!cancelling}
         danger
         title={cancelling ? `Hủy phiếu ${cancelling.code}` : ''}
-        message="Phiếu đang chờ nhập nên chưa cộng tồn — hủy không làm thay đổi tồn kho."
+        message="Phiếu đang chờ nhập nên chưa cộng tồn - hủy không làm thay đổi tồn kho."
         withNote
         noteLabel="Lý do hủy"
         confirmLabel="Hủy phiếu"

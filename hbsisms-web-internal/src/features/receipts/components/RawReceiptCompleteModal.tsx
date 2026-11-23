@@ -95,7 +95,7 @@ export function RawReceiptCompleteModal({ receipt, onClose }: { receipt: Receipt
             {[
               { icon: <Truck size={17} />, label: 'Nguồn hàng', value: receipt.source, sub: null },
               { icon: <CalendarClock size={17} />, label: 'Dự kiến về', value: receipt.expectedDate ? date(receipt.expectedDate) : 'Chưa hẹn', sub: null },
-              { icon: <UserRound size={17} />, label: 'Người tạo phiếu', value: receipt.receiverName ?? '—', sub: dateTimeFull(receipt.receivedAt) },
+              { icon: <UserRound size={17} />, label: 'Người tạo phiếu', value: receipt.receiverName ?? '-', sub: dateTimeFull(receipt.receivedAt) },
             ].map((item) => (
               <div key={item.label} className="flex items-center gap-3 bg-card px-3 py-3">
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary" aria-hidden>{item.icon}</span>
@@ -143,7 +143,7 @@ export function RawReceiptCompleteModal({ receipt, onClose }: { receipt: Receipt
                           : <Chip tone={diff < 0 ? 'amber' : 'blue'}>{diff < 0 ? 'Thiếu' : 'Dư'} {num(Math.abs(diff))} {unitLabel(line.unit)}</Chip>
                     )}
                     <span className="ml-auto text-small text-ink-muted">
-                      Thành tiền <span className="ml-1 text-body font-semibold tabular-nums text-ink">{lineTotal > 0 ? money(lineTotal) : '—'}</span>
+                      Thành tiền <span className="ml-1 text-body font-semibold tabular-nums text-ink">{lineTotal > 0 ? money(lineTotal) : '-'}</span>
                     </span>
                   </div>
                   <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -172,7 +172,7 @@ export function RawReceiptCompleteModal({ receipt, onClose }: { receipt: Receipt
           </ul>
 
           {touched && receivedCount === 0 && (
-            <p className="mt-2 text-small text-red-fg">Phải có ít nhất một dòng thực nhận lớn hơn 0 — nếu hàng không về, hãy hủy phiếu.</p>
+            <p className="mt-2 text-small text-red-fg">Phải có ít nhất một dòng thực nhận lớn hơn 0 - nếu hàng không về, hãy hủy phiếu.</p>
           )}
           <Field label="Ghi chú nhập kho" className="mt-4">
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ví dụ: thiếu 0,5 kg so với dự kiến" />
