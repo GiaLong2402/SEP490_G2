@@ -1,5 +1,6 @@
 package com.hbsisms.feature.inventory;
 
+import com.hbsisms.feature.inventory.dto.RawMaterialLotResponse;
 import com.hbsisms.feature.inventory.dto.RawMaterialRequest;
 import com.hbsisms.feature.inventory.dto.RawMaterialResponse;
 import jakarta.validation.Valid;
@@ -22,9 +23,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class RawMaterialController {
 
     private final RawMaterialService rawMaterialService;
+    private final RawMaterialStockService rawMaterialStockService;
 
-    public RawMaterialController(RawMaterialService rawMaterialService) {
+    public RawMaterialController(
+            RawMaterialService rawMaterialService, RawMaterialStockService rawMaterialStockService) {
         this.rawMaterialService = rawMaterialService;
+        this.rawMaterialStockService = rawMaterialStockService;
     }
 
     @GetMapping
@@ -38,6 +42,13 @@ public class RawMaterialController {
     @GetMapping("/{id}")
     public RawMaterialResponse get(@PathVariable Long id) {
         return rawMaterialService.get(id);
+    }
+
+    /** Lô NVL theo FEFO (HSD gần nhất trước); {@code availableOnly=true} chỉ lô còn tồn. */
+    @GetMapping("/{id}/lots")
+    public List<RawMaterialLotResponse> lots(
+            @PathVariable Long id, @RequestParam(defaultValue = "false") boolean availableOnly) {
+        return rawMaterialStockService.lots(id, availableOnly).stream().map(RawMaterialLotResponse::from).toList();
     }
 
     @PostMapping

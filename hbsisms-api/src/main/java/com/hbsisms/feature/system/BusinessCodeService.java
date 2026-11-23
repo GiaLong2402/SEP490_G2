@@ -19,6 +19,8 @@ public class BusinessCodeService {
     public static final String SEQ_PAYOS_ORDER = "hbsisms.seq_payos_order_code";
     public static final String SEQ_DELIVERY = "hbsisms.seq_delivery";
     public static final String SEQ_RETURN = "hbsisms.seq_return_order";
+    public static final String SEQ_PRODUCTION_ORDER = "hbsisms.seq_production_order";
+    public static final String SEQ_MATERIAL_ISSUE = "hbsisms.seq_material_issue";
 
     private final JdbcTemplate jdbc;
     private final Clock clock;
@@ -50,6 +52,14 @@ public class BusinessCodeService {
 
     public String nextReturnCode() {
         return formatYearly("RET", nextVal(SEQ_RETURN));
+    }
+
+    public String nextProductionOrderCode() {
+        return formatYearly("LSX", nextVal(SEQ_PRODUCTION_ORDER));
+    }
+
+    public String nextMaterialIssueCode() {
+        return formatYearly("PX", nextVal(SEQ_MATERIAL_ISSUE));
     }
 
     private String formatYearly(String prefix, long n) {

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -258,6 +259,96 @@ class DeliveryServiceTest {
         assertThat(DeliveryService.methodLabel(FulfillmentMethod.SHOP_DELIVERY)).isEqualTo("Shop tự giao");
         assertThat(DeliveryService.methodLabel(FulfillmentMethod.PICKUP)).isEqualTo("Khách đến lấy");
         assertThat(DeliveryService.methodLabel(FulfillmentMethod.PARTNER_DELIVERY)).isEqualTo("Đối tác giao");
+    }
+
+    // ---- Inter 3 dòng 23 (sửa lỗi): đợt giao checkout web không có danh sách hàng = giao trọn đơn ----
+
+    @Test
+    void delivered_webDeliveryWithoutItems_marksOrderDeliveredAndIssuesStock() {
+        SalesOrder order = order(70L, PaymentMethod.PAYOS, PaymentStatus.PAID, OrderState.TO_SHIP);
+        order.setChannel(SaleChannel.WEB);
+        Delivery delivery = delivery(80L, order, DeliveryState.GOING);
+        delivery.setItems(List.of());
+        when(deliveryRepository.findByIdForUpdate(80L)).thenReturn(Optional.of(delivery));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(salesOrderLineRepository.findByOrder_IdOrderByIdAsc(70L)).thenReturn(List.of(line(71L, 3), line(72L, 2)));
+        when(deliveryRepository.findByOrder_IdOrderByIdAsc(70L)).thenReturn(List.of(delivery));
+
+        service.update(80L, new DeliveryUpdateRequest(DeliveryState.DELIVERED, null), 9L);
+
+        assertThat(delivery.getState()).isEqualTo(DeliveryState.DELIVERED);
+        assertThat(delivery.getDeliveredAt()).isEqualTo(Instant.parse("2026-11-15T10:00:00Z"));
+        assertThat(order.getState()).isEqualTo(OrderState.DELIVERED);
+        verify(orderAllocationService).issueOutHeldForOrder(eq(order), eq(9L));
+        assertThat(savedEventDescriptions()).contains("Đã giao đủ hàng");
+    }
+
+    @Test
+    void delivered_webPickupWithoutItems_customerReceived_marksOrderDelivered() {
+        SalesOrder order = order(73L, PaymentMethod.PAYOS, PaymentStatus.PAID, OrderState.TO_SHIP);
+        order.setChannel(SaleChannel.WEB);
+        order.setFulfillmentMethod(FulfillmentMethod.PICKUP);
+        Delivery delivery = delivery(81L, order, DeliveryState.READY);
+        delivery.setFulfillmentMethod(FulfillmentMethod.PICKUP);
+        delivery.setItems(List.of());
+        when(deliveryRepository.findByIdForUpdate(81L)).thenReturn(Optional.of(delivery));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(salesOrderLineRepository.findByOrder_IdOrderByIdAsc(73L)).thenReturn(List.of(line(74L, 1)));
+        when(deliveryRepository.findByOrder_IdOrderByIdAsc(73L)).thenReturn(List.of(delivery));
+
+        service.update(81L, new DeliveryUpdateRequest(DeliveryState.DELIVERED, null), 9L);
+
+        assertThat(order.getState()).isEqualTo(OrderState.DELIVERED);
+        verify(orderAllocationService).issueOutHeldForOrder(eq(order), eq(9L));
+        assertThat(savedEventDescriptions()).contains("Khách đã nhận Đợt 1", "Đã giao đủ hàng");
+    }
+
+    @Test
+    void delivered_webRedeliveryAfterFailed_withoutItems_marksOrderDelivered() {
+        SalesOrder order = order(75L, PaymentMethod.PAYOS, PaymentStatus.PAID, OrderState.TO_SHIP);
+        order.setChannel(SaleChannel.WEB);
+        Delivery failed = delivery(82L, order, DeliveryState.FAILED);
+        failed.setItems(List.of());
+        Delivery retry = delivery(83L, order, DeliveryState.GOING);
+        retry.setItems(List.of());
+        when(deliveryRepository.findByIdForUpdate(83L)).thenReturn(Optional.of(retry));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(salesOrderLineRepository.findByOrder_IdOrderByIdAsc(75L)).thenReturn(List.of(line(76L, 4)));
+        when(deliveryRepository.findByOrder_IdOrderByIdAsc(75L)).thenReturn(List.of(failed, retry));
+
+        service.update(83L, new DeliveryUpdateRequest(DeliveryState.DELIVERED, null), 9L);
+
+        assertThat(order.getState()).isEqualTo(OrderState.DELIVERED);
+        verify(orderAllocationService).issueOutHeldForOrder(eq(order), eq(9L));
+    }
+
+    @Test
+    void delivered_itemizedLessThanOrdered_marksOrderPartial_withoutIssuingStock() {
+        SalesOrder order = order(77L, PaymentMethod.CASH, PaymentStatus.PAID, OrderState.TO_SHIP);
+        Delivery delivery = delivery(84L, order, DeliveryState.GOING);
+        delivery.setItems(List.of(new DeliveryItem(78L, 1)));
+        when(deliveryRepository.findByIdForUpdate(84L)).thenReturn(Optional.of(delivery));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(salesOrderLineRepository.findByOrder_IdOrderByIdAsc(77L)).thenReturn(List.of(line(78L, 3)));
+        when(deliveryRepository.findByOrder_IdOrderByIdAsc(77L)).thenReturn(List.of(delivery));
+
+        service.update(84L, new DeliveryUpdateRequest(DeliveryState.DELIVERED, null), 9L);
+
+        assertThat(order.getState()).isEqualTo(OrderState.PARTIAL);
+        verify(orderAllocationService, never()).issueOutHeldForOrder(any(), any());
+    }
+
+    private static SalesOrderLine line(long id, int qtyKhay) {
+        SalesOrderLine line = new SalesOrderLine();
+        setId(line, id);
+        line.setQtyKhay(qtyKhay);
+        return line;
+    }
+
+    private List<String> savedEventDescriptions() {
+        ArgumentCaptor<OrderEvent> captor = ArgumentCaptor.forClass(OrderEvent.class);
+        verify(orderEventRepository, atLeastOnce()).save(captor.capture());
+        return captor.getAllValues().stream().map(OrderEvent::getDescription).toList();
     }
 
     private OrderEvent savedEvent() {

@@ -185,13 +185,19 @@ Jackson khóa tên field `isPublished` / `isActive` (không `published` / `activ
 
 ## receipts
 
-| Phương thức | Đường dẫn |
-|---|---|
-| GET | `/raw-materials` |
-| POST | `/raw-materials` |
-| PUT | `/raw-materials/:id` |
-| GET | `/goods-receipts` |
-| POST | `/goods-receipts` |
+Contract FE: `features/receipts/api.ts`. **Long (Inter 1 dòng 46–47):** phiếu nguyên liệu nhập 2 bước — tạo phiếu **Chờ nhập** (chưa cộng tồn) → thủ kho **xác nhận nhập kho** (SL thực nhận, lô, NSX/HSD, đơn giá) → cộng tồn **theo lô NVL** (`raw_material_lot`), ghi sổ kho NVL (`raw_material_ledger`), phiếu **Hoàn thành**. Phiếu thành phẩm vẫn nhập ngay như cũ. Tổng `qtyOnHand` của NVL luôn = tổng `qtyRemaining` các lô (tồn cũ chưa có lô → lô `TON-DAU` lúc khởi động). Chưa có module đơn mua hàng nên phiếu tạo tay.
+
+| Phương thức | Đường dẫn | Ghi chú |
+|---|---|---|
+| GET | `/raw-materials` | |
+| POST | `/raw-materials` | |
+| PUT | `/raw-materials/:id` | |
+| GET | `/raw-materials/:id/lots` | Lô NVL theo FEFO (HSD gần nhất trước, lô không HSD cuối). `availableOnly=true` chỉ lô còn tồn. Mỗi lô: mã lô, NSX, HSD, **đơn giá nhập**, SL nhập / còn, phiếu nhập. Dòng 50 (xuất NVL) dùng thứ tự này |
+| GET | `/goods-receipts` | Lọc `q`, `receiptType` (`finished`/`raw`), `status` (`pending`/`completed`/`cancelled`; phiếu cũ không có trạng thái = `completed`), `sort` (`asc` = mã phiếu tăng dần; mặc định giảm dần). Trả thêm `status`, `expectedDate`, `completedAt`, `completerName`, `totalAmount`, `lines` |
+| GET | `/goods-receipts/:id` | Chi tiết + `lines` (NVL: dự kiến / thực nhận / lô / HSD / đơn giá / thành tiền) |
+| POST | `/goods-receipts` | **201.** `finished` → nhập ngay (như cũ). `raw` → **Chờ nhập**, `rawLines[].qty` = SL dự kiến, `expectedDate` tùy chọn; không cộng tồn. Mỗi NVL 1 dòng; NVL ngừng dùng → 409 |
+| POST | `/goods-receipts/:id/complete` | Body `{ lines: [{ lineId, qtyReceived, lotCode?, mfgDate?, expDate?, unitPrice }], note? }` — đủ mọi dòng của phiếu. `qtyReceived` ≥ 0 (có thể khác dự kiến; 0 = không về); > 0 thì **đơn giá > 0** bắt buộc; HSD không trước NSX, không ở quá khứ; mã lô trống → `NVL-yyMMdd-NN`, trùng trong cùng NVL → 409. Cả phiếu thực nhận = 0 → 400 (hãy hủy). Khóa phiếu: xác nhận lần 2 / phiếu đã hủy → 409 |
+| POST | `/goods-receipts/:id/cancel` | Body `{ reason? }`. Chỉ phiếu Chờ nhập (không đổi tồn); đã nhập / đã hủy → 409 |
 
 ## reports
 

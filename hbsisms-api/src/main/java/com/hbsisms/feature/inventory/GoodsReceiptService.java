@@ -9,75 +9,133 @@ import com.hbsisms.feature.catalog.ProductVariantRepository;
 import com.hbsisms.feature.inventory.dto.FinishedReceiptLineRequest;
 import com.hbsisms.feature.inventory.dto.GoodsReceiptRequest;
 import com.hbsisms.feature.inventory.dto.GoodsReceiptResponse;
+import com.hbsisms.feature.inventory.dto.RawReceiptCompleteLineRequest;
+import com.hbsisms.feature.inventory.dto.RawReceiptCompleteRequest;
 import com.hbsisms.feature.inventory.dto.RawReceiptLineRequest;
 import com.hbsisms.feature.inventory.dto.ReceiptItemResponse;
+import com.hbsisms.feature.inventory.dto.ReceiptLineResponse;
 import com.hbsisms.feature.sales.OrderAllocationService;
+import com.hbsisms.feature.system.AuditLogService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
 import jakarta.persistence.criteria.Predicate;
+import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Phiếu nhập kho.
+ * <ul>
+ *   <li>Thành phẩm: nhập ngay (cộng tồn theo lô + vị trí), phân bổ cho đơn đang thiếu hàng.</li>
+ *   <li>Nguyên vật liệu (Inter 1 dòng 46–47): tạo phiếu ở trạng thái Chờ nhập — chưa cộng tồn; hàng về thì
+ *       thủ kho xác nhận SL thực nhận, lô, NSX/HSD, đơn giá → cộng tồn theo lô NVL, phiếu Hoàn thành.
+ *       Phiếu chờ có thể hủy.</li>
+ * </ul>
+ */
 @Service
 @Transactional(readOnly = true)
 public class GoodsReceiptService {
 
     public static final String REF_TYPE = "goods_receipt";
 
-    private static final Sort LIST_SORT = Sort.by(Sort.Direction.DESC, "receivedAt", "id");
+    /** Theo mã phiếu: mã sinh tăng dần theo id nên sắp theo id = sắp theo mã (không lệch khi số mã vượt 4 chữ số). */
+    private static final Sort LIST_SORT_NEWEST = Sort.by(Sort.Direction.DESC, "id");
+    private static final Sort LIST_SORT_OLDEST = Sort.by(Sort.Direction.ASC, "id");
+    private static final ZoneId VN = ZoneId.of("Asia/Ho_Chi_Minh");
 
-    /** Matches create-time summary: {@code Name: qty unit} segments joined by {@code ; }. */
+    /** Matches create-time summary of legacy raw receipts: {@code Name: qty unit} joined by {@code ; }. */
     private static final Pattern RAW_ITEM_SEGMENT =
             Pattern.compile("^(.+):\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(.*)$");
 
     private final GoodsReceiptRepository goodsReceiptRepository;
+    private final GoodsReceiptLineRepository goodsReceiptLineRepository;
     private final StockLedgerRepository stockLedgerRepository;
     private final ProductVariantRepository productVariantRepository;
     private final LocationRepository locationRepository;
     private final LotRepository lotRepository;
     private final RawMaterialRepository rawMaterialRepository;
+    private final RawMaterialStockService rawMaterialStockService;
     private final StockService stockService;
     private final UserRepository userRepository;
     private final OrderAllocationService orderAllocationService;
+    private final AuditLogService auditLogService;
+    private final Clock clock;
 
     public GoodsReceiptService(
             GoodsReceiptRepository goodsReceiptRepository,
+            GoodsReceiptLineRepository goodsReceiptLineRepository,
             StockLedgerRepository stockLedgerRepository,
             ProductVariantRepository productVariantRepository,
             LocationRepository locationRepository,
             LotRepository lotRepository,
             RawMaterialRepository rawMaterialRepository,
+            RawMaterialStockService rawMaterialStockService,
             StockService stockService,
             UserRepository userRepository,
-            OrderAllocationService orderAllocationService) {
+            OrderAllocationService orderAllocationService,
+            AuditLogService auditLogService,
+            Clock clock) {
         this.goodsReceiptRepository = goodsReceiptRepository;
+        this.goodsReceiptLineRepository = goodsReceiptLineRepository;
         this.stockLedgerRepository = stockLedgerRepository;
         this.productVariantRepository = productVariantRepository;
         this.locationRepository = locationRepository;
         this.lotRepository = lotRepository;
         this.rawMaterialRepository = rawMaterialRepository;
+        this.rawMaterialStockService = rawMaterialStockService;
         this.stockService = stockService;
         this.userRepository = userRepository;
         this.orderAllocationService = orderAllocationService;
+        this.auditLogService = auditLogService;
+        this.clock = clock;
     }
 
     public PageResponse<GoodsReceiptResponse> list(String q, String receiptType, int page, int pageSize) {
+        return list(q, receiptType, null, null, page, pageSize);
+    }
+
+    public PageResponse<GoodsReceiptResponse> list(
+            String q, String receiptType, String status, int page, int pageSize) {
+        return list(q, receiptType, status, null, page, pageSize);
+    }
+
+    /** @param sort "asc" = mã phiếu tăng dần (cũ nhất trước); còn lại (mặc định) = mã giảm dần (mới nhất trước) */
+    public PageResponse<GoodsReceiptResponse> list(
+            String q, String receiptType, String status, String sort, int page, int pageSize) {
+        Sort listSort = "asc".equalsIgnoreCase(sort == null ? "" : sort.trim()) ? LIST_SORT_OLDEST : LIST_SORT_NEWEST;
         ReceiptType typeFilter = parseReceiptType(receiptType);
+        ReceiptStatus statusFilter = parseStatus(status);
         Specification<GoodsReceipt> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             if (typeFilter != null) {
                 predicates.add(cb.equal(root.get("receiptType"), typeFilter));
+            }
+            if (statusFilter == ReceiptStatus.COMPLETED) {
+                // Phiếu tạo trước khi có trạng thái (status trống) = đã hoàn thành.
+                predicates.add(cb.or(cb.equal(root.get("status"), statusFilter), cb.isNull(root.get("status"))));
+            } else if (statusFilter != null) {
+                predicates.add(cb.equal(root.get("status"), statusFilter));
             }
             String needle = Strings.trimToNull(q);
             if (needle != null) {
@@ -88,9 +146,18 @@ public class GoodsReceiptService {
             }
             return cb.and(predicates.toArray(Predicate[]::new));
         };
-        return PageResponse.from(goodsReceiptRepository
-                .findAll(spec, PageRequests.of(page, pageSize, LIST_SORT))
-                .map(this::toResponse));
+        Page<GoodsReceipt> receipts = goodsReceiptRepository.findAll(spec, PageRequests.of(page, pageSize, listSort));
+        Map<Long, List<GoodsReceiptLine>> linesByReceipt = rawLinesOf(receipts.getContent());
+        return PageResponse.from(receipts.map(
+                receipt -> toResponse(receipt, linesByReceipt.getOrDefault(receipt.getId(), List.of()))));
+    }
+
+    /** Chi tiết phiếu (kèm các dòng NVL). */
+    public GoodsReceiptResponse get(Long id) {
+        GoodsReceipt receipt = goodsReceiptRepository
+                .findById(id)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy phiếu nhập"));
+        return toResponse(receipt, goodsReceiptLineRepository.findByReceipt_IdOrderByLineNoAsc(id));
     }
 
     @Transactional
@@ -106,42 +173,233 @@ public class GoodsReceiptService {
                         .findById(actorId)
                         .orElseThrow(() -> ApiException.notFound("Không tìm thấy người dùng"));
 
+        Instant now = Instant.now(clock);
         GoodsReceipt receipt = new GoodsReceipt();
         receipt.setCode(nextPnCode());
         receipt.setReceiptType(request.receiptType());
         receipt.setSource(source);
         receipt.setNote(Strings.trimToNull(request.note()));
         receipt.setReceivedBy(actor);
-        receipt.setReceivedAt(Instant.now());
-        receipt = goodsReceiptRepository.saveAndFlush(receipt);
+        receipt.setReceivedAt(now);
 
-        List<ReceiptItemResponse> items;
         if (request.receiptType() == ReceiptType.FINISHED) {
-            items = receiveFinished(receipt, request.finishedLines(), actorId);
+            receipt.setStatus(ReceiptStatus.COMPLETED);
+            receipt.setCompletedAt(now);
+            receipt.setCompletedBy(actor);
+            receipt = goodsReceiptRepository.saveAndFlush(receipt);
+            List<ReceiptItemResponse> items = receiveFinished(receipt, request.finishedLines(), actorId);
             // Inter 2: sau nhập TP — phân bổ ưu tiên đơn Paid còn outstanding.
             orderAllocationService.allocateOutstandingAfterReceipt(actorId);
-        } else if (request.receiptType() == ReceiptType.RAW) {
-            items = receiveRaw(request.rawLines());
-            // Persist a human summary so list can show lines until a raw-line table exists.
-            String summary = items.stream()
-                    .map(i -> i.name() + ": " + trimQty(i.qty()) + " " + i.unit())
-                    .reduce((a, b) -> a + "; " + b)
-                    .orElse("");
-            String userNote = Strings.trimToNull(request.note());
-            receipt.setNote(userNote == null ? summary : userNote + " — " + summary);
-            goodsReceiptRepository.save(receipt);
-        } else {
-            throw ApiException.badRequest("Loại phiếu không hỗ trợ");
+            return GoodsReceiptResponse.from(receipt, items);
         }
-
-        return GoodsReceiptResponse.from(receipt, items);
+        if (request.receiptType() == ReceiptType.RAW) {
+            // Inter 1 dòng 46: phiếu NVL chờ nhập — chưa cộng tồn.
+            receipt.setStatus(ReceiptStatus.PENDING);
+            receipt.setExpectedDate(request.expectedDate());
+            List<RawMaterial> materials = validateRawLines(request.rawLines());
+            receipt = goodsReceiptRepository.saveAndFlush(receipt);
+            List<GoodsReceiptLine> lines = new ArrayList<>();
+            for (int i = 0; i < materials.size(); i++) {
+                GoodsReceiptLine line = new GoodsReceiptLine();
+                line.setReceipt(receipt);
+                line.setRawMaterial(materials.get(i));
+                line.setLineNo(i + 1);
+                line.setQtyExpected(request.rawLines().get(i).qty());
+                lines.add(line);
+            }
+            lines = goodsReceiptLineRepository.saveAll(lines);
+            auditLogService.record(actorId, "create", REF_TYPE, receipt.getId(), Map.of(
+                    "receiptType", ReceiptType.RAW.code(),
+                    "status", ReceiptStatus.PENDING.code(),
+                    "lines", lines.size()));
+            return toResponse(receipt, lines);
+        }
+        throw ApiException.badRequest("Loại phiếu không hỗ trợ");
     }
 
-    private static String trimQty(double qty) {
-        if (qty == Math.rint(qty)) {
-            return String.valueOf((long) qty);
+    /**
+     * Inter 1 dòng 47: thủ kho xác nhận nhập kho phiếu NVL — mỗi dòng nhập SL thực nhận (có thể khác dự kiến,
+     * 0 = không về), mã lô (trống = tự sinh), NSX/HSD, đơn giá. Cộng tồn theo lô NVL, phiếu → Hoàn thành.
+     * Khóa phiếu để 2 người xác nhận cùng lúc không cộng tồn 2 lần.
+     */
+    @Transactional
+    public GoodsReceiptResponse complete(Long id, RawReceiptCompleteRequest request, Long actorId) {
+        GoodsReceipt receipt = goodsReceiptRepository
+                .findByIdForUpdate(id)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy phiếu nhập"));
+        if (receipt.getReceiptType() != ReceiptType.RAW) {
+            throw ApiException.conflict("Chỉ phiếu nhập nguyên liệu mới xác nhận nhập kho theo bước này");
         }
-        return String.valueOf(qty);
+        assertPending(receipt);
+
+        List<GoodsReceiptLine> lines = goodsReceiptLineRepository.findByReceipt_IdOrderByLineNoAsc(id);
+        Map<Long, RawReceiptCompleteLineRequest> inputs = indexCompleteLines(request, lines);
+        LocalDate today = LocalDate.now(clock.withZone(VN));
+        BigDecimal totalReceived = BigDecimal.ZERO;
+        for (GoodsReceiptLine line : lines) {
+            RawReceiptCompleteLineRequest input = inputs.get(line.getId());
+            String name = line.getRawMaterial().getName();
+            if (input.qtyReceived().signum() > 0) {
+                if (input.unitPrice() == null || input.unitPrice().signum() <= 0) {
+                    throw ApiException.badRequest("Vui lòng nhập đơn giá nhập lớn hơn 0 cho " + name);
+                }
+                if (input.mfgDate() != null && input.expDate() != null && input.expDate().isBefore(input.mfgDate())) {
+                    throw ApiException.badRequest("HSD của " + name + " không được trước ngày sản xuất");
+                }
+                if (input.expDate() != null && input.expDate().isBefore(today)) {
+                    throw ApiException.badRequest("HSD của " + name + " đã qua - không nhập kho lô hết hạn");
+                }
+            }
+            totalReceived = totalReceived.add(input.qtyReceived());
+        }
+        if (totalReceived.signum() <= 0) {
+            throw ApiException.badRequest(
+                    "Phải có ít nhất một dòng thực nhận lớn hơn 0 - nếu hàng không về, hãy hủy phiếu");
+        }
+
+        AppUser actor = actorId == null ? null : userRepository.findById(actorId).orElse(null);
+        // Khóa NVL theo thứ tự id để 2 phiếu cùng NVL không khóa chéo nhau.
+        Map<Long, RawMaterial> locked = new HashMap<>();
+        lines.stream()
+                .map(line -> line.getRawMaterial().getId())
+                .distinct()
+                .sorted()
+                .forEach(materialId -> locked.put(materialId, rawMaterialRepository
+                        .findByIdForUpdate(materialId)
+                        .orElseThrow(() -> ApiException.notFound("Không tìm thấy nguyên liệu"))));
+
+        for (GoodsReceiptLine line : lines) {
+            RawReceiptCompleteLineRequest input = inputs.get(line.getId());
+            line.setQtyReceived(input.qtyReceived());
+            line.setMfgDate(input.mfgDate());
+            line.setExpDate(input.expDate());
+            if (input.qtyReceived().signum() <= 0) {
+                line.setLotCode(null);
+                line.setUnitPrice(null);
+                continue;
+            }
+            RawMaterialLot lot = rawMaterialStockService.receive(
+                    locked.get(line.getRawMaterial().getId()),
+                    input.lotCode(),
+                    input.mfgDate(),
+                    input.expDate(),
+                    input.unitPrice(),
+                    input.qtyReceived(),
+                    receipt,
+                    actor,
+                    "Nhập nguyên liệu " + receipt.getCode());
+            line.setLotCode(lot.getLotCode());
+            line.setUnitPrice(input.unitPrice());
+            line.setRawLot(lot);
+        }
+        goodsReceiptLineRepository.saveAll(lines);
+
+        Instant now = Instant.now(clock);
+        receipt.setStatus(ReceiptStatus.COMPLETED);
+        receipt.setReceivedAt(now);
+        receipt.setCompletedAt(now);
+        receipt.setCompletedBy(actor);
+        String note = Strings.trimToNull(request.note());
+        if (note != null) {
+            receipt.setNote(receipt.getNote() == null ? note : receipt.getNote() + " - " + note);
+        }
+        goodsReceiptRepository.save(receipt);
+
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("status", ReceiptStatus.COMPLETED.code());
+        detail.put("lines", lines.size());
+        detail.put("qtyReceived", totalReceived);
+        auditLogService.record(actorId, "complete", REF_TYPE, receipt.getId(), detail);
+        return toResponse(receipt, lines);
+    }
+
+    /** Hủy phiếu còn chờ nhập (chưa cộng tồn nên không phải hoàn tồn). */
+    @Transactional
+    public GoodsReceiptResponse cancel(Long id, String reason, Long actorId) {
+        GoodsReceipt receipt = goodsReceiptRepository
+                .findByIdForUpdate(id)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy phiếu nhập"));
+        assertPending(receipt);
+        AppUser actor = actorId == null ? null : userRepository.findById(actorId).orElse(null);
+        String why = Strings.trimToNull(reason);
+        receipt.setStatus(ReceiptStatus.CANCELLED);
+        receipt.setCompletedAt(Instant.now(clock));
+        receipt.setCompletedBy(actor);
+        if (why != null) {
+            String cancelNote = "Hủy: " + why;
+            receipt.setNote(receipt.getNote() == null ? cancelNote : receipt.getNote() + " - " + cancelNote);
+        }
+        goodsReceiptRepository.save(receipt);
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("status", ReceiptStatus.CANCELLED.code());
+        if (why != null) {
+            detail.put("reason", why);
+        }
+        auditLogService.record(actorId, "cancel", REF_TYPE, receipt.getId(), detail);
+        return toResponse(receipt, goodsReceiptLineRepository.findByReceipt_IdOrderByLineNoAsc(id));
+    }
+
+    private static void assertPending(GoodsReceipt receipt) {
+        if (receipt.getStatus() == ReceiptStatus.COMPLETED) {
+            throw ApiException.conflict("Phiếu " + receipt.getCode() + " đã nhập kho");
+        }
+        if (receipt.getStatus() == ReceiptStatus.CANCELLED) {
+            throw ApiException.conflict("Phiếu " + receipt.getCode() + " đã hủy");
+        }
+    }
+
+    /** Mỗi dòng phiếu phải có đúng 1 dòng xác nhận, không thừa, không trùng. */
+    private static Map<Long, RawReceiptCompleteLineRequest> indexCompleteLines(
+            RawReceiptCompleteRequest request, List<GoodsReceiptLine> lines) {
+        if (request == null || request.lines() == null || request.lines().isEmpty()) {
+            throw ApiException.badRequest("Phiếu phải có ít nhất một dòng");
+        }
+        Set<Long> lineIds = lines.stream().map(GoodsReceiptLine::getId).collect(Collectors.toSet());
+        Map<Long, RawReceiptCompleteLineRequest> inputs = new HashMap<>();
+        for (RawReceiptCompleteLineRequest input : request.lines()) {
+            if (input == null || input.lineId() == null || !lineIds.contains(input.lineId())) {
+                throw ApiException.badRequest("Dòng không thuộc phiếu này");
+            }
+            if (input.qtyReceived() == null || input.qtyReceived().signum() < 0) {
+                throw ApiException.badRequest("Số lượng thực nhận không được âm");
+            }
+            if (inputs.put(input.lineId(), input) != null) {
+                throw ApiException.badRequest("Dòng phiếu bị lặp");
+            }
+        }
+        for (GoodsReceiptLine line : lines) {
+            if (!inputs.containsKey(line.getId())) {
+                throw ApiException.badRequest("Thiếu số lượng thực nhận cho " + line.getRawMaterial().getName());
+            }
+        }
+        return inputs;
+    }
+
+    private List<RawMaterial> validateRawLines(List<RawReceiptLineRequest> lines) {
+        if (lines == null || lines.isEmpty()) {
+            throw ApiException.badRequest("Phiếu phải có ít nhất một dòng");
+        }
+        Set<Long> seen = new HashSet<>();
+        List<RawMaterial> materials = new ArrayList<>();
+        for (RawReceiptLineRequest line : lines) {
+            if (line == null || line.rawMaterialId() == null) {
+                throw ApiException.badRequest("Nguyên liệu là bắt buộc");
+            }
+            if (line.qty() == null || line.qty().signum() <= 0) {
+                throw ApiException.badRequest("Số lượng dự kiến phải lớn hơn 0");
+            }
+            if (!seen.add(line.rawMaterialId())) {
+                throw ApiException.badRequest("Mỗi nguyên liệu chỉ nhập một dòng trên phiếu");
+            }
+            RawMaterial material = rawMaterialRepository
+                    .findById(line.rawMaterialId())
+                    .orElseThrow(() -> ApiException.notFound("Không tìm thấy nguyên liệu"));
+            if (!material.isActive()) {
+                throw ApiException.conflict(material.getName() + " đã ngừng dùng");
+            }
+            materials.add(material);
+        }
+        return materials;
     }
 
     private List<ReceiptItemResponse> receiveFinished(
@@ -197,51 +455,58 @@ public class GoodsReceiptService {
                     lot.setVariant(variant);
                     lot.setMfgDate(line.mfgDate());
                     lot.setExpDate(line.expDate());
-                    lot.setReceivedAt(Instant.now());
+                    lot.setReceivedAt(Instant.now(clock));
                     return lotRepository.saveAndFlush(lot);
                 });
     }
 
-    private List<ReceiptItemResponse> receiveRaw(List<RawReceiptLineRequest> lines) {
-        if (lines == null || lines.isEmpty()) {
-            throw ApiException.badRequest("Phiếu phải có ít nhất một dòng");
+    private Map<Long, List<GoodsReceiptLine>> rawLinesOf(List<GoodsReceipt> receipts) {
+        List<Long> rawIds = receipts.stream()
+                .filter(r -> r.getReceiptType() == ReceiptType.RAW)
+                .map(GoodsReceipt::getId)
+                .toList();
+        if (rawIds.isEmpty()) {
+            return Map.of();
         }
-        List<ReceiptItemResponse> items = new ArrayList<>();
-        for (RawReceiptLineRequest line : lines) {
-            RawMaterial material = rawMaterialRepository
-                    .findById(line.rawMaterialId())
-                    .orElseThrow(() -> ApiException.notFound("Không tìm thấy nguyên liệu"));
-            if (!material.isActive()) {
-                throw ApiException.conflict(material.getName() + " đã ngừng dùng");
-            }
-            material.setQtyOnHand(material.getQtyOnHand().add(line.qty()));
-            rawMaterialRepository.save(material);
-            items.add(new ReceiptItemResponse(
-                    material.getName(), line.qty().doubleValue(), material.getUnit()));
-        }
-        return items;
+        return goodsReceiptLineRepository.findByReceipt_IdInOrderByLineNoAsc(rawIds).stream()
+                .collect(Collectors.groupingBy(line -> line.getReceipt().getId()));
     }
 
-    private GoodsReceiptResponse toResponse(GoodsReceipt receipt) {
-        List<ReceiptItemResponse> items;
+    private GoodsReceiptResponse toResponse(GoodsReceipt receipt, List<GoodsReceiptLine> rawLines) {
         if (receipt.getReceiptType() == ReceiptType.FINISHED) {
-            items = stockLedgerRepository.findByRefTypeAndRefIdWithDetails(REF_TYPE, receipt.getId()).stream()
+            List<ReceiptItemResponse> items = stockLedgerRepository
+                    .findByRefTypeAndRefIdWithDetails(REF_TYPE, receipt.getId())
+                    .stream()
                     .map(e -> {
                         String sku = e.getVariant().getSku();
                         String lotCode = e.getLot() == null ? "?" : e.getLot().getLotCode();
                         return new ReceiptItemResponse(sku + " · " + lotCode, e.getQtyDelta(), "khay");
                     })
                     .toList();
-        } else {
-            // Raw lines are summarized into note on create (FE mock uses the same " — " form).
-            items = parseRawItemsFromNote(receipt.getNote());
+            return GoodsReceiptResponse.from(receipt, items);
         }
-        return GoodsReceiptResponse.from(receipt, items);
+        if (rawLines.isEmpty()) {
+            // Phiếu NVL cũ (trước dòng 46): dòng chỉ lưu dạng tóm tắt trong ghi chú.
+            return GoodsReceiptResponse.from(receipt, parseRawItemsFromNote(receipt.getNote()));
+        }
+        List<GoodsReceiptLine> sorted = rawLines.stream()
+                .sorted(Comparator.comparingInt(GoodsReceiptLine::getLineNo))
+                .toList();
+        boolean received = receipt.getStatus() == ReceiptStatus.COMPLETED;
+        List<ReceiptItemResponse> items = sorted.stream()
+                .map(line -> new ReceiptItemResponse(
+                        line.getRawMaterial().getName(),
+                        (received && line.getQtyReceived() != null ? line.getQtyReceived() : line.getQtyExpected())
+                                .doubleValue(),
+                        line.getRawMaterial().getUnit()))
+                .toList();
+        List<ReceiptLineResponse> lines = sorted.stream().map(ReceiptLineResponse::from).toList();
+        return GoodsReceiptResponse.from(receipt, items, lines);
     }
 
     /**
      * Rebuilds list {@code items} from the note summary written at create time
-     * ({@code [userNote — ]name: qty unit; ...}).
+     * ({@code [userNote — ]name: qty unit; ...}) — chỉ còn dùng cho phiếu NVL tạo trước dòng 46.
      */
     static List<ReceiptItemResponse> parseRawItemsFromNote(String note) {
         String raw = Strings.trimToNull(note);
@@ -296,7 +561,7 @@ public class GoodsReceiptService {
     }
 
     private String autoLotCode() {
-        String day = LocalDate.now(ZoneOffset.UTC).format(DateTimeFormatter.BASIC_ISO_DATE);
+        String day = LocalDate.now(clock.withZone(ZoneOffset.UTC)).format(DateTimeFormatter.BASIC_ISO_DATE);
         for (int i = 1; i <= 99; i++) {
             String candidate = "LOT-" + day.substring(2) + "-" + String.format(Locale.ROOT, "%02d", i);
             if (lotRepository.findByLotCodeIgnoreCase(candidate).isEmpty()) {
@@ -315,6 +580,18 @@ public class GoodsReceiptService {
             return ReceiptType.fromCode(value);
         } catch (IllegalArgumentException ex) {
             throw ApiException.badRequest("Loại phiếu không hợp lệ: " + value);
+        }
+    }
+
+    private static ReceiptStatus parseStatus(String raw) {
+        String value = Strings.trimToNull(raw);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return ReceiptStatus.fromCode(value);
+        } catch (IllegalArgumentException ex) {
+            throw ApiException.badRequest("Trạng thái phiếu không hợp lệ: " + value);
         }
     }
 }
