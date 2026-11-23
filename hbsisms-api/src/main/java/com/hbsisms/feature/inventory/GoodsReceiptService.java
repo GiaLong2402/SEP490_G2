@@ -59,7 +59,9 @@ public class GoodsReceiptService {
 
     public static final String REF_TYPE = "goods_receipt";
 
-    private static final Sort LIST_SORT = Sort.by(Sort.Direction.DESC, "receivedAt", "id");
+    /** Theo mã phiếu: mã sinh tăng dần theo id nên sắp theo id = sắp theo mã (không lệch khi số mã vượt 4 chữ số). */
+    private static final Sort LIST_SORT_NEWEST = Sort.by(Sort.Direction.DESC, "id");
+    private static final Sort LIST_SORT_OLDEST = Sort.by(Sort.Direction.ASC, "id");
     private static final ZoneId VN = ZoneId.of("Asia/Ho_Chi_Minh");
 
     /** Matches create-time summary of legacy raw receipts: {@code Name: qty unit} joined by {@code ; }. */
@@ -110,11 +112,18 @@ public class GoodsReceiptService {
     }
 
     public PageResponse<GoodsReceiptResponse> list(String q, String receiptType, int page, int pageSize) {
-        return list(q, receiptType, null, page, pageSize);
+        return list(q, receiptType, null, null, page, pageSize);
     }
 
     public PageResponse<GoodsReceiptResponse> list(
             String q, String receiptType, String status, int page, int pageSize) {
+        return list(q, receiptType, status, null, page, pageSize);
+    }
+
+    /** @param sort "asc" = mã phiếu tăng dần (cũ nhất trước); còn lại (mặc định) = mã giảm dần (mới nhất trước) */
+    public PageResponse<GoodsReceiptResponse> list(
+            String q, String receiptType, String status, String sort, int page, int pageSize) {
+        Sort listSort = "asc".equalsIgnoreCase(sort == null ? "" : sort.trim()) ? LIST_SORT_OLDEST : LIST_SORT_NEWEST;
         ReceiptType typeFilter = parseReceiptType(receiptType);
         ReceiptStatus statusFilter = parseStatus(status);
         Specification<GoodsReceipt> spec = (root, query, cb) -> {
@@ -137,7 +146,7 @@ public class GoodsReceiptService {
             }
             return cb.and(predicates.toArray(Predicate[]::new));
         };
-        Page<GoodsReceipt> receipts = goodsReceiptRepository.findAll(spec, PageRequests.of(page, pageSize, LIST_SORT));
+        Page<GoodsReceipt> receipts = goodsReceiptRepository.findAll(spec, PageRequests.of(page, pageSize, listSort));
         Map<Long, List<GoodsReceiptLine>> linesByReceipt = rawLinesOf(receipts.getContent());
         return PageResponse.from(receipts.map(
                 receipt -> toResponse(receipt, linesByReceipt.getOrDefault(receipt.getId(), List.of()))));

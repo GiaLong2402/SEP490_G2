@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -425,6 +426,21 @@ class GoodsReceiptServiceTest {
     void list_rejectsInvalidReceiptTypeOrStatus() {
         assertStatus(() -> service.list(null, "bogus", 1, 20), HttpStatus.BAD_REQUEST, "Loại phiếu không hợp lệ");
         assertStatus(() -> service.list(null, null, "bogus", 1, 20), HttpStatus.BAD_REQUEST, "Trạng thái phiếu không hợp lệ");
+    }
+
+    @Test
+    void list_sortsByCode_descByDefault_ascWhenRequested() {
+        when(goodsReceiptRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+
+        service.list(null, null, null, null, 1, 20);
+        service.list(null, null, null, " ASC ", 1, 20);
+        service.list(null, null, null, "bogus", 1, 20);
+
+        verify(goodsReceiptRepository, times(3)).findAll(any(Specification.class), pageable.capture());
+        assertThat(pageable.getAllValues()).extracting(p -> p.getSort().toString())
+                .containsExactly("id: DESC", "id: ASC", "id: DESC");
     }
 
     @Test
