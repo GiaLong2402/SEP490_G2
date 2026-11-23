@@ -67,6 +67,20 @@ File FE: `src/api/profile.js`. Dùng ở trang Tài khoản.
 - `GET /auth/me` và mọi `CurrentUserResponse` trả thêm field `phone`.
 - Toggle thông báo email trên UI **không** persist (chưa có API).
 
+## 1a-bis. Thông báo (chuông) — báo giá gửi khách
+
+File FE: `src/api/notifications.js` · `NotificationBell`.
+
+| Method | URL | Body | Trả về |
+|---|---|---|---|
+| GET | `/notifications` | — | `NotificationResponse[]` (tối đa 30, mới nhất trước) |
+| POST | `/notifications/{id}/read` | — | 204 |
+| POST | `/notifications/read-all` | — | 204 |
+
+`NotificationResponse`: `{ id, userId, type, title, body, link, isRead, createdAt }`.
+
+Khi nhân viên **Gửi báo giá cho khách** (`PATCH /quotes/{id}/status` → `sent`), backend ghi thông báo `type=quote-sent` cho `customer.accountUser` (khách có tài khoản portal). `link` = `/yeu-cau/{requestCode}` nếu gắn yêu cầu, không thì `/don-hang`. Khách không có tài khoản portal → không ghi thông báo.
+
 ## 1. Địa chỉ — task "Hồ sơ & địa chỉ của tôi" (Duy)
 
 File FE: `src/api/addresses.js`, mapper `mappers/address.js`. Dùng ở Sổ địa chỉ + bước 1 Thanh toán.

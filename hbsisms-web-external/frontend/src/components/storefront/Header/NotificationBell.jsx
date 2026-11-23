@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { BellIcon } from '@/components/icons/Icons'
 import { ROUTES } from '@/constants/routes'
+import { notificationsApi } from '@/api/notifications'
+import { formatDateTime } from '@/utils/date'
 import iconOrderConfirmed from '@/assets/notifications/order-confirmed.png'
 import iconOrderShipping from '@/assets/notifications/order-shipping.png'
 import iconBulkRequest from '@/assets/notifications/bulk-request.png'
@@ -10,11 +12,12 @@ import iconOrderCompleted from '@/assets/notifications/order-completed.png'
 import iconReviewRequest from '@/assets/notifications/review-request.png'
 import './NotificationBell.css'
 
-/** Map type → icon khi có API notifications */
+/** Map type → icon */
 const NOTIFICATION_ICONS = {
   'order-confirmed': iconOrderConfirmed,
   'order-shipping': iconOrderShipping,
   'bulk-request': iconBulkRequest,
+  'quote-sent': iconBulkRequest,
   'payment-success': iconPaymentSuccess,
   'order-completed': iconOrderCompleted,
   'review-request': iconReviewRequest,
@@ -26,21 +29,42 @@ const TABS = [
 ]
 
 /**
- * Chuông thông báo + dropdown.
- * Danh sách lấy từ state (sẵn để nối API); không còn data demo.
+ * Chuông thông báo + dropdown — GET /notifications khi đã login.
  */
 export default function NotificationBell({ isLoggedIn }) {
+  const navigate = useNavigate()
   const [isOpen, setIsOpen] = useState(false)
   const [activeTab, setActiveTab] = useState('all')
   const [notifications, setNotifications] = useState([])
+  const [loading, setLoading] = useState(false)
   const wrapRef = useRef(null)
 
-  const unreadCount = isLoggedIn ? notifications.filter((n) => !n.isRead).length : 0
-  const visibleList =
-    activeTab === 'unread' ? notifications.filter((n) => !n.isRead) : notifications
+  const load = useCallback(async () => {
+    if (!isLoggedIn) {
+      setNotifications([])
+      return
+    }
+    setLoading(true)
+    try {
+      const list = await notificationsApi.list()
+      setNotifications(Array.isArray(list) ? list : [])
+    } catch {
+      setNotifications([])
+    } finally {
+      setLoading(false)
+    }
+  }, [isLoggedIn])
+
+  useEffect(() => {
+    load()
+    if (!isLoggedIn) return undefined
+    const timer = window.setInterval(load, 60_000)
+    return () => window.clearInterval(timer)
+  }, [isLoggedIn, load])
 
   useEffect(() => {
     if (!isOpen) return undefined
+    if (isLoggedIn) load()
 
     function handleClickOutside(e) {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) setIsOpen(false)
@@ -56,14 +80,32 @@ export default function NotificationBell({ isLoggedIn }) {
       document.removeEventListener('mousedown', handleClickOutside)
       document.removeEventListener('keydown', handleEscape)
     }
-  }, [isOpen])
+  }, [isOpen, isLoggedIn, load])
 
-  function markAsRead(id) {
-    setNotifications((list) => list.map((n) => (n.id === id ? { ...n, isRead: true } : n)))
+  const unreadCount = isLoggedIn ? notifications.filter((n) => !n.isRead).length : 0
+  const visibleList =
+    activeTab === 'unread' ? notifications.filter((n) => !n.isRead) : notifications
+
+  async function markAsRead(n) {
+    if (!n.isRead) {
+      setNotifications((list) => list.map((row) => (row.id === n.id ? { ...row, isRead: true } : row)))
+      try {
+        await notificationsApi.markRead(n.id)
+      } catch {
+        // giữ UI đã đọc; lần load sau sẽ khớp server
+      }
+    }
+    setIsOpen(false)
+    if (n.link) navigate(n.link)
   }
 
-  function markAllAsRead() {
-    setNotifications((list) => list.map((n) => ({ ...n, isRead: true })))
+  async function markAllAsRead() {
+    setNotifications((list) => list.map((row) => ({ ...row, isRead: true })))
+    try {
+      await notificationsApi.markAllRead()
+    } catch {
+      load()
+    }
   }
 
   return (
@@ -124,7 +166,9 @@ export default function NotificationBell({ isLoggedIn }) {
                 ))}
               </div>
 
-              {visibleList.length === 0 ? (
+              {loading && visibleList.length === 0 ? (
+                <p className="notif__empty">Đang tải…</p>
+              ) : visibleList.length === 0 ? (
                 <p className="notif__empty">
                   {activeTab === 'unread' ? 'Không có thông báo chưa đọc.' : 'Chưa có thông báo.'}
                 </p>
@@ -135,7 +179,7 @@ export default function NotificationBell({ isLoggedIn }) {
                       <button
                         type="button"
                         className={`notif__item ${n.isRead ? '' : 'is-unread'}`}
-                        onClick={() => markAsRead(n.id)}
+                        onClick={() => markAsRead(n)}
                       >
                         <img
                           src={NOTIFICATION_ICONS[n.type] || iconOrderConfirmed}
@@ -144,8 +188,8 @@ export default function NotificationBell({ isLoggedIn }) {
                         />
                         <span className="notif__text">
                           <strong>{n.title}</strong>
-                          <span>{n.message}</span>
-                          <small>{n.time}</small>
+                          <span>{n.body}</span>
+                          <small>{formatDateTime(n.createdAt)}</small>
                         </span>
                         {!n.isRead && <span className="notif__dot" aria-label="Chưa đọc" />}
                       </button>

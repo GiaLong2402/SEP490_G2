@@ -22,6 +22,7 @@ import com.hbsisms.feature.sales.dto.QuoteDetailResponse;
 import com.hbsisms.feature.sales.dto.QuoteInputRequest;
 import com.hbsisms.feature.sales.dto.QuoteStatusRequest;
 import com.hbsisms.feature.system.AuditLogService;
+import com.hbsisms.feature.system.NotificationService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
 import java.math.BigDecimal;
@@ -60,6 +61,8 @@ class QuoteServiceTest {
     private SalesOrderService salesOrderService;
     @Mock
     private AuditLogService auditLogService;
+    @Mock
+    private NotificationService notificationService;
 
     private QuoteService service;
     private final Clock clock = Clock.fixed(Instant.parse("2026-11-11T10:00:00Z"), ZoneOffset.UTC);
@@ -76,6 +79,7 @@ class QuoteServiceTest {
                 pricingService,
                 salesOrderService,
                 auditLogService,
+                notificationService,
                 clock);
     }
 
@@ -170,14 +174,34 @@ class QuoteServiceTest {
 
     @Test
     void setStatus_draftToSent() {
+        Customer customer = withId(new Customer(), 1L);
+        customer.setActive(true);
+        AppUser portalUser = withId(new AppUser(), 40L);
+        portalUser.setActive(true);
+        customer.setAccountUser(portalUser);
+
         Quote quote = withId(new Quote(), 5L);
+        quote.setCode("BG-2026-0005");
+        quote.setCustomer(customer);
         quote.setStatus(QuoteStatus.DRAFT);
+        quote.setTotal(new BigDecimal("200000.00"));
+        SalesRequest request = withId(new SalesRequest(), 7L);
+        request.setCode("YC-2026-0007");
+        quote.setRequest(request);
+
         when(quoteRepository.findWithHeaderById(5L)).thenReturn(Optional.of(quote));
+        when(customerRepository.findWithAccountById(1L)).thenReturn(Optional.of(customer));
 
         service.setStatus(5L, new QuoteStatusRequest(QuoteStatus.SENT), 1L);
 
         assertThat(quote.getStatus()).isEqualTo(QuoteStatus.SENT);
         verify(auditLogService).record(eq(1L), eq("update"), eq("quote"), eq(5L), any());
+        verify(notificationService).notifyUser(
+                eq(portalUser),
+                eq("quote-sent"),
+                eq("Bạn có báo giá mới"),
+                org.mockito.ArgumentMatchers.contains("BG-2026-0005"),
+                eq("/yeu-cau/YC-2026-0007"));
     }
 
     @Test

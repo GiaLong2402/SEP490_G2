@@ -2,6 +2,7 @@ package com.hbsisms.feature.system;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -13,7 +14,6 @@ import com.hbsisms.feature.user.UserRepository;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -24,7 +24,7 @@ class OwnerNotifierTest {
     @Mock
     private UserRepository userRepository;
     @Mock
-    private NotificationRepository notificationRepository;
+    private NotificationService notificationService;
 
     @Test
     void notifyOwners_writesOnePerActiveOwner() {
@@ -32,29 +32,24 @@ class OwnerNotifierTest {
         AppUser b = new AppUser();
         when(userRepository.findByRole_CodeAndActiveTrue(DefaultRoles.OWNER)).thenReturn(List.of(a, b));
 
-        int count = new OwnerNotifier(userRepository, notificationRepository)
+        int count = new OwnerNotifier(userRepository, notificationService)
                 .notifyOwners("payment_overpaid", "Tiêu đề", "Nội dung", "/orders/9");
 
         assertThat(count).isEqualTo(2);
-        ArgumentCaptor<Notification> saved = ArgumentCaptor.forClass(Notification.class);
-        verify(notificationRepository, times(2)).save(saved.capture());
-        assertThat(saved.getAllValues()).extracting(Notification::getUser).containsExactly(a, b);
-        Notification first = saved.getAllValues().get(0);
-        assertThat(first.getType()).isEqualTo("payment_overpaid");
-        assertThat(first.getTitle()).isEqualTo("Tiêu đề");
-        assertThat(first.getBody()).isEqualTo("Nội dung");
-        assertThat(first.getLink()).isEqualTo("/orders/9");
-        assertThat(first.isRead()).isFalse();
+        verify(notificationService, times(2))
+                .notifyUser(any(AppUser.class), eq("payment_overpaid"), eq("Tiêu đề"), eq("Nội dung"), eq("/orders/9"));
+        verify(notificationService).notifyUser(a, "payment_overpaid", "Tiêu đề", "Nội dung", "/orders/9");
+        verify(notificationService).notifyUser(b, "payment_overpaid", "Tiêu đề", "Nội dung", "/orders/9");
     }
 
     @Test
     void notifyOwners_noOwner_writesNothing() {
         when(userRepository.findByRole_CodeAndActiveTrue(DefaultRoles.OWNER)).thenReturn(List.of());
 
-        int count = new OwnerNotifier(userRepository, notificationRepository)
+        int count = new OwnerNotifier(userRepository, notificationService)
                 .notifyOwners("payment_refund", "t", "b", "/payments");
 
         assertThat(count).isZero();
-        verify(notificationRepository, never()).save(any());
+        verify(notificationService, never()).notifyUser(any(), any(), any(), any(), any());
     }
 }

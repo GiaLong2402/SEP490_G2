@@ -19,6 +19,7 @@ import com.hbsisms.feature.sales.dto.QuoteInputRequest;
 import com.hbsisms.feature.sales.dto.QuoteListItemResponse;
 import com.hbsisms.feature.sales.dto.QuoteStatusRequest;
 import com.hbsisms.feature.system.AuditLogService;
+import com.hbsisms.feature.system.NotificationService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
 import java.math.BigDecimal;
@@ -60,6 +61,7 @@ public class QuoteService {
     private final PricingService pricingService;
     private final SalesOrderService salesOrderService;
     private final AuditLogService auditLogService;
+    private final NotificationService notificationService;
     private final Clock clock;
 
     public QuoteService(
@@ -72,6 +74,7 @@ public class QuoteService {
             PricingService pricingService,
             SalesOrderService salesOrderService,
             AuditLogService auditLogService,
+            NotificationService notificationService,
             Clock clock) {
         this.quoteRepository = quoteRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -82,6 +85,7 @@ public class QuoteService {
         this.pricingService = pricingService;
         this.salesOrderService = salesOrderService;
         this.auditLogService = auditLogService;
+        this.notificationService = notificationService;
         this.clock = clock;
     }
 
@@ -199,10 +203,45 @@ public class QuoteService {
         if (next == QuoteStatus.APPROVED && actorId != null) {
             userRepository.findById(actorId).ifPresent(quote::setApprovedBy);
         }
+        if (next == QuoteStatus.SENT) {
+            notifyCustomerQuoteSent(quote);
+        }
 
         Map<String, Object> audit = new HashMap<>();
         audit.put("status", next.code());
         auditLogService.record(actorId, "update", "quote", quote.getId(), audit);
+    }
+
+    /** Portal khách: chuông khi nhân viên bấm gửi báo giá (draft → sent). */
+    private void notifyCustomerQuoteSent(Quote quote) {
+        Customer customer = quote.getCustomer();
+        if (customer == null) {
+            return;
+        }
+        Customer withAccount = customerRepository.findWithAccountById(customer.getId()).orElse(customer);
+        AppUser account = withAccount.getAccountUser();
+        if (account == null || !account.isActive()) {
+            return;
+        }
+        String quoteCode = quote.getCode() == null ? "" : quote.getCode();
+        String total = quote.getTotal() == null ? "" : quote.getTotal().stripTrailingZeros().toPlainString();
+        SalesRequest request = quote.getRequest();
+        String link = request != null && request.getCode() != null
+                ? "/yeu-cau/" + request.getCode()
+                : "/don-hang";
+        String body = request != null && request.getCode() != null
+                ? "Báo giá " + quoteCode + " cho yêu cầu " + request.getCode()
+                        + (total.isBlank() ? "" : " · tổng " + total + "đ")
+                        + ". Xem chi tiết yêu cầu của bạn."
+                : "Báo giá " + quoteCode
+                        + (total.isBlank() ? "" : " · tổng " + total + "đ")
+                        + " đã sẵn sàng.";
+        notificationService.notifyUser(
+                account,
+                "quote-sent",
+                "Bạn có báo giá mới",
+                body,
+                link);
     }
 
     @Transactional
