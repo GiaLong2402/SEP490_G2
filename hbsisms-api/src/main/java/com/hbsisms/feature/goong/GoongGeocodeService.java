@@ -35,12 +35,13 @@ public class GoongGeocodeService {
     }
 
     public GeoPoint shopLocation() {
+        // Fallback = ĐH FPT Hòa Lạc (cùng SHOP_* trong .env).
         BigDecimal lat = properties.shopLatitude() != null
                 ? properties.shopLatitude()
-                : new BigDecimal("20.951248");
+                : new BigDecimal("21.012728");
         BigDecimal lng = properties.shopLongitude() != null
                 ? properties.shopLongitude()
-                : new BigDecimal("107.080502");
+                : new BigDecimal("105.525905");
         return new GeoPoint(lat, lng);
     }
 

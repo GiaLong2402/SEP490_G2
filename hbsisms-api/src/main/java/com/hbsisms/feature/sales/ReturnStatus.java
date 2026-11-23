@@ -11,7 +11,7 @@ public enum ReturnStatus {
     RECEIVED,
     REFUNDED,
     REJECTED,
-    /** Legacy/demo rows in DB; keep for Hibernate load compatibility. */
+    /** Hàng nhận về bị loại / không nhập lại kho (dữ liệu demo / lịch sử DB). */
     DISCARDED;
 
     @JsonValue
