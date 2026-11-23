@@ -10,7 +10,9 @@ public enum ReturnStatus {
     PENDING,
     RECEIVED,
     REFUNDED,
-    REJECTED;
+    REJECTED,
+    /** Hàng nhận về bị loại / không nhập lại kho (dữ liệu demo / lịch sử DB). */
+    DISCARDED;
 
     @JsonValue
     public String code() {

@@ -24,6 +24,12 @@ public record AddressResponse(
         Instant createdAt) {
 
     public static AddressResponse from(CustomerAddress address) {
+        return from(address, address.getDistanceKm(), address.isInDeliveryRadius());
+    }
+
+    /** Dùng khi tính lại khoảng cách theo shop hiện tại (không phụ thuộc giá trị cũ trong DB). */
+    public static AddressResponse from(
+            CustomerAddress address, BigDecimal distanceKm, boolean inDeliveryRadius) {
         return new AddressResponse(
                 address.getId(),
                 address.getCustomer().getId(),
@@ -36,8 +42,8 @@ public record AddressResponse(
                 address.getProvince(),
                 address.getLatitude(),
                 address.getLongitude(),
-                address.isInDeliveryRadius(),
-                address.getDistanceKm(),
+                inDeliveryRadius,
+                distanceKm,
                 address.isDefaultAddress(),
                 address.getCreatedAt());
     }

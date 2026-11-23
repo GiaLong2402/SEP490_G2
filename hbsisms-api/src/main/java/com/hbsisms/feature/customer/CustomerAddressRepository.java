@@ -15,6 +15,8 @@ public interface CustomerAddressRepository extends JpaRepository<CustomerAddress
 
     long countByCustomerId(Long customerId);
 
+    List<CustomerAddress> findByLatitudeIsNotNullAndLongitudeIsNotNull();
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update CustomerAddress a set a.defaultAddress = false where a.customer.id = :customerId and a.defaultAddress = true")
     int clearDefaultForCustomer(@Param("customerId") Long customerId);
