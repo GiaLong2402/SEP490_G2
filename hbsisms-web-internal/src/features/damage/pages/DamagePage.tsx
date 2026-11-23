@@ -11,7 +11,7 @@ import { damageApi } from '../api';
 import type { DamageListItem } from '../types';
 
 function damageableQty(l: LotStockRow) {
-  return l.available + l.quarantine + l.expired;
+  return l.available + l.expired;
 }
 
 export default function DamagePage() {

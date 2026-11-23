@@ -63,8 +63,11 @@ public class SalesReturnService {
     private static final Map<ReturnStatus, Set<ReturnStatus>> STATUS_FLOW = new EnumMap<>(ReturnStatus.class);
 
     static {
-        STATUS_FLOW.put(ReturnStatus.PENDING, EnumSet.of(ReturnStatus.RECEIVED, ReturnStatus.REJECTED));
+        STATUS_FLOW.put(
+                ReturnStatus.PENDING,
+                EnumSet.of(ReturnStatus.RECEIVED, ReturnStatus.DISCARDED, ReturnStatus.REJECTED));
         STATUS_FLOW.put(ReturnStatus.RECEIVED, EnumSet.of(ReturnStatus.REFUNDED));
+        STATUS_FLOW.put(ReturnStatus.DISCARDED, EnumSet.of(ReturnStatus.REFUNDED));
     }
 
     private final SalesReturnRepository salesReturnRepository;
@@ -317,6 +320,11 @@ public class SalesReturnService {
             row.setInspectedBy(actor);
             row.setInspectedAt(Instant.now(clock));
         }
+        if (target == ReturnStatus.DISCARDED) {
+            applyDiscarded(row, actorId);
+            row.setInspectedBy(actor);
+            row.setInspectedAt(Instant.now(clock));
+        }
         if (target == ReturnStatus.REFUNDED) {
             applyRefund(row, actorId);
         }
@@ -327,6 +335,7 @@ public class SalesReturnService {
         if (row.getOrder() != null) {
             String label = switch (target) {
                 case RECEIVED -> "đã nhận hàng";
+                case DISCARDED -> "đã bỏ hàng (không nhập tồn)";
                 case REFUNDED -> "đã hoàn tiền";
                 case REJECTED -> "đã hủy";
                 default -> target.code();
@@ -344,6 +353,39 @@ public class SalesReturnService {
         }
         paymentService.recordRefundForSalesReturn(
                 order.getId(), row.getAmount(), row.getCode(), actorId);
+    }
+
+    /**
+     * Bỏ toàn bộ số trên phiếu — không cộng khả dụng, không cách ly.
+     *
+     * <ul>
+     *   <li>Giao thất bại + còn HOLD: ghi bỏ hàng đang giữ (trừ hold).
+     *   <li>Đã OUT: tồn đã trừ lúc xuất — chỉ đổi trạng thái phiếu (không nhập lại).
+     * </ul>
+     */
+    private void applyDiscarded(SalesReturn row, Long actorId) {
+        SalesOrder order = row.getOrder();
+        if (order == null) {
+            throw ApiException.badRequest("Phiếu trả thiếu đơn hàng");
+        }
+
+        Map<Long, Integer> qtyByVariant = new LinkedHashMap<>();
+        for (ReturnItem item : row.getItems()) {
+            qtyByVariant.merge(item.variantId(), item.qty(), Integer::sum);
+        }
+
+        boolean failedDelivery = row.getDelivery() != null;
+        boolean stillHeld = failedDelivery
+                && orderAllocationService.netHeldByLot(order.getId()).values().stream().anyMatch(q -> q > 0);
+
+        if (stillHeld) {
+            orderAllocationService.discardHeldForVariants(
+                    order,
+                    qtyByVariant,
+                    actorId,
+                    "Bỏ hàng trả — phiếu " + row.getCode());
+        }
+        // Đã OUT: không receiveReturn — hàng không nhập bán lại.
     }
 
     /**

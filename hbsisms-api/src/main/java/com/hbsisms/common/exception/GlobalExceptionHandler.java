@@ -54,7 +54,15 @@ public class GlobalExceptionHandler {
         MissingServletRequestParameterException.class
     })
     public ResponseEntity<ErrorResponse> handleUnreadable(Exception ex, HttpServletRequest request) {
-        return respond(HttpStatus.BAD_REQUEST, "Dữ liệu gửi lên không đúng định dạng", request);
+        String message = "Dữ liệu gửi lên không đúng định dạng";
+        if (ex instanceof HttpMessageNotReadableException hm) {
+            Throwable cause = hm.getMostSpecificCause();
+            String detail = cause != null ? cause.getMessage() : null;
+            if (detail != null && detail.contains("Trạng thái phiếu trả không hợp lệ")) {
+                message = detail;
+            }
+        }
+        return respond(HttpStatus.BAD_REQUEST, message, request);
     }
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)

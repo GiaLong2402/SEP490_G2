@@ -26,18 +26,9 @@ mock('GET', '/stocktakes', ({ query }) => {
 
 mock('GET', '/stocktakes/:id', ({ params }) => toDetail(Number(params.id)));
 
-function isQuarantineZone(zone: string | null | undefined) {
-  const z = (zone ?? '')
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase();
-  return z.includes('quarantine') || z.includes('cach ly') || z.includes('hang tra');
-}
-
 mock('POST', '/stocktakes', ({ body, userId }) => {
   const id = nextId(db.stocktakes);
   const warehouseId = body.warehouseId == null ? null : Number(body.warehouseId);
-  const quarantineScope = isQuarantineZone(body.zone);
   const scoped = db.locations.filter((l) => {
     const wh = db.warehouses.find((w) => w.id === l.warehouseId);
     return wh?.isActive !== false
@@ -48,11 +39,7 @@ mock('POST', '/stocktakes', ({ body, userId }) => {
     fail(409, body.zone ? 'Khu vực này không có vị trí trong kho đã chọn' : 'Chưa có vị trí kho đang dùng');
   }
   const zoneLocationIds = scoped.map((l) => l.id);
-  const onHand = (s: (typeof db.stock)[number]) => {
-    const loc = db.locations.find((l) => l.id === s.locationId);
-    if (quarantineScope || isQuarantineZone(loc?.zone)) return s.qtyQuarantine;
-    return s.qtyAvailable + s.qtyHeld;
-  };
+  const onHand = (s: (typeof db.stock)[number]) => s.qtyAvailable + s.qtyHeld;
   const stocks = db.stock.filter((s) => zoneLocationIds.includes(s.locationId) && onHand(s) > 0);
   if (!stocks.length) fail(409, 'Khu vực này không có hàng để kiểm kê');
   const wh = warehouseId == null ? null : db.warehouses.find((w) => w.id === warehouseId);

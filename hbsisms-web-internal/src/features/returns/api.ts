@@ -19,7 +19,10 @@ export const returnsApi = {
       deliveryId: deliveryId ?? undefined,
     }),
   create: (body: ReturnInput) => api.post<ReturnListItem>('/returns', body),
-  /** `status=received` không gửi inspections → BE cộng tồn về vị trí đã xuất / nhả HOLD. */
+  /**
+   * `received` → cộng tồn / nhả HOLD.
+   * `discarded` → bỏ cả phiếu (không nhập tồn; còn HOLD thì trừ giữ).
+   */
   setStatus: (id: ID, status: ReturnStatus) =>
     api.patch<void>(`/returns/${id}/status`, { status }),
 };

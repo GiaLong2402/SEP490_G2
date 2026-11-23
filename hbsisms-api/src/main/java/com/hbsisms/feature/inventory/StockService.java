@@ -139,6 +139,29 @@ public class StockService {
         return requireStock(stock.getId());
     }
 
+    /**
+     * Bỏ hàng đang HOLD — trừ {@code qty_held}, không cộng khả dụng. Ledger {@code DAMAGE}
+     * (dùng cho phiếu trả «Bỏ hàng» khi giao thất bại còn giữ).
+     */
+    @Transactional
+    public Stock writeOffHeld(StockMutation cmd) {
+        requirePositiveQty(cmd.qty());
+        Stock stock = requireExistingStock(cmd.variantId(), cmd.lotId(), cmd.locationId());
+        applyHeldDelta(stock.getId(), -cmd.qty());
+        int balance = requireStock(stock.getId()).getQtyAvailable();
+        appendLedger(
+                stock,
+                null,
+                LedgerEntryType.DAMAGE,
+                -cmd.qty(),
+                balance,
+                cmd.refType(),
+                cmd.refId(),
+                cmd.note() != null ? cmd.note() : "Bỏ hàng đang giữ",
+                cmd.actorId());
+        return requireStock(stock.getId());
+    }
+
     @Transactional
     public Stock move(StockMutation cmd) {
         requirePositiveQty(cmd.qty());
@@ -205,8 +228,8 @@ public class StockService {
     }
 
     /**
-     * Deduct damaged trays across buckets (quarantine → available → expired), matching FE mock
-     * behaviour so a report can cover on-hand beyond {@code qty_available} alone.
+     * Trừ hàng hỏng từ khả dụng rồi hết hạn. Vẫn xả nốt {@code qty_quarantine} cũ nếu còn (sau khi
+     * ngừng khu hàng trả).
      */
     @Transactional
     public Stock damage(StockMutation cmd) {
@@ -283,27 +306,6 @@ public class StockService {
         return requireStock(stock.getId());
     }
 
-    /** Trả hàng không đạt → cộng {@code qty_quarantine}, ledger {@code RETURN}. */
-    @Transactional
-    public Stock quarantineReturn(StockMutation cmd) {
-        requirePositiveQty(cmd.qty());
-        assertCapacityAllows(cmd.locationId(), cmd.qty());
-        Stock stock = getOrCreateStock(cmd.variantId(), cmd.lotId(), cmd.locationId());
-        applyQuarantineDelta(stock.getId(), cmd.qty());
-        int balance = requireStock(stock.getId()).getQtyAvailable();
-        appendLedger(
-                stock,
-                null,
-                LedgerEntryType.RETURN,
-                cmd.qty(),
-                balance,
-                cmd.refType(),
-                cmd.refId(),
-                cmd.note() != null ? cmd.note() : "Hàng trả về, khu hàng trả",
-                cmd.actorId());
-        return requireStock(stock.getId());
-    }
-
     /** Move by stock row id — used by {@code POST /inventory/moves}. */
     @Transactional
     public Stock moveByStockId(long stockId, long toLocationId, int qty, Long actorId) {
@@ -337,33 +339,6 @@ public class StockService {
                         note,
                         actorId),
                 qtyDelta);
-    }
-
-    /** Điều chỉnh {@code qty_quarantine} theo kiểm kê khu cách ly. */
-    @Transactional
-    public Stock adjustQuarantineByStockId(long stockId, int qtyDelta, String note, Long actorId) {
-        if (qtyDelta == 0) {
-            return requireStock(stockId);
-        }
-        Stock source = stockRepository
-                .findWithDetailsById(stockId)
-                .orElseThrow(() -> ApiException.notFound("Không tìm thấy dòng tồn"));
-        if (qtyDelta > 0) {
-            assertCapacityAllows(source.getLocation().getId(), qtyDelta);
-        }
-        applyQuarantineDelta(stockId, qtyDelta);
-        Stock updated = requireStock(stockId);
-        appendLedger(
-                updated,
-                null,
-                LedgerEntryType.ADJUST,
-                qtyDelta,
-                updated.getQtyAvailable(),
-                null,
-                null,
-                note != null ? note : "Điều chỉnh khu hàng trả",
-                actorId);
-        return updated;
     }
 
     private Stock getOrCreateStock(long variantId, long lotId, long locationId) {

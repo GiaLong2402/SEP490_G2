@@ -129,9 +129,13 @@ export const deliveryStateMeta: Meta<DeliveryState> = {
   ready: { label: 'Sẵn sàng', tone: 'neutral' }, going: { label: 'Đang giao', tone: 'blue' }, delivered: { label: 'Đã giao', tone: 'green' }, failed: { label: 'Thất bại', tone: 'red' },
 };
 
-export type ReturnStatus = 'pending' | 'received' | 'refunded' | 'rejected';
+export type ReturnStatus = 'pending' | 'received' | 'discarded' | 'refunded' | 'rejected';
 export const returnStatusMeta: Meta<ReturnStatus> = {
-  pending: { label: 'Chờ nhận', tone: 'amber' }, received: { label: 'Đã nhận hàng', tone: 'blue' }, refunded: { label: 'Đã hoàn tiền', tone: 'green' }, rejected: { label: 'Đã hủy', tone: 'red' },
+  pending: { label: 'Chờ nhận', tone: 'amber' },
+  received: { label: 'Đã nhận hàng', tone: 'blue' },
+  discarded: { label: 'Đã bỏ hàng', tone: 'red' },
+  refunded: { label: 'Đã hoàn tiền', tone: 'green' },
+  rejected: { label: 'Đã hủy', tone: 'red' },
 };
 
 export type PayDirection = 'in' | 'refund';

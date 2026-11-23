@@ -9,6 +9,8 @@ import java.util.Locale;
 public enum ReturnStatus {
     PENDING,
     RECEIVED,
+    /** Hàng trả không nhập bán lại — bỏ toàn bộ số trên phiếu (không cách ly). */
+    DISCARDED,
     REFUNDED,
     REJECTED,
     /** Hàng nhận về bị loại / không nhập lại kho (dữ liệu demo / lịch sử DB). */
@@ -19,13 +21,15 @@ public enum ReturnStatus {
         return name().toLowerCase(Locale.ROOT);
     }
 
-    @JsonCreator
+    @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
     public static ReturnStatus fromCode(String code) {
         if (code == null || code.isBlank()) {
             return null;
         }
+        String raw = code.trim();
+        String normalized = raw.toLowerCase(Locale.ROOT);
         return Arrays.stream(values())
-                .filter(status -> status.code().equals(code.trim().toLowerCase(Locale.ROOT)))
+                .filter(status -> status.code().equals(normalized) || status.name().equalsIgnoreCase(raw))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Trạng thái phiếu trả không hợp lệ: " + code));
     }

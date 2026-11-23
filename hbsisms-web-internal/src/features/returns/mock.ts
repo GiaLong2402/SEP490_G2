@@ -148,7 +148,11 @@ mock('GET', '/returns/:id/inspect-defaults', ({ params }) => {
   };
 });
 
-const ALLOWED: Record<string, string[]> = { pending: ['received', 'rejected'], received: ['refunded'] };
+const ALLOWED: Record<string, string[]> = {
+  pending: ['received', 'discarded', 'rejected'],
+  received: ['refunded'],
+  discarded: ['refunded'],
+};
 
 function applyStockIn(variantId: number, locationId: number | null, qty: number, refId: number, note: string, userId: number | null) {
   let stock = locationId != null
@@ -203,6 +207,7 @@ mock('PATCH', '/returns/:id/status', ({ params, body, userId }) => {
       });
     }
   }
+  // discarded: không cộng tồn (đã OUT) — mock không mô phỏng trừ HOLD.
   if (body.status === 'refunded') {
     const order = db.orders.find((o) => o.id === row.orderId);
     const isCredit = order?.paymentMethod === 'credit_net';
@@ -213,6 +218,13 @@ mock('PATCH', '/returns/:id/status', ({ params, body, userId }) => {
       db.payments.push({ id, code: nextCode('TT', db.payments), orderId: row.orderId, customerId: row.customerId, method: order?.paymentMethod ?? 'cash', direction: 'refund', amount: row.amount, status: 'success', reference: row.code, gateway: null, payosOrderCode: null, checkoutUrl: null, paidAt: new Date().toISOString(), receivedBy: userId, note: `Hoàn tiền ${row.code}` });
     }
   }
-  if (row.orderId) addOrderEvent(row.orderId, 'return', `Phiếu trả ${row.code}: ${body.status === 'received' ? 'đã nhận hàng' : body.status === 'refunded' ? 'đã hoàn tiền' : 'đã hủy'}`, userId);
+  if (row.orderId) {
+    const label =
+      body.status === 'received' ? 'đã nhận hàng'
+        : body.status === 'discarded' ? 'đã bỏ hàng (không nhập tồn)'
+          : body.status === 'refunded' ? 'đã hoàn tiền'
+            : 'đã hủy';
+    addOrderEvent(row.orderId, 'return', `Phiếu trả ${row.code}: ${label}`, userId);
+  }
   audit(userId, 'update', 'sales_return', row.id, { status: body.status });
 });
