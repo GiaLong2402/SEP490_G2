@@ -11,18 +11,13 @@ import { geoApi } from '@/shared/api/geo';
 import { fulfillmentLabels, paymentMethodLabels, saleChannelLabels, staffSaleChannelLabels, staffSaleChannels, type FulfillmentMethod, type PaymentMethod, type SaleChannel } from '@/shared/domain/enums';
 import { normalizePaymentForFulfillment } from '../cod';
 import { AdminUnitFields } from '@/shared/geo/AdminUnitFields';
-import { applyReverseAddress } from '@/shared/geo/applyReverseAddress';
 import { formatThousands, money, parseThousands } from '@/shared/lib/format';
-import { GoongMapPicker } from '@/shared/maps/GoongMapPicker';
-import type { LngLat } from '@/shared/maps/goong';
 import { Alert, Button, Card, Chip, Field, Input, PageHeader, Select, Textarea, enumOptions } from '@/shared/ui';
 import { ordersApi } from '../api';
 import { useOrder } from '../hooks';
 import type { ShipAddressInput } from '../types';
 
 const GEOCODE_DEBOUNCE_MS = 700;
-const REVERSE_DEBOUNCE_MS = 450;
-const FALLBACK_SHOP: LngLat = { lat: 20.951248, lng: 107.080502 };
 const DEFAULT_RADIUS_KM = 8;
 
 /** Không bán nợ — chỉ tiền mặt / chuyển khoản / COD trên form Sales.
@@ -76,15 +71,9 @@ export default function OrderFormPage() {
   const [lines, setLines] = useState<EditableLine[]>([newLine()]);
   const [touched, setTouched] = useState(false);
   const [hydrated, setHydrated] = useState(!isEdit);
-  const [shop, setShop] = useState<LngLat>(FALLBACK_SHOP);
   const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM);
   const [locating, setLocating] = useState(false);
-  const [applyingMap, setApplyingMap] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
-  /** Map thu gọn mặc định — chỉ mở khi NV cần chỉnh ghim. */
-  const [walkInMapOpen, setWalkInMapOpen] = useState(false);
-  const pinLockedRef = useRef(false);
-  const mapDrivenRef = useRef(false);
   const lastQueryRef = useRef('');
 
   const isB2b = !walkIn && customer?.customerType === 'b2b';
@@ -154,14 +143,8 @@ export default function OrderFormPage() {
       setCustomerId(null);
       setAddressId(null);
       if (paymentMethod === 'credit_net') setPaymentMethod('cash');
-    } else {
-      setWalkInMapOpen(false);
     }
   }, [walkIn]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (fulfillment === 'pickup') setWalkInMapOpen(false);
-  }, [fulfillment]);
 
   // Shop tự giao + tiền mặt → COD; đến lấy + COD → tiền mặt.
   useEffect(() => {
@@ -174,7 +157,6 @@ export default function OrderFormPage() {
       .shop()
       .then((s) => {
         if (cancelled) return;
-        setShop({ lat: Number(s.latitude), lng: Number(s.longitude) });
         setRadiusKm(Number(s.deliveryRadiusKm) || DEFAULT_RADIUS_KM);
       })
       .catch(() => {});
@@ -188,21 +170,19 @@ export default function OrderFormPage() {
     [walkInAddress.line1, walkInAddress.ward, walkInAddress.province],
   );
 
-  // Gõ đủ địa chỉ + tỉnh → geocode ghim / km (giống AddressFormModal).
+  // Gõ đủ địa chỉ + tỉnh → geocode để lấy km / tọa độ.
   useEffect(() => {
     if (!walkIn || fulfillment === 'pickup') return;
     if (!walkInAddress.line1?.trim() || !walkInAddress.province?.trim()) return;
-    if (pinLockedRef.current && lastQueryRef.current === walkInAddressQuery) return;
+    if (lastQueryRef.current === walkInAddressQuery) return;
 
     const t = window.setTimeout(async () => {
-      if (pinLockedRef.current && lastQueryRef.current === walkInAddressQuery) return;
+      if (lastQueryRef.current === walkInAddressQuery) return;
       setLocating(true);
       setLocateError(null);
       try {
         const hit = await geoApi.geocode(walkInAddressQuery);
         lastQueryRef.current = walkInAddressQuery;
-        pinLockedRef.current = false;
-        mapDrivenRef.current = false;
         setWalkInAddress((prev) => ({
           ...prev,
           latitude: Number(hit.latitude),
@@ -210,7 +190,7 @@ export default function OrderFormPage() {
           distanceKm: Number(hit.distanceKm),
         }));
       } catch (err) {
-        setLocateError(err instanceof Error ? err.message : 'Chưa định vị được — vẫn có thể bấm map');
+        setLocateError(err instanceof Error ? err.message : 'Chưa định vị được địa chỉ');
       } finally {
         setLocating(false);
       }
@@ -218,46 +198,6 @@ export default function OrderFormPage() {
 
     return () => window.clearTimeout(t);
   }, [walkIn, fulfillment, walkInAddressQuery, walkInAddress.line1, walkInAddress.province]);
-
-  async function reverseWalkInPin(lat: number, lng: number) {
-    setApplyingMap(true);
-    setLocateError(null);
-    try {
-      const hit = await geoApi.reverse(lat, lng);
-      const next = applyReverseAddress(hit);
-      pinLockedRef.current = true;
-      lastQueryRef.current = [next.line1, next.ward, next.province]
-        .filter((p) => p && String(p).trim())
-        .join(', ');
-      setWalkInAddress((prev) => ({
-        ...prev,
-        line1: next.line1 ?? prev.line1,
-        ward: next.ward,
-        district: null,
-        province: next.province,
-        latitude: next.latitude,
-        longitude: next.longitude,
-        distanceKm: next.distanceKm,
-      }));
-    } catch (err) {
-      setLocateError(err instanceof Error ? err.message : 'Không đọc được địa chỉ từ bản đồ');
-    } finally {
-      setApplyingMap(false);
-      mapDrivenRef.current = false;
-    }
-  }
-
-  useEffect(() => {
-    if (!walkIn || fulfillment === 'pickup' || !mapDrivenRef.current) return;
-    if (walkInAddress.latitude == null || walkInAddress.longitude == null) return;
-    const lat = walkInAddress.latitude;
-    const lng = walkInAddress.longitude;
-    const t = window.setTimeout(() => {
-      void reverseWalkInPin(lat, lng);
-    }, REVERSE_DEBOUNCE_MS);
-    return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when pin moves from map
-  }, [walkIn, fulfillment, walkInAddress.latitude, walkInAddress.longitude]);
 
   const selectedAddress = addresses?.find((a) => a.id === addressId);
   const walkInInRadius = walkInAddress.distanceKm != null && walkInAddress.distanceKm <= radiusKm;
@@ -377,10 +317,7 @@ export default function OrderFormPage() {
                   >
                     <Input
                       value={walkInAddress.line1}
-                      onChange={(e) => {
-                        pinLockedRef.current = false;
-                        setWalkInAddress((a) => ({ ...a, line1: e.target.value }));
-                      }}
+                      onChange={(e) => setWalkInAddress((a) => ({ ...a, line1: e.target.value }))}
                       placeholder="Số nhà, đường…"
                     />
                   </Field>
@@ -388,7 +325,6 @@ export default function OrderFormPage() {
                     province={walkInAddress.province ?? null}
                     ward={walkInAddress.ward ?? null}
                     onChange={(next) => {
-                      pinLockedRef.current = false;
                       setWalkInAddress((a) => ({ ...a, ...next, district: null }));
                     }}
                   />
@@ -410,41 +346,6 @@ export default function OrderFormPage() {
                       inputMode="tel"
                     />
                   </Field>
-                  <div className="md:col-span-2 xl:col-span-3 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        type="button"
-                        variant={walkInMapOpen ? 'secondary' : 'ghost'}
-                        onClick={() => setWalkInMapOpen((v) => !v)}
-                      >
-                        {walkInMapOpen ? 'Ẩn bản đồ' : 'Chọn trên bản đồ'}
-                      </Button>
-                      {locating && <span className="text-small text-ink-muted">Đang định vị…</span>}
-                      {applyingMap && <span className="text-small text-ink-muted">Đang đọc địa chỉ từ bản đồ…</span>}
-                      {!walkInMapOpen && walkInAddress.distanceKm != null && (
-                        <span className="text-small text-ink-muted">Đã định vị — mở bản đồ nếu cần chỉnh ghim</span>
-                      )}
-                    </div>
-                    {locateError && <p className="text-small text-red-600">{locateError}</p>}
-                    {walkInMapOpen && (
-                      <GoongMapPicker
-                        open={walkIn && needsAddress && walkInMapOpen}
-                        latitude={walkInAddress.latitude ?? null}
-                        longitude={walkInAddress.longitude ?? null}
-                        fallbackCenter={shop}
-                        onChange={(pos) => {
-                          pinLockedRef.current = true;
-                          mapDrivenRef.current = true;
-                          setWalkInAddress((prev) => ({
-                            ...prev,
-                            latitude: pos.lat,
-                            longitude: pos.lng,
-                            distanceKm: null,
-                          }));
-                        }}
-                      />
-                    )}
-                  </div>
                 </>
               )}
               {needsAddress && !walkIn && (
@@ -490,12 +391,18 @@ export default function OrderFormPage() {
                 {selectedAddress.distanceKm !== null && <span className="text-small text-ink-muted">{selectedAddress.distanceKm} km</span>}
               </div>
             )}
-            {needsAddress && walkIn && walkInAddress.distanceKm != null && (
-              <div className="mt-2 flex items-center gap-2">
-                <Chip tone={walkInInRadius ? 'green' : 'amber'}>
-                  {walkInInRadius ? 'Trong bán kính tự giao' : 'Ngoài bán kính, nên dùng đối tác giao'}
-                </Chip>
-                <span className="text-small text-ink-muted">{walkInAddress.distanceKm} km · bán kính {radiusKm} km</span>
+            {needsAddress && walkIn && (
+              <div className="mt-2 space-y-1">
+                {locating && <p className="text-small text-ink-muted">Đang định vị…</p>}
+                {locateError && <p className="text-small text-red-600">{locateError}</p>}
+                {walkInAddress.distanceKm != null && (
+                  <div className="flex items-center gap-2">
+                    <Chip tone={walkInInRadius ? 'green' : 'amber'}>
+                      {walkInInRadius ? 'Trong bán kính tự giao' : 'Ngoài bán kính, nên dùng đối tác giao'}
+                    </Chip>
+                    <span className="text-small text-ink-muted">{walkInAddress.distanceKm} km · bán kính {radiusKm} km</span>
+                  </div>
+                )}
               </div>
             )}
           </Card>
