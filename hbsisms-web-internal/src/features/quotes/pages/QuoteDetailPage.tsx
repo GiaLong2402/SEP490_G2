@@ -14,7 +14,16 @@ export default function QuoteDetailPage() {
   const navigate = useNavigate();
   const { data: quote, isLoading, error, refetch } = useQuote(id);
   const requestQuery = useRequest(quote?.requestId);
-  const setStatus = useAction((status: QuoteStatus) => quotesApi.setStatus(id, status), { success: 'Đã cập nhật báo giá' });
+  const setStatus = useAction(
+    async (status: QuoteStatus) => {
+      await quotesApi.setStatus(id, status);
+      return status;
+    },
+    {
+      success: (status) =>
+        status === 'sent' ? 'Đã gửi báo giá — khách thấy trên chuông portal' : 'Đã cập nhật báo giá',
+    },
+  );
   const convert = useAction(() => quotesApi.convert(id), { success: (r) => `Đã tạo đơn ${r.orderCode}`, onDone: (r) => navigate(`/orders/${r.orderId}`) });
 
   if (isLoading) return <PageLoading />;
@@ -36,7 +45,7 @@ export default function QuoteDetailPage() {
         title={<span className="flex items-center gap-2"><span className="font-mono">{quote.code}</span><StatusChip meta={quoteStatusMeta} value={quote.status} /></span>}
         actions={
           <>
-            {quote.status === 'draft' && <Button variant="primary" icon={<Send size={14} />} loading={setStatus.isPending} onClick={() => setStatus.mutate('sent')}>Đánh dấu đã gửi</Button>}
+            {quote.status === 'draft' && <Button variant="primary" icon={<Send size={14} />} loading={setStatus.isPending} onClick={() => setStatus.mutate('sent')}>Gửi báo giá cho khách</Button>}
             {quote.status === 'sent' && (
               <>
                 <Button variant="danger" loading={setStatus.isPending} onClick={() => setStatus.mutate('rejected')}>Khách từ chối</Button>

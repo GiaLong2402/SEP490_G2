@@ -59,6 +59,25 @@ mock('PATCH', '/quotes/:id/status', ({ params, body, userId }) => {
   quote.status = body.status;
   if (body.status === 'approved') quote.approvedBy = userId;
   quote.updatedAt = new Date().toISOString();
+  if (body.status === 'sent') {
+    const customer = db.customers.find((c) => c.id === quote.customerId);
+    const accountUserId = customer?.accountUserId;
+    if (accountUserId) {
+      const request = quote.requestId ? db.requests.find((r) => r.id === quote.requestId) : null;
+      db.notifications.push({
+        id: nextId(db.notifications),
+        userId: accountUserId,
+        type: 'quote-sent',
+        title: 'Bạn có báo giá mới',
+        body: request
+          ? `Báo giá ${quote.code} cho yêu cầu ${request.code}.`
+          : `Báo giá ${quote.code} đã sẵn sàng.`,
+        link: request ? `/yeu-cau/${request.code}` : '/don-hang',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      });
+    }
+  }
 });
 
 mock('POST', '/quotes/:id/convert', ({ params, userId }) => {

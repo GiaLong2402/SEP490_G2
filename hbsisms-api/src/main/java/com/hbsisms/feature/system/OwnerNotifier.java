@@ -10,25 +10,18 @@ import org.springframework.stereotype.Service;
 public class OwnerNotifier {
 
     private final UserRepository userRepository;
-    private final NotificationRepository notificationRepository;
+    private final NotificationService notificationService;
 
-    public OwnerNotifier(UserRepository userRepository, NotificationRepository notificationRepository) {
+    public OwnerNotifier(UserRepository userRepository, NotificationService notificationService) {
         this.userRepository = userRepository;
-        this.notificationRepository = notificationRepository;
+        this.notificationService = notificationService;
     }
 
     /** @return số thông báo đã ghi */
     public int notifyOwners(String type, String title, String body, String link) {
         int count = 0;
         for (AppUser owner : userRepository.findByRole_CodeAndActiveTrue(DefaultRoles.OWNER)) {
-            Notification n = new Notification();
-            n.setUser(owner);
-            n.setType(type);
-            n.setTitle(title);
-            n.setBody(body);
-            n.setLink(link);
-            n.setRead(false);
-            notificationRepository.save(n);
+            notificationService.notifyUser(owner, type, title, body, link);
             count++;
         }
         return count;

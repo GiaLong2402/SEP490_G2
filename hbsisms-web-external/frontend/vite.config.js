@@ -23,8 +23,8 @@ export default defineConfig({
     // Sau này gọi Spring Boot qua proxy (vd: /api -> http://localhost:8080)
     proxy: {
       '/api': {
-        // Khớp server.port mặc định Spring Boot (8080). Đổi nếu .env set SERVER_PORT khác.
-        target: 'http://localhost:8080',
+        // Khớp server.port Spring Boot. Override: API_PROXY_TARGET=http://localhost:8081
+        target: process.env.API_PROXY_TARGET || 'http://localhost:8080',
         changeOrigin: true,
       },
     },
