@@ -175,7 +175,10 @@ export default function ReceiptsPage() {
       key: 'status', header: 'Trạng thái',
       cell: (r) => (
         <div className="whitespace-nowrap">
-          <StatusChip meta={receiptStatusMeta} value={r.status} />
+          <StatusChip
+            meta={receiptStatusMeta}
+            value={r.status && r.status in receiptStatusMeta ? r.status : 'completed'}
+          />
           {r.status === 'pending' && (
             <div className="mt-1 flex items-center gap-1 text-small text-ink-muted">
               {r.expectedDate ? `Về ${date(r.expectedDate)}` : 'Chưa hẹn ngày về'}

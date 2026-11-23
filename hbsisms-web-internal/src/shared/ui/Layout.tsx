@@ -16,7 +16,11 @@ export function Chip({ tone = 'neutral', children }: { tone?: Tone; children: Re
 
 /** Chip đọc từ bảng meta của enum, ví dụ <StatusChip meta={orderStateMeta} value={o.state} />. */
 export function StatusChip<K extends string>({ meta, value }: { meta: Record<K, { label: string; tone: Tone }>; value: K }) {
-  return <Chip tone={meta[value].tone}>{meta[value].label}</Chip>;
+  const entry = value != null ? meta[value] : undefined;
+  if (!entry) {
+    return <Chip tone="neutral">{value != null && String(value).trim() ? String(value) : '—'}</Chip>;
+  }
+  return <Chip tone={entry.tone}>{entry.label}</Chip>;
 }
 
 export function Card({ title, actions, children, className = '', flush }: { title?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; flush?: boolean }) {
