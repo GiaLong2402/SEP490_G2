@@ -105,16 +105,18 @@ public class QuarantineLocationSeeder implements ApplicationRunner {
                     relocateStock(source, target);
                 }
             }
-            markRetired(from);
+            String oldCode = from.getCode();
+            markRetired(from, locs);
             log.info(
-                    "Retired return-hold location {}/{} → zone «{}»",
+                    "Retired return-hold location {}/{} → {} · zone «{}»",
                     warehouse.getCode(),
+                    oldCode,
                     from.getCode(),
                     RETIRED_ZONE);
         }
     }
 
-    private void markRetired(Location location) {
+    private void markRetired(Location location, List<Location> warehouseLocs) {
         boolean changed = false;
         if (!RETIRED_ZONE.equals(location.getZone())) {
             location.setZone(RETIRED_ZONE);
@@ -122,8 +124,12 @@ public class QuarantineLocationSeeder implements ApplicationRunner {
         }
         String code = location.getCode();
         if (CODE.equalsIgnoreCase(code) || LEGACY_CODE.equalsIgnoreCase(code)) {
-            location.setCode("XX-" + code.toUpperCase(Locale.ROOT));
-            changed = true;
+            String preferred = "XX-" + code.toUpperCase(Locale.ROOT);
+            String next = uniqueRetiredCode(preferred, location.getId(), warehouseLocs);
+            if (!next.equalsIgnoreCase(code)) {
+                location.setCode(next);
+                changed = true;
+            }
         }
         String note = "Đã ngừng khu hàng trả/cách ly — không dùng cho nghiệp vụ mới";
         if (!note.equals(location.getNote())) {
@@ -131,8 +137,25 @@ public class QuarantineLocationSeeder implements ApplicationRunner {
             changed = true;
         }
         if (changed) {
-            locationRepository.save(location);
+            locationRepository.saveAndFlush(location);
         }
+    }
+
+    /** Tránh trùng uk_location_warehouse_code khi XX-HT-01 đã có từ lần retire trước. */
+    private static String uniqueRetiredCode(String preferred, Long selfId, List<Location> warehouseLocs) {
+        if (!codeTaken(preferred, selfId, warehouseLocs)) {
+            return preferred;
+        }
+        String withId = preferred + "-" + selfId;
+        if (!codeTaken(withId, selfId, warehouseLocs)) {
+            return withId;
+        }
+        return preferred + "-" + selfId + "-" + System.currentTimeMillis() % 100000;
+    }
+
+    private static boolean codeTaken(String code, Long selfId, List<Location> warehouseLocs) {
+        return warehouseLocs.stream()
+                .anyMatch(l -> code.equalsIgnoreCase(l.getCode()) && !Objects.equals(l.getId(), selfId));
     }
 
     private void relocateStock(Stock source, Location target) {
