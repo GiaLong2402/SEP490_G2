@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, Pencil, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { isOwnerOrAdmin, useAuth } from '@/features/auth';
 import { num } from '@/shared/lib/format';
 import { Button, Card, Chip, DataTable, IconButton, PageHeader, type Column } from '@/shared/ui';
 import { CategoryFormModal } from '../components/CategoryFormModal';
@@ -54,6 +55,8 @@ function flattenVisible(
 }
 
 export default function CategoriesPage() {
+  const { user } = useAuth();
+  const canEditCatalog = isOwnerOrAdmin(user?.roleCode);
   const { data, isLoading, error, refetch } = useCategories();
   const [editing, setEditing] = useState<CategoryListItem | 'new' | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(() => new Set());
@@ -122,17 +125,21 @@ export default function CategoriesPage() {
       width: '120px',
       cell: (c) => <Chip tone={c.isActive ? 'green' : 'neutral'}>{c.isActive ? 'Đang dùng' : 'Ngừng dùng'}</Chip>,
     },
-    {
-      key: 'edit',
-      header: '',
-      width: '48px',
-      align: 'right',
-      cell: (c) => (
-        <IconButton label={`Sửa ${c.name}`} onClick={() => setEditing(c)}>
-          <Pencil size={14} />
-        </IconButton>
-      ),
-    },
+    ...(canEditCatalog
+      ? [
+          {
+            key: 'edit',
+            header: '',
+            width: '48px',
+            align: 'right' as const,
+            cell: (c: Row) => (
+              <IconButton label={`Sửa ${c.name}`} onClick={() => setEditing(c)}>
+                <Pencil size={14} />
+              </IconButton>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -149,9 +156,11 @@ export default function CategoriesPage() {
         title="Loại sản phẩm"
         subtitle="Nhóm sản phẩm để lọc nội bộ và hiển thị trên cổng B2C"
         actions={
-          <Button variant="primary" icon={<Plus size={15} />} onClick={() => setEditing('new')}>
-            Thêm loại
-          </Button>
+          canEditCatalog ? (
+            <Button variant="primary" icon={<Plus size={15} />} onClick={() => setEditing('new')}>
+              Thêm loại
+            </Button>
+          ) : undefined
         }
       />
       <Card flush>
@@ -163,7 +172,7 @@ export default function CategoriesPage() {
           error={error}
           onRetry={refetch}
           emptyText="Chưa có loại sản phẩm"
-          emptyAction={<Button onClick={() => setEditing('new')}>Thêm loại đầu tiên</Button>}
+          emptyAction={canEditCatalog ? <Button onClick={() => setEditing('new')}>Thêm loại đầu tiên</Button> : undefined}
         />
       </Card>
       <CategoryFormModal

@@ -27,8 +27,9 @@ public class ProductBomController {
         return productBomService.get(productId);
     }
 
+    /** Thiết lập BOM — admin/owner (sơ đồ Inter). */
     @PutMapping
-    @PreAuthorize("hasAuthority('products')")
+    @PreAuthorize("hasAuthority('products') and @roles.ownerOrAdmin()")
     public BomResponse replace(@PathVariable Long productId, @Valid @RequestBody BomReplaceRequest request) {
         return productBomService.replace(productId, request);
     }

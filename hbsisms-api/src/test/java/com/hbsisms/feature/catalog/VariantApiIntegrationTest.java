@@ -121,8 +121,8 @@ class VariantApiIntegrationTest {
                                 12,
                                 false,
                                 List.of(
-                                        Map.of("minQtyKhay", 15, "unitPrice", new BigDecimal("180000")),
-                                        Map.of("minQtyKhay", 30, "unitPrice", new BigDecimal("160000")))))))
+                                        Map.of("minQtyKhay", 15, "unitPrice", new BigDecimal("90000")),
+                                        Map.of("minQtyKhay", 30, "unitPrice", new BigDecimal("80000")))))))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/products/" + productId).header(HttpHeaders.AUTHORIZATION, bearer(adminToken)))
@@ -130,7 +130,8 @@ class VariantApiIntegrationTest {
                 .andExpect(jsonPath("$.variants[0].id").value(variantId))
                 .andExpect(jsonPath("$.variants[0].sku").value(newSku))
                 .andExpect(jsonPath("$.variants[0].packLabel").value("Khay 2kg"))
-                .andExpect(jsonPath("$.variants[0].listPrice").value(200000))
+                // Giá niêm yết không sửa qua PUT — giữ giá lúc tạo; cập nhật sau nhập TP từ LSX.
+                .andExpect(jsonPath("$.variants[0].listPrice").value(100000))
                 .andExpect(jsonPath("$.variants[0].isActive").value(false))
                 .andExpect(jsonPath("$.variants[0].tiers.length()").value(2))
                 .andExpect(jsonPath("$.variants[0].tiers[0].minQtyKhay").value(15))

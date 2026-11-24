@@ -148,13 +148,26 @@ public class WarehouseService {
 
     private WarehouseResponse toDetail(Warehouse warehouse) {
         List<Location> locations = locationRepository.findByWarehouse_IdOrderByCodeAsc(warehouse.getId());
-        List<LocationResponse> locationResponses = new ArrayList<>(locations.size());
+        List<LocationResponse> locationResponses = new ArrayList<>();
         for (Location location : locations) {
+            // Ẩn vị trí HT/CL đã retire (XX-… / «Ngừng dùng») — không xóa DB vì ledger còn FK.
+            if (isRetiredLocation(location)) {
+                continue;
+            }
             long usedQty = stockRepository.sumQtyByLocationId(location.getId());
             boolean canDelete = !stockRepository.existsByLocation_Id(location.getId());
             locationResponses.add(LocationResponse.from(location, usedQty, canDelete));
         }
         return WarehouseResponse.from(warehouse, locationResponses);
+    }
+
+    private static boolean isRetiredLocation(Location location) {
+        if (location == null) {
+            return false;
+        }
+        String zone = location.getZone() == null ? "" : location.getZone().trim();
+        String code = location.getCode() == null ? "" : location.getCode();
+        return "Ngừng dùng".equalsIgnoreCase(zone) || code.toUpperCase(java.util.Locale.ROOT).startsWith("XX-");
     }
 
     /**

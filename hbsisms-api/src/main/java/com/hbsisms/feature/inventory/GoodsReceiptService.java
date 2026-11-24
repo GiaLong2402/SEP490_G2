@@ -4,8 +4,10 @@ import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.common.text.Strings;
 import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
+import com.hbsisms.feature.catalog.PackSizes;
 import com.hbsisms.feature.catalog.ProductVariant;
 import com.hbsisms.feature.catalog.ProductVariantRepository;
+import com.hbsisms.feature.inventory.dto.FinishedReceiptCompleteRequest;
 import com.hbsisms.feature.inventory.dto.FinishedReceiptLineRequest;
 import com.hbsisms.feature.inventory.dto.GoodsReceiptRequest;
 import com.hbsisms.feature.inventory.dto.GoodsReceiptResponse;
@@ -14,12 +16,17 @@ import com.hbsisms.feature.inventory.dto.RawReceiptCompleteRequest;
 import com.hbsisms.feature.inventory.dto.RawReceiptLineRequest;
 import com.hbsisms.feature.inventory.dto.ReceiptItemResponse;
 import com.hbsisms.feature.inventory.dto.ReceiptLineResponse;
+import com.hbsisms.feature.production.ProductionOrder;
+import com.hbsisms.feature.production.ProductionOrderRepository;
+import com.hbsisms.feature.production.ProductionOrderStatus;
 import com.hbsisms.feature.sales.OrderAllocationService;
+import com.hbsisms.feature.system.AppConfigService;
 import com.hbsisms.feature.system.AuditLogService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
 import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -38,16 +45,24 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * Phiếu nhập kho.
  * <ul>
- *   <li>Thành phẩm: nhập ngay (cộng tồn theo lô + vị trí), phân bổ cho đơn đang thiếu hàng.</li>
+ *   <li>Thành phẩm tay: nhập ngay (cộng tồn theo lô + vị trí), phân bổ cho đơn đang thiếu hàng.</li>
+ *   <li>Thành phẩm từ lệnh SX (dòng 52): phiếu Pending → thủ kho xác nhận lô/NSX/HSD/vị trí/SL → cộng tồn,
+ *       lưu giá vốn/khay, đóng lệnh {@code COMPLETED}, cập nhật giá niêm yết quy cách =
+ *       giá vốn × (1 + sell_price_markup_percent/100).</li>
  *   <li>Nguyên vật liệu (Inter 1 dòng 46–47): tạo phiếu ở trạng thái Chờ nhập — chưa cộng tồn; hàng về thì
  *       thủ kho xác nhận SL thực nhận, lô, NSX/HSD, đơn giá → cộng tồn theo lô NVL, phiếu Hoàn thành.
  *       Phiếu chờ có thể hủy.</li>
@@ -56,6 +71,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 public class GoodsReceiptService {
+
+    private static final Logger log = LoggerFactory.getLogger(GoodsReceiptService.class);
 
     public static final String REF_TYPE = "goods_receipt";
 
@@ -77,8 +94,10 @@ public class GoodsReceiptService {
     private final RawMaterialRepository rawMaterialRepository;
     private final RawMaterialStockService rawMaterialStockService;
     private final StockService stockService;
+    private final ProductionOrderRepository productionOrderRepository;
     private final UserRepository userRepository;
     private final OrderAllocationService orderAllocationService;
+    private final AppConfigService appConfigService;
     private final AuditLogService auditLogService;
     private final Clock clock;
 
@@ -92,8 +111,10 @@ public class GoodsReceiptService {
             RawMaterialRepository rawMaterialRepository,
             RawMaterialStockService rawMaterialStockService,
             StockService stockService,
+            ProductionOrderRepository productionOrderRepository,
             UserRepository userRepository,
             OrderAllocationService orderAllocationService,
+            AppConfigService appConfigService,
             AuditLogService auditLogService,
             Clock clock) {
         this.goodsReceiptRepository = goodsReceiptRepository;
@@ -105,10 +126,20 @@ public class GoodsReceiptService {
         this.rawMaterialRepository = rawMaterialRepository;
         this.rawMaterialStockService = rawMaterialStockService;
         this.stockService = stockService;
+        this.productionOrderRepository = productionOrderRepository;
         this.userRepository = userRepository;
         this.orderAllocationService = orderAllocationService;
+        this.appConfigService = appConfigService;
         this.auditLogService = auditLogService;
         this.clock = clock;
+    }
+
+    /** Đọc loại phiếu (không khóa) — controller chọn DTO complete RAW vs FINISHED. */
+    public ReceiptType requireType(Long id) {
+        GoodsReceipt receipt = goodsReceiptRepository
+                .findById(id)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy phiếu nhập"));
+        return receipt.getReceiptType();
     }
 
     public PageResponse<GoodsReceiptResponse> list(String q, String receiptType, int page, int pageSize) {
@@ -364,6 +395,232 @@ public class GoodsReceiptService {
         detail.put("qtyReceived", totalReceived);
         auditLogService.record(actorId, "complete", REF_TYPE, receipt.getId(), detail);
         return toResponse(receipt, lines);
+    }
+
+    /**
+     * Inter 1 dòng 52: xác nhận nhập kho phiếu TP pending từ lệnh SX — lô / NSX / HSD / vị trí / SL,
+     * giá vốn/khay = (NVL thật + chi phí SX) ÷ SL nhập, cộng tồn, phiếu + lệnh → Hoàn thành.
+     */
+    @Transactional
+    public GoodsReceiptResponse completeFinished(Long id, FinishedReceiptCompleteRequest request, Long actorId) {
+        try {
+            return doCompleteFinished(id, request, actorId);
+        } catch (ApiException ex) {
+            throw ex;
+        } catch (DataIntegrityViolationException ex) {
+            String root = ex.getMostSpecificCause() == null ? ex.getMessage() : ex.getMostSpecificCause().getMessage();
+            log.warn("completeFinished integrity id={}: {}", id, root);
+            if (root != null && root.toLowerCase(Locale.ROOT).contains("production_order_status")) {
+                throw ApiException.conflict(
+                        "DB chưa nhận trạng thái COMPLETED của lệnh SX — restart API rồi thử lại");
+            }
+            throw ApiException.conflict("Không nhập kho được: " + root);
+        } catch (RuntimeException ex) {
+            Throwable root = ex;
+            while (root.getCause() != null && root.getCause() != root) {
+                root = root.getCause();
+            }
+            log.error("completeFinished failed id={}", id, ex);
+            throw ApiException.badRequest("Không nhập kho được: " + root.getMessage());
+        }
+    }
+
+    private GoodsReceiptResponse doCompleteFinished(
+            Long id, FinishedReceiptCompleteRequest request, Long actorId) {
+        GoodsReceipt receipt = goodsReceiptRepository
+                .findByIdForUpdate(id)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy phiếu nhập"));
+        if (receipt.getReceiptType() != ReceiptType.FINISHED) {
+            throw ApiException.conflict("Chỉ phiếu nhập thành phẩm mới xác nhận theo bước này");
+        }
+        // Dùng field thô — getStatus() coi null là COMPLETED (phiếu cũ).
+        if (receipt.getStatus() == ReceiptStatus.COMPLETED) {
+            return toResponse(receipt, goodsReceiptLineRepository.findByReceipt_IdOrderByLineNoAsc(id));
+        }
+        assertPending(receipt);
+        if (receipt.getProductionOrderId() == null) {
+            throw ApiException.conflict("Phiếu thành phẩm này không gắn lệnh sản xuất — hãy tạo phiếu nhập tay");
+        }
+        if (request.mfgDate() != null && request.expDate().isBefore(request.mfgDate())) {
+            throw ApiException.badRequest("HSD không được trước ngày sản xuất");
+        }
+        LocalDate today = LocalDate.now(clock.withZone(VN));
+        if (request.expDate().isBefore(today)) {
+            throw ApiException.badRequest("HSD đã qua — không nhập kho lô hết hạn");
+        }
+        Location putAway = locationRepository
+                .findById(request.locationId())
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy vị trí"));
+        String zone = putAway.getZone() == null ? "" : putAway.getZone().trim();
+        String locCode = putAway.getCode() == null ? "" : putAway.getCode();
+        if ("Ngừng dùng".equalsIgnoreCase(zone) || locCode.toUpperCase(Locale.ROOT).startsWith("XX-")) {
+            throw ApiException.badRequest("Vị trí đã ngừng dùng — chọn vị trí kho thường (vd. A-01)");
+        }
+        if (putAway.getWarehouse() != null && !putAway.getWarehouse().isActive()) {
+            throw ApiException.badRequest("Kho của vị trí đã ngừng dùng");
+        }
+
+        List<GoodsReceiptLine> lines = goodsReceiptLineRepository.findByReceipt_IdOrderByLineNoAsc(id);
+        GoodsReceiptLine line = lines.stream()
+                .filter(l -> l.getProductVariant() != null)
+                .findFirst()
+                .orElseThrow(() -> ApiException.badRequest("Phiếu thiếu dòng thành phẩm"));
+        Long variantId = line.getProductVariant().getId();
+        ProductVariant variant = productVariantRepository
+                .findWithProductById(variantId)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy quy cách sản phẩm"));
+
+        // Chỉ đọc chi phí/mã lệnh — không findByIdForUpdate (tránh conflict OneToOne finishedReceipt
+        // trùng phiếu đang khóa → Hibernate entityEntry is null).
+        ProductionOrder order = productionOrderRepository
+                .findById(receipt.getProductionOrderId())
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy lệnh sản xuất"));
+        if (order.getStatus() == ProductionOrderStatus.COMPLETED) {
+            return toResponse(receipt, lines);
+        }
+        if (order.getStatus() != ProductionOrderStatus.AWAITING_RECEIPT) {
+            throw ApiException.conflict("Lệnh sản xuất không ở trạng thái chờ nhập kho");
+        }
+
+        BigDecimal material = order.getActualMaterialCost() == null ? BigDecimal.ZERO : order.getActualMaterialCost();
+        BigDecimal production =
+                order.getActualProductionCost() == null ? BigDecimal.ZERO : order.getActualProductionCost();
+        BigDecimal unitCost = material
+                .add(production)
+                .divide(BigDecimal.valueOf(request.qty()), 2, RoundingMode.HALF_UP);
+        // Giá bán chuẩn khay 1 kg; khay 0,5 kg = nửa (làm tròn 1.000) — không nhập tay.
+        int markupPercent = appConfigService.sellPriceMarkupPercent();
+        BigDecimal priceOneKg = appConfigService.sellPriceFromUnitCost(unitCost);
+        if (priceOneKg != null) {
+            applyListPricesAfterProduction(variant.getProduct().getId(), variant, priceOneKg);
+        }
+
+        String orderCode = order.getCode();
+        LocalDate finishedDate = order.getFinishedDate();
+        Long orderId = order.getId();
+
+        AppUser actor = actorId == null ? null : userRepository.findById(actorId).orElse(null);
+        FinishedReceiptLineRequest stockLine = new FinishedReceiptLineRequest(
+                variant.getId(),
+                request.lotCode(),
+                request.mfgDate() != null ? request.mfgDate() : finishedDate,
+                request.expDate(),
+                request.locationId(),
+                request.qty());
+        Lot lot = resolveLot(variant, stockLine);
+        stockService.receiveIn(StockMutation.of(
+                variant.getId(),
+                lot.getId(),
+                request.locationId(),
+                request.qty(),
+                REF_TYPE,
+                receipt.getId(),
+                "Nhập thành phẩm từ lệnh " + orderCode,
+                actorId));
+
+        line.setQtyReceived(BigDecimal.valueOf(request.qty()));
+        line.setLotCode(lot.getLotCode());
+        line.setMfgDate(stockLine.mfgDate());
+        line.setExpDate(request.expDate());
+        line.setUnitPrice(unitCost);
+        goodsReceiptLineRepository.save(line);
+
+        Instant now = Instant.now(clock);
+        receipt.setStatus(ReceiptStatus.COMPLETED);
+        receipt.setReceivedAt(now);
+        receipt.setCompletedAt(now);
+        receipt.setCompletedBy(actor);
+        String note = Strings.trimToNull(request.note());
+        if (note != null) {
+            receipt.setNote(receipt.getNote() == null ? note : receipt.getNote() + " - " + note);
+        }
+        goodsReceiptRepository.save(receipt);
+
+        int closed = productionOrderRepository.markCompletedAfterFinishedReceipt(orderId);
+        if (closed == 0) {
+            throw ApiException.conflict("Lệnh sản xuất không còn ở trạng thái chờ nhập kho");
+        }
+
+        // Phân bổ đơn outstanding sau commit — lỗi bước này không được rollback phiếu nhập TP.
+        final Long allocateActorId = actorId;
+        final String receiptCode = receipt.getCode();
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        orderAllocationService.allocateOutstandingAfterReceipt(allocateActorId);
+                    } catch (RuntimeException ex) {
+                        log.warn(
+                                "allocateOutstandingAfterReceipt after {} failed: {}",
+                                receiptCode,
+                                ex.getMessage());
+                    }
+                }
+            });
+        }
+
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("status", ReceiptStatus.COMPLETED.code());
+        detail.put("productionOrderId", orderId);
+        detail.put("qty", request.qty());
+        detail.put("unitCost", unitCost);
+        detail.put("suggestedSellPrice", priceOneKg);
+        detail.put("markupPercent", markupPercent);
+        detail.put("locationId", request.locationId());
+        auditLogService.record(actorId, "complete", REF_TYPE, receipt.getId(), detail);
+
+        // Không gọi GoodsReceiptResponse.from(receipt) — tránh lazy receivedBy/completedBy
+        // (Hibernate entityEntry null khi phiếu/lệnh OneToOne vừa flush).
+        String source = receipt.getSource();
+        return new GoodsReceiptResponse(
+                receipt.getId(),
+                receipt.getCode(),
+                ReceiptType.FINISHED,
+                source,
+                actorId,
+                now,
+                receipt.getNote(),
+                actor == null ? null : actor.getFullName(),
+                source == null || source.isBlank() ? "—" : source,
+                List.of(new ReceiptItemResponse(
+                        variant.getSku() + " · " + lot.getLotCode(),
+                        request.qty().doubleValue(),
+                        "khay")),
+                ReceiptStatus.COMPLETED,
+                null,
+                now,
+                actor == null ? null : actor.getFullName(),
+                unitCost.multiply(BigDecimal.valueOf(request.qty())),
+                List.of());
+    }
+
+    /**
+     * Cập nhật niêm yết sau SX: khay 1 kg = {@code priceOneKg}; khay 0,5 kg = nửa (làm tròn 1.000).
+     * Chỉ có 0,5 kg → gán nguyên {@code priceOneKg} (SP một quy cách).
+     */
+    private void applyListPricesAfterProduction(
+            Long productId, ProductVariant receivedVariant, BigDecimal priceOneKg) {
+        BigDecimal priceHalfKg = appConfigService.halfKgSellPrice(priceOneKg);
+        List<ProductVariant> variants = productVariantRepository.findByProduct_IdOrderByIdAsc(productId);
+        boolean hasOneKg = variants.stream().anyMatch(PackSizes::isOneKg);
+        boolean hasHalfKg = variants.stream().anyMatch(PackSizes::isHalfKg);
+        for (ProductVariant v : variants) {
+            if (hasOneKg && PackSizes.isOneKg(v)) {
+                v.setListPrice(priceOneKg);
+                productVariantRepository.save(v);
+            } else if (hasOneKg && hasHalfKg && PackSizes.isHalfKg(v) && priceHalfKg != null) {
+                v.setListPrice(priceHalfKg);
+                productVariantRepository.save(v);
+            } else if (!hasOneKg && PackSizes.isHalfKg(v)) {
+                v.setListPrice(priceOneKg);
+                productVariantRepository.save(v);
+            }
+        }
+        if (!hasOneKg && !hasHalfKg) {
+            receivedVariant.setListPrice(priceOneKg);
+            productVariantRepository.save(receivedVariant);
+        }
     }
 
     /** Hủy phiếu còn chờ nhập (chưa cộng tồn nên không phải hoàn tồn). */

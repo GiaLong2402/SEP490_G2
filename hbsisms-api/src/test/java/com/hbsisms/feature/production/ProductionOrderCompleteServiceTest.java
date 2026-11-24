@@ -24,6 +24,8 @@ import com.hbsisms.feature.inventory.ReceiptType;
 import com.hbsisms.feature.production.dto.ProductionLeftoverInput;
 import com.hbsisms.feature.production.dto.ProductionOrderCompleteRequest;
 import com.hbsisms.feature.production.dto.ProductionOrderResponse;
+import com.hbsisms.feature.system.AppConfigService;
+import com.hbsisms.feature.system.AppConfigService;
 import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.UserRepository;
 import java.math.BigDecimal;
@@ -72,6 +74,8 @@ class ProductionOrderCompleteServiceTest {
     @Mock
     private BusinessCodeService businessCodeService;
     @Mock
+    private AppConfigService appConfigService;
+    @Mock
     private UserRepository userRepository;
 
     private ProductionOrderService service;
@@ -90,6 +94,7 @@ class ProductionOrderCompleteServiceTest {
                 goodsReceiptService,
                 rawMaterialStockService,
                 businessCodeService,
+                appConfigService,
                 userRepository,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }

@@ -31,9 +31,15 @@ export function LocationPicker({ warehouses, value, need, roomFor, onChange, ...
   const [activeId, setActiveId] = useState<number | null>(null);
   const needed = Math.max(1, Math.floor(need) || 0);
 
+  const usable = (zone: string | null | undefined, code: string) =>
+    !(zone && zone.toLowerCase() === 'ngừng dùng') && !code.toUpperCase().startsWith('XX-');
   const options = warehouses
     .filter((w) => w.isActive)
-    .map((w) => ({ w, room: Math.max(0, w.capacity - w.totalQty), locations: w.locations.filter((l) => roomFor(Number(l.id)) >= needed) }))
+    .map((w) => ({
+      w,
+      room: Math.max(0, w.capacity - w.totalQty),
+      locations: w.locations.filter((l) => usable(l.zone, l.code) && roomFor(Number(l.id)) >= needed),
+    }))
     .filter((o) => o.locations.length > 0);
   const selected = warehouses.flatMap((w) => w.locations.map((l) => ({ w, l }))).find((x) => String(x.l.id) === value);
   const active = options.find((o) => Number(o.w.id) === activeId) ?? options[0];

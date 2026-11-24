@@ -13,6 +13,8 @@ public enum ProductionOrderStatus {
     IN_PROGRESS,
     /** Đã báo hoàn thành — chờ nhập kho thành phẩm (task 51). */
     AWAITING_RECEIPT,
+    /** Đã nhập kho thành phẩm — đóng lệnh (dòng 52). */
+    COMPLETED,
     CANCELLED;
 
     @JsonValue

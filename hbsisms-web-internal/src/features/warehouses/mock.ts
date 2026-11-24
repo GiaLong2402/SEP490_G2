@@ -2,9 +2,14 @@ import { fail, mock } from '@/shared/api/mockServer';
 import { db, nextId } from '@/shared/mock/db';
 import { audit } from '@/shared/mock/services';
 
+function isRetiredLocation(l: (typeof db.locations)[number]) {
+  const zone = (l.zone ?? '').trim().toLowerCase();
+  return zone === 'ngừng dùng' || l.code.toUpperCase().startsWith('XX-');
+}
+
 function toDetail(w: (typeof db.warehouses)[number]) {
   const locations = db.locations
-    .filter((l) => l.warehouseId === w.id)
+    .filter((l) => l.warehouseId === w.id && !isRetiredLocation(l))
     .sort((a, b) => a.code.localeCompare(b.code))
     .map((l) => {
       const rows = db.stock.filter((s) => s.locationId === l.id);

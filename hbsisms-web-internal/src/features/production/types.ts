@@ -59,6 +59,14 @@ export interface ProductionOrder {
   leftovers?: ProductionLeftover[] | null;
   completedAt?: ISODateTime | null;
   finishedDate?: ISODate | null;
+  /** Giá vốn / khay sau nhập TP (null nếu chưa hoàn thành). */
+  unitCost?: number | null;
+  /** % markup từ app_config `sell_price_markup_percent`. */
+  markupPercent?: number | null;
+  /** Gợi ý giá bán = unitCost × (1 + markup/100) — không đổi listPrice. */
+  suggestedSellPrice?: number | null;
+  /** Giá niêm yết hiện tại của quy cách thành phẩm. */
+  currentListPrice?: number | null;
 }
 
 export interface ProductionLeftover {

@@ -29,8 +29,12 @@ public class MaterialIssueController {
         return materialIssueService.get(id);
     }
 
-    /** Task 50 (Cường): xác nhận xuất NVL — luôn FEFO (bỏ lô hết hạn) + note; idempotent khi đã COMPLETED. */
+    /**
+     * Xác nhận xuất NVL (FEFO). Sơ đồ Inter bước duyệt xuất — admin/owner;
+     * warehouse xem phiếu nhưng không confirm.
+     */
     @PostMapping("/{id}/confirm")
+    @PreAuthorize("hasAuthority('inventory') and @roles.ownerOrAdmin()")
     public MaterialIssueResponse confirm(
             @PathVariable Long id,
             @Valid @RequestBody(required = false) MaterialIssueConfirmRequest request,

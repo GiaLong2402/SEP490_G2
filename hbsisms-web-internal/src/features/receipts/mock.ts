@@ -204,6 +204,55 @@ function pendingRow(id: number) {
 
 mock('POST', '/goods-receipts/:id/complete', ({ params, body, userId }) => {
   const { row, extra } = pendingRow(Number(params.id));
+  // Dòng 52: phiếu TP pending từ lệnh SX — body { lotCode?, mfgDate?, expDate, locationId, qty, note? }.
+  if (row.receiptType === 'finished') {
+    const qty = Number(body?.qty);
+    const locationId = Number(body?.locationId);
+    const expDate = String(body?.expDate ?? '');
+    const mfgDate = body?.mfgDate ? String(body.mfgDate) : null;
+    if (!(Number.isInteger(qty) && qty > 0)) fail(400, 'Số lượng phải là số nguyên dương');
+    if (!(locationId > 0)) fail(400, 'Vị trí là bắt buộc');
+    if (!expDate) fail(400, 'Hạn sử dụng là bắt buộc');
+    if (mfgDate && expDate < mfgDate) fail(400, 'HSD không được trước ngày sản xuất');
+    const today = new Date().toISOString().slice(0, 10);
+    if (expDate < today) fail(400, 'HSD đã qua — không nhập kho lô hết hạn');
+    if (!db.locations.some((l) => l.id === locationId)) fail(404, 'Không tìm thấy vị trí');
+    const skuHint = String(row.items[0]?.name ?? '').split(' · ')[0].trim();
+    const variant = db.variants.find((v) => v.sku === skuHint) ?? db.variants.find((v) => v.isActive);
+    if (!variant) fail(400, 'Phiếu thiếu dòng thành phẩm');
+    const now = new Date().toISOString();
+    let lotCode = String(body?.lotCode ?? '').trim();
+    if (!lotCode) {
+      const day = now.slice(2, 10).replace(/-/g, '');
+      lotCode = `LOT-${day}-01`;
+    }
+    let lot = db.lots.find((l) => l.lotCode.toLowerCase() === lotCode.toLowerCase());
+    if (lot && lot.variantId !== variant.id) fail(409, `Mã lô ${lotCode} đã thuộc quy cách khác`);
+    if (!lot) {
+      lot = { id: nextId(db.lots), lotCode, variantId: variant.id, mfgDate, expDate, receivedAt: now, note: null };
+      db.lots.push(lot);
+    }
+    const existing = db.stock.find((s) => s.variantId === variant.id && s.lotId === lot!.id && s.locationId === locationId);
+    if (existing) {
+      existing.qtyAvailable += qty;
+      existing.updatedAt = now;
+    } else {
+      db.stock.push({ id: nextId(db.stock), variantId: variant.id, lotId: lot.id, locationId, qtyAvailable: qty, qtyHeld: 0, qtyQuarantine: 0, qtyExpired: 0, updatedAt: now });
+    }
+    appendLedger({
+      variantId: variant.id, lotId: lot.id, locationId, toLocationId: null, entryType: 'in', qtyDelta: qty,
+      balanceAfter: existing ? existing.qtyAvailable : qty, refType: 'goods_receipt', refId: row.id,
+      note: `Nhập thành phẩm ${row.code}`, createdBy: userId,
+    });
+    extra.status = 'completed';
+    extra.completedAt = now;
+    extra.completedBy = userId;
+    row.receivedAt = now;
+    row.items = [{ name: `${variant.sku} · ${lotCode}`, qty, unit: 'khay' }];
+    if (body?.note) row.note = row.note ? `${row.note} - ${body.note}` : body.note;
+    audit(userId, 'complete', 'goods_receipt', row.id);
+    return toItem(row);
+  }
   if (row.receiptType !== 'raw') fail(409, 'Chỉ phiếu nhập nguyên liệu mới xác nhận nhập kho theo bước này');
   const inputs = new Map<number, any>((body.lines ?? []).map((l: any) => [l.lineId, l]));
   const today = new Date().toISOString().slice(0, 10);

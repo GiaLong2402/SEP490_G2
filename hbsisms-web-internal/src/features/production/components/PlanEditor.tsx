@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, CircleAlert, PackagePlus } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { isOwnerOrAdmin, useAuth } from '@/features/auth';
 import { useAction } from '@/shared/api/useAction';
 import { date, dateTimeFull, formatThousands, money, num, parseThousands, todayISO } from '@/shared/lib/format';
 import { Button, Chip, ConfirmDialog, DateInput, Field, InfoTip, Textarea } from '@/shared/ui';
@@ -34,6 +35,8 @@ const round3 = (n: number) => Math.round(n * 1000) / 1000;
  */
 export function PlanEditor({ order }: { order: ProductionOrder | null }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canApprove = isOwnerOrAdmin(user?.roleCode);
   const unitLabel = useUnitLabel();
   const bomProducts = useBomProducts();
   const [productId, setProductId] = useState(order ? String(order.productId) : '');
@@ -130,7 +133,7 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
     },
   );
   const toReceipt = useAction(() => (dirty ? persist() : Promise.resolve(order!)), {
-    success: dirty ? (r) => `Đã lưu nháp ${r.code} - mở phiếu nhập nguyên liệu` : undefined,
+    success: dirty ? (r) => `Đã lưu ${r.code} - mở phiếu nhập nguyên liệu` : undefined,
     onDone: (r) => {
       const lines = rows
         .filter((x) => !x.sufficient)
@@ -159,7 +162,7 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
     : preview.isLoading
       ? 'Đang tính...'
       : preview.isError
-        ? 'Không xem trước được nguyên liệu — thử lại hoặc lưu nháp'
+        ? 'Không xem trước được nguyên liệu — thử lại hoặc lưu lệnh'
         : n > 0
           ? 'Sản phẩm chưa có định mức nguyên liệu'
           : 'Nhập số lượng kế hoạch';
@@ -359,17 +362,19 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
               </Button>
             )}
             <Button loading={save.isPending} disabled={!!order && !dirty} onClick={() => run(() => save.mutate())}>
-              Lưu nháp
+              Lưu lệnh
             </Button>
-            <Button
-              variant="primary"
-              icon={<Check size={15} strokeWidth={2.6} />}
-              disabled={!allEnough}
-              loading={approve.isPending}
-              onClick={() => run(() => approve.mutate())}
-            >
-              Duyệt lệnh sản xuất
-            </Button>
+            {canApprove && (
+              <Button
+                variant="primary"
+                icon={<Check size={15} strokeWidth={2.6} />}
+                disabled={!allEnough}
+                loading={approve.isPending}
+                onClick={() => run(() => approve.mutate())}
+              >
+                Duyệt lệnh sản xuất
+              </Button>
+            )}
           </>
         }
       >
@@ -394,7 +399,11 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
             </Button>
           </span>
         )}
-        <span>Duyệt xong hệ thống tự tạo phiếu xuất nguyên liệu (chờ xuất).</span>
+        <span>
+          {canApprove
+            ? 'Duyệt xong hệ thống tự tạo phiếu xuất nguyên liệu (chờ xuất).'
+            : 'Chỉ Chủ / Admin được duyệt lệnh — nhân viên kho lưu lệnh và chờ duyệt.'}
+        </span>
       </ActionBar>
 
       {order && (
@@ -402,7 +411,7 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
           open={cancelling}
           danger
           title={`Hủy lệnh ${order.code}?`}
-          message="Lệnh nháp sẽ chuyển sang Đã hủy."
+          message="Lệnh chờ duyệt sẽ chuyển sang Đã hủy."
           confirmLabel="Hủy lệnh"
           loading={cancel.isPending}
           onConfirm={() => cancel.mutate()}

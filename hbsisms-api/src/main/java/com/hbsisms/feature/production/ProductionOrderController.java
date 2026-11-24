@@ -81,7 +81,9 @@ public class ProductionOrderController {
         return productionOrderService.update(id, request);
     }
 
+    /** Sơ đồ Inter: duyệt lệnh / xuất NVL — admin hoặc owner. */
     @PostMapping("/{id}/approve")
+    @PreAuthorize("hasAuthority('inventory') and @roles.ownerOrAdmin()")
     public ProductionOrderResponse approve(
             @PathVariable Long id, @AuthenticationPrincipal AuthUser actor) {
         return productionOrderService.approve(id, actor == null ? null : actor.id());
@@ -92,8 +94,9 @@ public class ProductionOrderController {
         return productionOrderService.cancel(id);
     }
 
-    /** Task 51 (Cường): báo hoàn thành + sinh phiếu nhập TP Pending. */
+    /** Sơ đồ Inter: báo hoàn thành — nhân viên kho (owner/admin cũng được). */
     @PostMapping("/{id}/complete")
+    @PreAuthorize("hasAuthority('inventory') and @roles.warehouseOps()")
     public ProductionOrderResponse complete(
             @PathVariable Long id,
             @Valid @RequestBody ProductionOrderCompleteRequest request,

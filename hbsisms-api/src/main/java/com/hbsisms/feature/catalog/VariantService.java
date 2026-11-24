@@ -53,7 +53,8 @@ public class VariantService {
 
         String sku = requireSku(request.sku());
         String packLabel = requirePackLabel(request.packLabel());
-        BigDecimal listPrice = requireListPrice(request.listPrice());
+        // Giá niêm yết do lệnh SX ghi sau nhập TP; tạo mới cho phép 0 (chưa SX).
+        BigDecimal listPrice = normalizeListPrice(request.listPrice());
         short packPerCase = requirePackPerCase(request.packPerCase());
         assertSkuAvailable(sku, null);
 
@@ -72,7 +73,8 @@ public class VariantService {
 
         String sku = requireSku(request.sku());
         String packLabel = requirePackLabel(request.packLabel());
-        BigDecimal listPrice = requireListPrice(request.listPrice());
+        // Không cho sửa giá tay — giá do nhập thành phẩm từ LSX cập nhật.
+        BigDecimal listPrice = variant.getListPrice() == null ? BigDecimal.ZERO : variant.getListPrice();
         short packPerCase = requirePackPerCase(request.packPerCase());
         assertSkuAvailable(sku, id);
 
@@ -164,9 +166,13 @@ public class VariantService {
         return trimmed;
     }
 
-    private static BigDecimal requireListPrice(BigDecimal listPrice) {
-        if (listPrice == null || listPrice.compareTo(BigDecimal.ZERO) <= 0) {
-            throw ApiException.badRequest("Giá niêm yết phải lớn hơn 0");
+    /** Cho phép 0 khi chưa sản xuất; từ chối số âm. */
+    private static BigDecimal normalizeListPrice(BigDecimal listPrice) {
+        if (listPrice == null) {
+            return BigDecimal.ZERO;
+        }
+        if (listPrice.compareTo(BigDecimal.ZERO) < 0) {
+            throw ApiException.badRequest("Giá niêm yết không hợp lệ");
         }
         return listPrice;
     }

@@ -17,7 +17,7 @@ import { useProductionOrder } from '../hooks';
  *   lưu dòng hàng thật cho phiếu nhập chờ. Vượt kế hoạch: cho lưu, chỉ cảnh báo.
  * - Chờ nhập kho (Long): /goods-receipts/{id}/complete nhận phiếu thành phẩm; số khay sửa được;
  *   giá vốn / khay vào đơn giá dòng phiếu; nhập xong lệnh tự chuyển completed.
- * - Hoàn thành: giá vốn chia theo số khay nhập kho; không tự đổi giá bán (dòng 53 Khôi chỉ gợi ý).
+ * - Hoàn thành: giá vốn chia theo số khay nhập kho; nhập TP ghi listPrice = giá vốn × (1+markup%).
  */
 
 /** Tạo lệnh mới: bước 01 với form trống. */

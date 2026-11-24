@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -23,7 +24,9 @@ import com.hbsisms.feature.inventory.dto.RawReceiptCompleteLineRequest;
 import com.hbsisms.feature.inventory.dto.RawReceiptCompleteRequest;
 import com.hbsisms.feature.inventory.dto.RawReceiptLineRequest;
 import com.hbsisms.feature.inventory.dto.ReceiptItemResponse;
+import com.hbsisms.feature.production.ProductionOrderRepository;
 import com.hbsisms.feature.sales.OrderAllocationService;
+import com.hbsisms.feature.system.AppConfigService;
 import com.hbsisms.feature.system.AuditLogService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
@@ -71,9 +74,13 @@ class GoodsReceiptServiceTest {
     @Mock
     private StockService stockService;
     @Mock
+    private ProductionOrderRepository productionOrderRepository;
+    @Mock
     private UserRepository userRepository;
     @Mock
     private OrderAllocationService orderAllocationService;
+    @Mock
+    private AppConfigService appConfigService;
     @Mock
     private AuditLogService auditLogService;
 
@@ -94,10 +101,13 @@ class GoodsReceiptServiceTest {
                 rawMaterialRepository,
                 rawMaterialStockService,
                 stockService,
+                productionOrderRepository,
                 userRepository,
                 orderAllocationService,
+                appConfigService,
                 auditLogService,
                 Clock.fixed(NOW, ZoneOffset.UTC));
+        lenient().when(appConfigService.sellPriceMarkupPercent()).thenReturn(30);
         Product product = new Product();
         product.setName("Tôm");
         variant = new ProductVariant();

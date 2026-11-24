@@ -179,13 +179,13 @@ Jackson khóa tên field `isPublished` / `isActive` (không `published` / `activ
 
 ## production
 
-Quyền `inventory`. **Duy (48–49):** tạo/sửa/duyệt/hủy lệnh + sinh phiếu xuất NVL `pending`. **Cường (50–51):** xác nhận xuất FEFO; báo hoàn thành + PN thành phẩm `pending`.
+Quyền `inventory`. **Role (sơ đồ Inter):** `warehouse` tạo/sửa lệnh + báo hoàn thành + nhập TP; `admin`/`owner` (chung) duyệt lệnh + xác nhận xuất NVL + sửa catalog/BOM. `sales` không vào module.
 
 | Phương thức | Đường dẫn | Ghi chú |
 |---|---|---|
-| GET | `/production-orders` | Lọc `q`, `status` (`draft`/`approved`/`in_progress`/`awaiting_receipt`/`cancelled`) |
+| GET | `/production-orders` | Lọc `q`, `status` (`draft`/`approved`/`in_progress`/`awaiting_receipt`/`completed`/`cancelled`) |
 | POST | `/production-orders` | **201** — bản nháp + explode BOM |
-| GET | `/production-orders/:id` | Chi tiết + `materials[]`; sau complete có `actualQty`, `actualMaterialCost`, `finishedDate`, `defectQty`/`defectReason`, `leftovers[]`, `finishedReceiptId/code` |
+| GET | `/production-orders/:id` | Chi tiết + `materials[]`; sau complete có `actualQty`, `actualMaterialCost`, `finishedDate`, `defectQty`/`defectReason`, `leftovers[]`, `finishedReceiptId/code`. Khi `completed`: thêm `unitCost`, `markupPercent` (app_config `sell_price_markup_percent`, mặc định 30), `suggestedSellPrice` = round_1000(unitCost × (1 + markup/100)) cho **khay 1 kg**. **Nhập TP xong** ghi `listPrice`: khay 1 kg = giá đó; khay 0,5 kg = round_1000(nửa); SP chỉ có 0,5 kg thì gán nguyên giá tính được |
 | PUT | `/production-orders/:id` | Chỉ `draft` |
 | POST | `/production-orders/:id/approve` | Duy — đủ NVL → `approved` + phiếu xuất `pending` |
 | POST | `/production-orders/:id/cancel` | `draft` / `approved` (chưa xuất) |
@@ -205,7 +205,7 @@ Quyền `inventory`. **Duy (48–49):** tạo/sửa/duyệt/hủy lệnh + sinh 
 
 ## receipts
 
-Contract FE: `features/receipts/api.ts`. **Long (Inter 1 dòng 46–47):** phiếu nguyên liệu nhập 2 bước — tạo phiếu **Chờ nhập** (chưa cộng tồn) → thủ kho **xác nhận nhập kho** (SL thực nhận, lô, NSX/HSD, đơn giá) → cộng tồn **theo lô NVL** (`raw_material_lot`), ghi sổ kho NVL (`raw_material_ledger`), phiếu **Hoàn thành**. Phiếu thành phẩm vẫn nhập ngay như cũ. Tổng `qtyOnHand` của NVL luôn = tổng `qtyRemaining` các lô (tồn cũ chưa có lô → lô `TON-DAU` lúc khởi động). Chưa có module đơn mua hàng nên phiếu tạo tay.
+Contract FE: `features/receipts/api.ts`. **Long (Inter 1 dòng 46–47):** phiếu nguyên liệu nhập 2 bước — tạo phiếu **Chờ nhập** (chưa cộng tồn) → thủ kho **xác nhận nhập kho** (SL thực nhận, lô, NSX/HSD, đơn giá) → cộng tồn **theo lô NVL** (`raw_material_lot`), ghi sổ kho NVL (`raw_material_ledger`), phiếu **Hoàn thành**. **Dòng 52:** phiếu thành phẩm từ lệnh SX cũng **Chờ nhập** → `POST …/complete` body `{ lotCode?, mfgDate?, expDate, locationId, qty, note? }` → cộng tồn TP, lưu giá vốn/khay = (NVL thật + chi phí SX) ÷ qty, lệnh → `completed`. Phiếu TP tạo tay vẫn nhập ngay. Tổng `qtyOnHand` của NVL luôn = tổng `qtyRemaining` các lô (tồn cũ chưa có lô → lô `TON-DAU` lúc khởi động). Chưa có module đơn mua hàng nên phiếu tạo tay.
 
 | Phương thức | Đường dẫn | Ghi chú |
 |---|---|---|
@@ -216,7 +216,7 @@ Contract FE: `features/receipts/api.ts`. **Long (Inter 1 dòng 46–47):** phi�
 | GET | `/goods-receipts` | Lọc `q`, `receiptType` (`finished`/`raw`), `status` (`pending`/`completed`/`cancelled`; phiếu cũ không có trạng thái = `completed`), `sort` (`asc` = mã phiếu tăng dần; mặc định giảm dần). Trả thêm `status`, `expectedDate`, `completedAt`, `completerName`, `totalAmount`, `lines` |
 | GET | `/goods-receipts/:id` | Chi tiết + `lines` (NVL: dự kiến / thực nhận / lô / HSD / đơn giá / thành tiền) |
 | POST | `/goods-receipts` | **201.** `finished` → nhập ngay (như cũ). `raw` → **Chờ nhập**, `rawLines[].qty` = SL dự kiến, `expectedDate` tùy chọn; không cộng tồn. Mỗi NVL 1 dòng; NVL ngừng dùng → 409 |
-| POST | `/goods-receipts/:id/complete` | Body `{ lines: [{ lineId, qtyReceived, lotCode?, mfgDate?, expDate?, unitPrice }], note? }` — đủ mọi dòng của phiếu. `qtyReceived` ≥ 0 (có thể khác dự kiến; 0 = không về); > 0 thì **đơn giá > 0** bắt buộc; HSD không trước NSX, không ở quá khứ; mã lô trống → `NVL-yyMMdd-NN`, trùng trong cùng NVL → 409. Cả phiếu thực nhận = 0 → 400 (hãy hủy). Khóa phiếu: xác nhận lần 2 / phiếu đã hủy → 409 |
+| POST | `/goods-receipts/:id/complete` | **RAW:** body `{ lines: [{ lineId, qtyReceived, lotCode?, mfgDate?, expDate?, unitPrice }], note? }` — đủ mọi dòng; `qtyReceived` ≥ 0; > 0 thì đơn giá > 0; HSD không trước NSX / không quá khứ; mã lô trống → `NVL-yyMMdd-NN`. **FINISHED (từ LSX):** body `{ lotCode?, mfgDate?, expDate, locationId, qty, note? }` — cộng tồn, giá vốn/khay từ lệnh, cập nhật `listPrice` khay 1 kg + khay 0,5 kg (= nửa), PO → `completed`. Idempotent nếu đã hoàn thành. Khóa phiếu: đã hủy → 409 |
 | POST | `/goods-receipts/:id/cancel` | Body `{ reason? }`. Chỉ phiếu Chờ nhập (không đổi tồn); đã nhập / đã hủy → 409 |
 
 ## reports

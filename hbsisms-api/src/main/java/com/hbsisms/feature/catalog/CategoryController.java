@@ -38,13 +38,13 @@ public class CategoryController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasAuthority('products')")
+    @PreAuthorize("hasAuthority('products') and @roles.ownerOrAdmin()")
     public CategoryResponse create(@Valid @RequestBody CategoryRequest request) {
         return categoryService.create(request);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('products')")
+    @PreAuthorize("hasAuthority('products') and @roles.ownerOrAdmin()")
     public CategoryResponse update(@PathVariable Long id, @Valid @RequestBody CategoryRequest request) {
         return categoryService.update(id, request);
     }

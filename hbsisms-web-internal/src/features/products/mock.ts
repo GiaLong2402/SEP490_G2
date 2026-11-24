@@ -55,7 +55,7 @@ const toItem = (product: (typeof db.products)[number], { includeLots = false } =
 function validateVariant(body: any, currentId: number | null) {
   if (!body.sku?.trim() || !body.packLabel?.trim()) fail(400, 'Thiếu SKU hoặc quy cách');
   if (db.variants.some((v) => v.sku === body.sku.trim() && v.id !== currentId)) fail(409, `SKU ${body.sku} đã tồn tại`);
-  if (!(Number(body.listPrice) > 0)) fail(400, 'Giá niêm yết phải lớn hơn 0');
+  if (Number(body.listPrice) < 0) fail(400, 'Giá niêm yết không hợp lệ');
   if (!(Number(body.packPerCase) >= 1)) fail(400, 'Số khay / thùng phải từ 1 trở lên');
   const mins = body.tiers.map((t: any) => Number(t.minQtyKhay));
   if (new Set(mins).size !== mins.length) fail(400, 'Các bậc số lượng không được trùng nhau');
@@ -395,7 +395,8 @@ mock('PUT', '/variants/:id', ({ params, body, userId }) => {
   const variant = db.variants.find((v) => v.id === Number(params.id));
   if (!variant) fail(404, 'Không tìm thấy quy cách');
   validateVariant(body, variant.id);
-  const { tiers, ...rest } = body;
+  const { tiers, listPrice: _ignored, ...rest } = body;
+  // Giá niêm yết chỉ cập nhật sau nhập TP từ LSX — không sửa tay qua form.
   Object.assign(variant, rest, { updatedAt: new Date().toISOString() });
   saveTiers(variant.id, tiers);
   audit(userId, 'update', 'product_variant', variant.id);

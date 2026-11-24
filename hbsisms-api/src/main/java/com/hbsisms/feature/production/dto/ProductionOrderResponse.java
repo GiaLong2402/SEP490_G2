@@ -39,6 +39,15 @@ public record ProductionOrderResponse(
         Instant createdAt,
         Instant approvedAt,
         String approverName,
+        Instant completedAt,
+        /** Giá vốn / khay sau nhập TP (null nếu chưa hoàn thành). */
+        BigDecimal unitCost,
+        /** % markup cấu hình (app_config sell_price_markup_percent). */
+        Integer markupPercent,
+        /** Giá bán = unitCost × (1 + markup/100); lúc nhập TP đã ghi vào listPrice quy cách. */
+        BigDecimal suggestedSellPrice,
+        /** Giá niêm yết quy cách thành phẩm (sau nhập TP = suggestedSellPrice). */
+        BigDecimal currentListPrice,
         List<ProductionOrderMaterialLineResponse> materials,
         List<ProductionLeftoverResponse> leftovers) {
 
@@ -46,9 +55,23 @@ public record ProductionOrderResponse(
             ProductionOrder order,
             List<ProductionOrderMaterialLineResponse> materials,
             List<ProductionLeftoverResponse> leftovers) {
+        return from(order, materials, leftovers, null, null, null, null);
+    }
+
+    public static ProductionOrderResponse from(
+            ProductionOrder order,
+            List<ProductionOrderMaterialLineResponse> materials,
+            List<ProductionLeftoverResponse> leftovers,
+            BigDecimal unitCost,
+            Integer markupPercent,
+            BigDecimal suggestedSellPrice,
+            BigDecimal currentListPrice) {
         MaterialIssue issue = order.getMaterialIssue();
         GoodsReceipt finished = order.getFinishedReceipt();
         var variant = order.getFinishedVariant();
+        Instant completedAt = order.getStatus() == ProductionOrderStatus.COMPLETED && finished != null
+                ? finished.getCompletedAt()
+                : null;
         return new ProductionOrderResponse(
                 order.getId(),
                 order.getCode(),
@@ -79,6 +102,13 @@ public record ProductionOrderResponse(
                 order.getCreatedAt(),
                 order.getApprovedAt(),
                 order.getApprovedBy() == null ? null : order.getApprovedBy().getFullName(),
+                completedAt,
+                unitCost,
+                markupPercent,
+                suggestedSellPrice,
+                currentListPrice != null
+                        ? currentListPrice
+                        : (variant == null ? null : variant.getListPrice()),
                 materials,
                 leftovers == null ? List.of() : leftovers);
     }

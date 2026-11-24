@@ -54,6 +54,10 @@ public class AppConfigInventorySeeder implements ApplicationRunner {
                 AppConfigService.SALES_HOLD_WARN_MINUTES,
                 String.valueOf(AppConfigService.DEFAULT_SALES_HOLD_WARN_MINUTES),
                 "Phút báo Sales trước khi hết hạn giữ hàng đơn Sales");
+        ensure(
+                AppConfigService.SELL_PRICE_MARKUP_PERCENT,
+                String.valueOf(AppConfigService.DEFAULT_SELL_PRICE_MARKUP_PERCENT),
+                "% markup trên giá vốn để gợi ý giá bán (dòng 53) — không tự đổi giá niêm yết");
     }
 
     private void ensure(String key, String value, String description) {

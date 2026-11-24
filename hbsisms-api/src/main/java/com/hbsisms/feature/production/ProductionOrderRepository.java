@@ -7,6 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -26,6 +27,18 @@ public interface ProductionOrderRepository extends JpaRepository<ProductionOrder
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select o from ProductionOrder o where o.id = :id")
     Optional<ProductionOrder> findByIdForUpdate(@Param("id") Long id);
+
+    /**
+     * Đóng lệnh sau nhập TP — cập nhật status bằng JPQL để tránh Hibernate conflict
+     * OneToOne {@code finishedReceipt} trùng instance phiếu đang khóa.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update ProductionOrder o
+            set o.status = com.hbsisms.feature.production.ProductionOrderStatus.COMPLETED
+            where o.id = :id and o.status = com.hbsisms.feature.production.ProductionOrderStatus.AWAITING_RECEIPT
+            """)
+    int markCompletedAfterFinishedReceipt(@Param("id") Long id);
 
     @EntityGraph(attributePaths = {"product", "createdBy", "approvedBy", "materialIssue"})
     @Query("""
