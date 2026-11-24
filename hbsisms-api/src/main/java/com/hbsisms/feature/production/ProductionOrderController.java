@@ -2,12 +2,16 @@ package com.hbsisms.feature.production;
 
 import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
+import com.hbsisms.feature.production.dto.ProductionBomProductResponse;
+import com.hbsisms.feature.production.dto.ProductionMaterialPreviewResponse;
 import com.hbsisms.feature.production.dto.ProductionOrderCompleteRequest;
 import com.hbsisms.feature.production.dto.ProductionOrderCreateRequest;
 import com.hbsisms.feature.production.dto.ProductionOrderResponse;
 import com.hbsisms.feature.production.dto.ProductionOrderUpdateRequest;
 import com.hbsisms.security.AuthUser;
 import jakarta.validation.Valid;
+import java.math.BigDecimal;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -27,9 +31,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class ProductionOrderController {
 
     private final ProductionOrderService productionOrderService;
+    private final ProductionPlanningService productionPlanningService;
 
-    public ProductionOrderController(ProductionOrderService productionOrderService) {
+    public ProductionOrderController(
+            ProductionOrderService productionOrderService,
+            ProductionPlanningService productionPlanningService) {
         this.productionOrderService = productionOrderService;
+        this.productionPlanningService = productionPlanningService;
     }
 
     @GetMapping
@@ -39,6 +47,19 @@ public class ProductionOrderController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "" + PageRequests.DEFAULT_PAGE_SIZE) int pageSize) {
         return productionOrderService.list(q, status, page, pageSize);
+    }
+
+    /** Inter1 #48 note: list SP đã có BOM — quyền inventory (không cần products). */
+    @GetMapping("/bom-products")
+    public List<ProductionBomProductResponse> bomProducts() {
+        return productionPlanningService.listBomProducts();
+    }
+
+    /** Inter1 #48 note: xem trước NVL cần dùng + tồn dùng được (bỏ lô hết hạn). */
+    @GetMapping("/material-preview")
+    public ProductionMaterialPreviewResponse materialPreview(
+            @RequestParam Long productId, @RequestParam BigDecimal plannedQty) {
+        return productionPlanningService.previewMaterials(productId, plannedQty);
     }
 
     @PostMapping
