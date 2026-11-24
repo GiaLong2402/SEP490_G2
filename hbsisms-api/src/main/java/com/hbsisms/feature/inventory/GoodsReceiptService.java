@@ -255,10 +255,18 @@ public class GoodsReceiptService {
         receipt.setReceivedBy(actor);
         receipt.setReceivedAt(now);
         GoodsReceipt saved = goodsReceiptRepository.saveAndFlush(receipt);
+        GoodsReceiptLine line = new GoodsReceiptLine();
+        line.setReceipt(saved);
+        line.setProductVariant(variant);
+        line.setLineNo(1);
+        line.setQtyExpected(qty);
+        goodsReceiptLineRepository.save(line);
         auditLogService.record(actorId, "create", REF_TYPE, saved.getId(), Map.of(
                 "receiptType", ReceiptType.FINISHED.code(),
                 "status", ReceiptStatus.PENDING.code(),
-                "productionOrderId", productionOrderId));
+                "productionOrderId", productionOrderId,
+                "variantId", variant.getId(),
+                "qtyExpected", qty));
         return saved;
     }
 
@@ -506,20 +514,17 @@ public class GoodsReceiptService {
     }
 
     private Map<Long, List<GoodsReceiptLine>> rawLinesOf(List<GoodsReceipt> receipts) {
-        List<Long> rawIds = receipts.stream()
-                .filter(r -> r.getReceiptType() == ReceiptType.RAW)
-                .map(GoodsReceipt::getId)
-                .toList();
-        if (rawIds.isEmpty()) {
+        List<Long> ids = receipts.stream().map(GoodsReceipt::getId).toList();
+        if (ids.isEmpty()) {
             return Map.of();
         }
-        return goodsReceiptLineRepository.findByReceipt_IdInOrderByLineNoAsc(rawIds).stream()
+        return goodsReceiptLineRepository.findByReceipt_IdInOrderByLineNoAsc(ids).stream()
                 .collect(Collectors.groupingBy(line -> line.getReceipt().getId()));
     }
 
     private GoodsReceiptResponse toResponse(GoodsReceipt receipt, List<GoodsReceiptLine> rawLines) {
         if (receipt.getReceiptType() == ReceiptType.FINISHED) {
-            List<ReceiptItemResponse> items = stockLedgerRepository
+            List<ReceiptItemResponse> ledgerItems = stockLedgerRepository
                     .findByRefTypeAndRefIdWithDetails(REF_TYPE, receipt.getId())
                     .stream()
                     .map(e -> {
@@ -528,13 +533,33 @@ public class GoodsReceiptService {
                         return new ReceiptItemResponse(sku + " · " + lotCode, e.getQtyDelta(), "khay");
                     })
                     .toList();
-            return GoodsReceiptResponse.from(receipt, items);
+            if (!ledgerItems.isEmpty()) {
+                return GoodsReceiptResponse.from(receipt, ledgerItems);
+            }
+            // PN TP pending từ SX: dòng variant + qtyExpected (ReceiptPanel prefill).
+            List<GoodsReceiptLine> fgLines = rawLines.stream()
+                    .filter(line -> line.getProductVariant() != null)
+                    .sorted(Comparator.comparingInt(GoodsReceiptLine::getLineNo))
+                    .toList();
+            if (!fgLines.isEmpty()) {
+                List<ReceiptItemResponse> items = fgLines.stream()
+                        .map(line -> new ReceiptItemResponse(
+                                line.getProductVariant().getSku(),
+                                line.getQtyExpected().doubleValue(),
+                                "khay"))
+                        .toList();
+                return GoodsReceiptResponse.from(receipt, items);
+            }
+            return GoodsReceiptResponse.from(receipt, List.of());
         }
-        if (rawLines.isEmpty()) {
+        List<GoodsReceiptLine> nvlLines = rawLines.stream()
+                .filter(line -> line.getRawMaterial() != null)
+                .toList();
+        if (nvlLines.isEmpty()) {
             // Phiếu NVL cũ (trước dòng 46): dòng chỉ lưu dạng tóm tắt trong ghi chú.
             return GoodsReceiptResponse.from(receipt, parseRawItemsFromNote(receipt.getNote()));
         }
-        List<GoodsReceiptLine> sorted = rawLines.stream()
+        List<GoodsReceiptLine> sorted = nvlLines.stream()
                 .sorted(Comparator.comparingInt(GoodsReceiptLine::getLineNo))
                 .toList();
         boolean received = receipt.getStatus() == ReceiptStatus.COMPLETED;

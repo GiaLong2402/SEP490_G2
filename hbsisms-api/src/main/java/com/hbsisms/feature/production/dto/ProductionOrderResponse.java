@@ -24,6 +24,9 @@ public record ProductionOrderResponse(
         BigDecimal actualQty,
         BigDecimal actualProductionCost,
         BigDecimal actualMaterialCost,
+        LocalDate finishedDate,
+        BigDecimal defectQty,
+        String defectReason,
         Long finishedVariantId,
         String finishedVariantSku,
         Long finishedReceiptId,
@@ -36,10 +39,13 @@ public record ProductionOrderResponse(
         Instant createdAt,
         Instant approvedAt,
         String approverName,
-        List<ProductionOrderMaterialLineResponse> materials) {
+        List<ProductionOrderMaterialLineResponse> materials,
+        List<ProductionLeftoverResponse> leftovers) {
 
     public static ProductionOrderResponse from(
-            ProductionOrder order, List<ProductionOrderMaterialLineResponse> materials) {
+            ProductionOrder order,
+            List<ProductionOrderMaterialLineResponse> materials,
+            List<ProductionLeftoverResponse> leftovers) {
         MaterialIssue issue = order.getMaterialIssue();
         GoodsReceipt finished = order.getFinishedReceipt();
         var variant = order.getFinishedVariant();
@@ -58,6 +64,9 @@ public record ProductionOrderResponse(
                 order.getActualQty(),
                 order.getActualProductionCost(),
                 order.getActualMaterialCost(),
+                order.getFinishedDate(),
+                order.getDefectQty(),
+                order.getDefectReason(),
                 variant == null ? null : variant.getId(),
                 variant == null ? null : variant.getSku(),
                 finished == null ? null : finished.getId(),
@@ -70,6 +79,7 @@ public record ProductionOrderResponse(
                 order.getCreatedAt(),
                 order.getApprovedAt(),
                 order.getApprovedBy() == null ? null : order.getApprovedBy().getFullName(),
-                materials);
+                materials,
+                leftovers == null ? List.of() : leftovers);
     }
 }

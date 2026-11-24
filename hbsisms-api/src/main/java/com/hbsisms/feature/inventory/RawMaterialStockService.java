@@ -185,7 +185,7 @@ public class RawMaterialStockService {
     }
 
     /**
-     * Xuất theo FEFO đủ {@code qty}. {@code material} phải đã khóa.
+     * Xuất theo FEFO đủ {@code qty}, bỏ qua lô đã hết hạn. {@code material} phải đã khóa.
      *
      * @return các lát (một phần tử / lô)
      */
@@ -201,14 +201,19 @@ public class RawMaterialStockService {
         if (qty == null || qty.signum() <= 0) {
             throw ApiException.badRequest("Số lượng xuất phải lớn hơn 0");
         }
-        if (material.getQtyOnHand().compareTo(qty) < 0) {
+        LocalDate today = LocalDate.now(clock.withZone(VN));
+        BigDecimal usable = rawMaterialLotRepository.sumUsableRemaining(material.getId(), today);
+        if (usable == null) {
+            usable = BigDecimal.ZERO;
+        }
+        if (usable.compareTo(qty) < 0) {
             throw ApiException.conflict(
-                    "Không đủ tồn nguyên liệu " + material.getName()
-                            + " (còn " + material.getQtyOnHand() + ")");
+                    "Không đủ tồn nguyên liệu dùng được " + material.getName()
+                            + " (còn " + usable + ", chưa tính lô hết hạn)");
         }
         BigDecimal remaining = qty;
         List<IssueSlice> slices = new ArrayList<>();
-        for (RawMaterialLot listed : rawMaterialLotRepository.findFefo(material.getId(), true)) {
+        for (RawMaterialLot listed : rawMaterialLotRepository.findFefoUsable(material.getId(), today)) {
             if (remaining.signum() <= 0) {
                 break;
             }

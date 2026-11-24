@@ -1,6 +1,7 @@
 package com.hbsisms.feature.production;
 
 import com.hbsisms.common.exception.ApiException;
+import com.hbsisms.common.text.Strings;
 import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
 import com.hbsisms.feature.catalog.Product;
@@ -9,6 +10,11 @@ import com.hbsisms.feature.catalog.ProductVariant;
 import com.hbsisms.feature.catalog.ProductVariantRepository;
 import com.hbsisms.feature.inventory.GoodsReceipt;
 import com.hbsisms.feature.inventory.GoodsReceiptService;
+import com.hbsisms.feature.inventory.RawMaterial;
+import com.hbsisms.feature.inventory.RawMaterialLot;
+import com.hbsisms.feature.inventory.RawMaterialStockService;
+import com.hbsisms.feature.production.dto.ProductionLeftoverInput;
+import com.hbsisms.feature.production.dto.ProductionLeftoverResponse;
 import com.hbsisms.feature.production.dto.ProductionOrderCompleteRequest;
 import com.hbsisms.feature.production.dto.ProductionOrderCreateRequest;
 import com.hbsisms.feature.production.dto.ProductionOrderMaterialLineResponse;
@@ -18,8 +24,15 @@ import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -29,35 +42,49 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class ProductionOrderService {
 
+    private static final ZoneId VN = ZoneId.of("Asia/Ho_Chi_Minh");
+
     private final ProductionOrderRepository productionOrderRepository;
     private final ProductionOrderMaterialLineRepository materialLineRepository;
+    private final ProductionLeftoverRepository leftoverRepository;
+    private final MaterialIssueLineRepository materialIssueLineRepository;
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
     private final BomExplosionService bomExplosionService;
     private final MaterialIssueService materialIssueService;
     private final GoodsReceiptService goodsReceiptService;
+    private final RawMaterialStockService rawMaterialStockService;
     private final BusinessCodeService businessCodeService;
     private final UserRepository userRepository;
+    private final Clock clock;
 
     public ProductionOrderService(
             ProductionOrderRepository productionOrderRepository,
             ProductionOrderMaterialLineRepository materialLineRepository,
+            ProductionLeftoverRepository leftoverRepository,
+            MaterialIssueLineRepository materialIssueLineRepository,
             ProductRepository productRepository,
             ProductVariantRepository productVariantRepository,
             BomExplosionService bomExplosionService,
             MaterialIssueService materialIssueService,
             GoodsReceiptService goodsReceiptService,
+            RawMaterialStockService rawMaterialStockService,
             BusinessCodeService businessCodeService,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            Clock clock) {
         this.productionOrderRepository = productionOrderRepository;
         this.materialLineRepository = materialLineRepository;
+        this.leftoverRepository = leftoverRepository;
+        this.materialIssueLineRepository = materialIssueLineRepository;
         this.productRepository = productRepository;
         this.productVariantRepository = productVariantRepository;
         this.bomExplosionService = bomExplosionService;
         this.materialIssueService = materialIssueService;
         this.goodsReceiptService = goodsReceiptService;
+        this.rawMaterialStockService = rawMaterialStockService;
         this.businessCodeService = businessCodeService;
         this.userRepository = userRepository;
+        this.clock = clock;
     }
 
     public PageResponse<ProductionOrderResponse> list(String q, String statusCode, int page, int pageSize) {
@@ -133,7 +160,6 @@ public class ProductionOrderService {
         if (order.getStatus() != ProductionOrderStatus.DRAFT) {
             throw ApiException.conflict("Chỉ duyệt được lệnh đang ở trạng thái bản nháp");
         }
-        // Refresh stock snapshot before approve
         BomExplosionService.ExplosionResult explosion =
                 bomExplosionService.explode(order.getProduct().getId(), order.getPlannedQty());
         order.setEstimatedMaterialCost(explosion.estimatedMaterialCost());
@@ -171,7 +197,7 @@ public class ProductionOrderService {
     }
 
     /**
-     * Task 51: báo hoàn thành SX + sinh phiếu nhập TP Pending.
+     * Task 51: báo hoàn thành SX + leftover -TL + sinh phiếu nhập TP Pending.
      * Đã có finishedReceipt → trả detail (idempotent).
      */
     @Transactional
@@ -195,11 +221,18 @@ public class ProductionOrderService {
             throw ApiException.conflict("Phiếu xuất NVL chưa hoàn thành — không thể báo hoàn thành");
         }
 
+        LocalDate today = LocalDate.now(clock.withZone(VN));
+        order.setFinishedDate(request.finishedDate() != null ? request.finishedDate() : today);
+        applyDefect(order, request);
+
         ProductVariant variant = resolveFinishedVariant(order, request.variantId());
         order.setActualQty(request.actualQty());
         order.setActualProductionCost(
                 request.actualProductionCost() == null ? BigDecimal.ZERO : request.actualProductionCost());
         order.setFinishedVariant(variant);
+
+        AppUser actor = actorId == null ? null : userRepository.findById(actorId).orElse(null);
+        applyLeftovers(order, issue, request.leftovers(), actor, today);
 
         GoodsReceipt receipt = goodsReceiptService.createPendingFinishedFromProduction(
                 order.getId(), order.getCode(), variant, request.actualQty(), actorId);
@@ -207,6 +240,122 @@ public class ProductionOrderService {
         order.setStatus(ProductionOrderStatus.AWAITING_RECEIPT);
         productionOrderRepository.save(order);
         return toResponse(requireOrder(id));
+    }
+
+    private void applyDefect(ProductionOrder order, ProductionOrderCompleteRequest request) {
+        BigDecimal defectQty = request.defectQty();
+        if (defectQty == null || defectQty.signum() <= 0) {
+            order.setDefectQty(null);
+            order.setDefectReason(null);
+            return;
+        }
+        String reason = Strings.trimToNull(request.defectReason());
+        if (reason == null) {
+            throw ApiException.badRequest("Vui lòng nhập lý do hàng hỏng");
+        }
+        order.setDefectQty(defectQty);
+        order.setDefectReason(reason);
+    }
+
+    /**
+     * Mỗi dòng leftover → lô {@code <lô xuất sau cùng>-TL}, trừ chi phí NVL thực tế.
+     * Source lot = dòng xuất sau cùng của NVL trên phiếu (khớp FE {@code lots[last]}).
+     */
+    private void applyLeftovers(
+            ProductionOrder order,
+            MaterialIssue issue,
+            List<ProductionLeftoverInput> leftovers,
+            AppUser actor,
+            LocalDate today) {
+        if (leftovers == null || leftovers.isEmpty()) {
+            return;
+        }
+        List<MaterialIssueLine> issuedLines =
+                materialIssueLineRepository.findByMaterialIssue_IdOrderBySortOrderAscIdAsc(issue.getId());
+        Map<Long, IssuedMaterialAgg> byMaterial = aggregateIssued(issuedLines);
+
+        Map<Long, BigDecimal> leftoverRequested = new HashMap<>();
+        List<ProductionLeftover> saved = new ArrayList<>();
+        for (ProductionLeftoverInput input : leftovers) {
+            if (input == null || input.qty() == null || input.qty().signum() <= 0) {
+                continue;
+            }
+            Long materialId = input.rawMaterialId();
+            IssuedMaterialAgg agg = byMaterial.get(materialId);
+            if (agg == null) {
+                throw ApiException.badRequest("NVL dư không khớp phiếu xuất của lệnh");
+            }
+            BigDecimal already = leftoverRequested.getOrDefault(materialId, BigDecimal.ZERO);
+            BigDecimal nextTotal = already.add(input.qty());
+            if (nextTotal.compareTo(agg.totalIssued) > 0) {
+                throw ApiException.badRequest(
+                        "Số lượng dư " + agg.material.getName() + " vượt tổng đã xuất (" + agg.totalIssued + ")");
+            }
+            leftoverRequested.put(materialId, nextTotal);
+
+            if (input.expDate() == null) {
+                throw ApiException.badRequest("Vui lòng nhập hạn dùng lô dư");
+            }
+            if (input.expDate().isBefore(today)) {
+                throw ApiException.badRequest("Hạn dùng lô dư không được ở quá khứ");
+            }
+            if (agg.minExpDate != null && input.expDate().isAfter(agg.minExpDate)) {
+                throw ApiException.badRequest(
+                        "Hạn dùng lô dư không được muộn hơn hạn lô đã xuất (" + agg.minExpDate + ")");
+            }
+
+            RawMaterialLot sourceLot = agg.lastLot;
+            BigDecimal unitPrice = sourceLot.getUnitPrice() == null ? BigDecimal.ZERO : sourceLot.getUnitPrice();
+            String lotCode = sourceLot.getLotCode() + "-TL";
+            RawMaterialLot returned = rawMaterialStockService.receive(
+                    agg.material,
+                    lotCode,
+                    null,
+                    input.expDate(),
+                    unitPrice,
+                    input.qty(),
+                    null,
+                    actor,
+                    "Trả lại NVL dư lệnh " + order.getCode());
+
+            BigDecimal amount = input.qty().multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal cost = order.getActualMaterialCost() == null ? BigDecimal.ZERO : order.getActualMaterialCost();
+            BigDecimal credited = cost.subtract(amount);
+            order.setActualMaterialCost(credited.signum() < 0 ? BigDecimal.ZERO : credited);
+
+            ProductionLeftover row = new ProductionLeftover();
+            row.setProductionOrder(order);
+            row.setRawMaterial(agg.material);
+            row.setLot(returned);
+            row.setQty(input.qty());
+            row.setExpDate(input.expDate());
+            row.setAmount(amount);
+            saved.add(row);
+        }
+        if (!saved.isEmpty()) {
+            leftoverRepository.saveAll(saved);
+        }
+    }
+
+    private static Map<Long, IssuedMaterialAgg> aggregateIssued(List<MaterialIssueLine> lines) {
+        Map<Long, IssuedMaterialAgg> map = new HashMap<>();
+        for (MaterialIssueLine line : lines) {
+            if (line.getRawMaterialLot() == null
+                    || line.getQtyIssued() == null
+                    || line.getQtyIssued().signum() <= 0) {
+                continue;
+            }
+            Long materialId = line.getRawMaterial().getId();
+            IssuedMaterialAgg agg = map.computeIfAbsent(
+                    materialId, id -> new IssuedMaterialAgg(line.getRawMaterial()));
+            agg.totalIssued = agg.totalIssued.add(line.getQtyIssued());
+            agg.lastLot = line.getRawMaterialLot();
+            LocalDate exp = line.getRawMaterialLot().getExpDate();
+            if (exp != null) {
+                agg.minExpDate = agg.minExpDate == null || exp.isBefore(agg.minExpDate) ? exp : agg.minExpDate;
+            }
+        }
+        return map;
     }
 
     private ProductVariant resolveFinishedVariant(ProductionOrder order, Long variantId) {
@@ -242,7 +391,12 @@ public class ProductionOrderService {
         }
         List<ProductionOrderMaterialLineResponse> materials =
                 lines.stream().map(ProductionOrderMaterialLineResponse::from).toList();
-        return ProductionOrderResponse.from(order, materials);
+        List<ProductionLeftoverResponse> leftovers = leftoverRepository
+                .findByProductionOrder_IdOrderByIdAsc(order.getId())
+                .stream()
+                .map(ProductionLeftoverResponse::from)
+                .toList();
+        return ProductionOrderResponse.from(order, materials, leftovers);
     }
 
     private static String blankToNull(String value) {
@@ -250,5 +404,16 @@ public class ProductionOrderService {
             return null;
         }
         return value.trim();
+    }
+
+    private static final class IssuedMaterialAgg {
+        private final RawMaterial material;
+        private BigDecimal totalIssued = BigDecimal.ZERO;
+        private RawMaterialLot lastLot;
+        private LocalDate minExpDate;
+
+        private IssuedMaterialAgg(RawMaterial material) {
+            this.material = material;
+        }
     }
 }

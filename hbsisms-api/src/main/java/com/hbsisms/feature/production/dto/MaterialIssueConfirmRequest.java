@@ -1,9 +1,6 @@
 package com.hbsisms.feature.production.dto;
 
-import jakarta.validation.Valid;
-import java.util.List;
-
 /**
- * Body xác nhận xuất NVL. {@code allocations} trống/null → server tự FEFO đủ qtyRequired từng NVL.
+ * Body xác nhận xuất NVL. Server luôn chia lô FEFO (bỏ lô hết hạn); không nhận allocations tay.
  */
-public record MaterialIssueConfirmRequest(@Valid List<MaterialIssueAllocationRequest> allocations) {}
+public record MaterialIssueConfirmRequest(String note) {}

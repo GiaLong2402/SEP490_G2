@@ -163,9 +163,11 @@ class RawMaterialStockServiceTest {
     @Test
     void issueFefo_outsAcrossLotsInOrder_andWritesOutLedger() {
         ice.setQtyOnHand(new BigDecimal("10"));
+        LocalDate today = LocalDate.of(2026, 11, 23);
         RawMaterialLot first = lot(11L, ice, "L1", new BigDecimal("4"), new BigDecimal("1000"));
         RawMaterialLot second = lot(12L, ice, "L2", new BigDecimal("6"), new BigDecimal("2000"));
-        when(rawMaterialLotRepository.findFefo(3L, true)).thenReturn(List.of(first, second));
+        when(rawMaterialLotRepository.sumUsableRemaining(3L, today)).thenReturn(new BigDecimal("10"));
+        when(rawMaterialLotRepository.findFefoUsable(3L, today)).thenReturn(List.of(first, second));
         when(rawMaterialLotRepository.findByIdForUpdate(11L)).thenReturn(Optional.of(first));
         when(rawMaterialLotRepository.findByIdForUpdate(12L)).thenReturn(Optional.of(second));
 
@@ -182,8 +184,28 @@ class RawMaterialStockServiceTest {
     }
 
     @Test
-    void issueFefo_whenOnHandShort_returns409() {
-        ice.setQtyOnHand(new BigDecimal("2"));
+    void issueFefo_skipsExpiredLots_usesOnlyUsable() {
+        ice.setQtyOnHand(new BigDecimal("10"));
+        LocalDate today = LocalDate.of(2026, 11, 23);
+        RawMaterialLot usable = lot(12L, ice, "L2", new BigDecimal("6"), new BigDecimal("2000"));
+        when(rawMaterialLotRepository.sumUsableRemaining(3L, today)).thenReturn(new BigDecimal("6"));
+        when(rawMaterialLotRepository.findFefoUsable(3L, today)).thenReturn(List.of(usable));
+        when(rawMaterialLotRepository.findByIdForUpdate(12L)).thenReturn(Optional.of(usable));
+
+        var slices = service.issueFefo(
+                ice, new BigDecimal("5"), RawMaterialStockService.REF_MATERIAL_ISSUE, 99L, null, "xuất");
+
+        assertThat(slices).hasSize(1);
+        assertThat(slices.get(0).qty()).isEqualByComparingTo("5");
+        assertThat(usable.getQtyRemaining()).isEqualByComparingTo("1");
+        verify(rawMaterialLotRepository).findFefoUsable(3L, today);
+    }
+
+    @Test
+    void issueFefo_whenUsableShort_returns409_evenIfOnHandIncludesExpired() {
+        ice.setQtyOnHand(new BigDecimal("10"));
+        LocalDate today = LocalDate.of(2026, 11, 23);
+        when(rawMaterialLotRepository.sumUsableRemaining(3L, today)).thenReturn(new BigDecimal("2"));
 
         assertThatThrownBy(() -> service.issueFefo(
                         ice, new BigDecimal("3"), RawMaterialStockService.REF_MATERIAL_ISSUE, 1L, null, null))
