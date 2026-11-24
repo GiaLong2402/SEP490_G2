@@ -180,6 +180,21 @@ export const receiptStatusMeta: Meta<ReceiptStatus> = {
   pending: { label: 'Chờ nhập', tone: 'amber' }, completed: { label: 'Hoàn thành', tone: 'green' }, cancelled: { label: 'Đã hủy', tone: 'neutral' },
 };
 
+/**
+ * Lệnh sản xuất (Inter 1 dòng 48–52): Nháp → Đã duyệt (tự tạo phiếu xuất NVL) → Đang sản xuất (đã xuất NVL)
+ * → Chờ nhập kho (đã báo làm xong, phiếu nhập thành phẩm chờ) → Hoàn thành (tự chuyển khi nhập kho xong).
+ * `completed` đã chốt nhưng backend chưa có (dòng 52).
+ */
+export type ProductionOrderStatus = 'draft' | 'approved' | 'in_progress' | 'awaiting_receipt' | 'completed' | 'cancelled';
+export const productionOrderStatusMeta: Meta<ProductionOrderStatus> = {
+  draft: { label: 'Nháp', tone: 'neutral' },
+  approved: { label: 'Đã duyệt', tone: 'blue' },
+  in_progress: { label: 'Đang sản xuất', tone: 'blue' },
+  awaiting_receipt: { label: 'Chờ nhập kho', tone: 'amber' },
+  completed: { label: 'Hoàn thành', tone: 'green' },
+  cancelled: { label: 'Đã hủy', tone: 'red' },
+};
+
 export type StocktakeStatus = 'draft' | 'counting' | 'done' | 'cancelled';
 export const stocktakeStatusMeta: Meta<StocktakeStatus> = {
   draft: { label: 'Nháp', tone: 'neutral' }, counting: { label: 'Đang đếm', tone: 'amber' }, done: { label: 'Hoàn tất', tone: 'green' }, cancelled: { label: 'Đã hủy', tone: 'neutral' },
