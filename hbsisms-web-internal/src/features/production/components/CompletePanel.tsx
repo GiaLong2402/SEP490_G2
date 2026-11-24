@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Check } from 'lucide-react';
 import { useQueries } from '@tanstack/react-query';
+import { canWarehouseOps, useAuth } from '@/features/auth';
 import { receiptsApi, useUnitLabel, type RawMaterialLot } from '@/features/receipts';
 import type { ID } from '@/shared/domain/entities';
 import { useAction } from '@/shared/api/useAction';
@@ -26,6 +27,8 @@ interface LeftoverRow {
 
 /** Bước 03 (Cường, dòng 51): báo làm xong — khay đạt, khay hỏng + lý do, nguyên liệu dư trả lại kho (lô -TL). */
 export function CompletePanel({ order }: { order: ProductionOrder }) {
+  const { user } = useAuth();
+  const canComplete = canWarehouseOps(user?.roleCode);
   const unitLabel = useUnitLabel();
   const issue = useMaterialIssue(order.materialIssueId);
   const materialIds = useMemo(() => [...new Set((issue.data?.lines ?? []).map((l) => l.rawMaterialId))], [issue.data]);
@@ -216,20 +219,26 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
 
       <ActionBar
         actions={
-          <Button
-            variant="primary"
-            icon={<Check size={15} strokeWidth={2.6} />}
-            loading={complete.isPending}
-            onClick={() => {
-              setTouched(true);
-              if (valid) complete.mutate();
-            }}
-          >
-            Báo làm xong
-          </Button>
+          canComplete ? (
+            <Button
+              variant="primary"
+              icon={<Check size={15} strokeWidth={2.6} />}
+              loading={complete.isPending}
+              onClick={() => {
+                setTouched(true);
+                if (valid) complete.mutate();
+              }}
+            >
+              Báo làm xong
+            </Button>
+          ) : undefined
         }
       >
-        <span>Báo xong: tự tạo phiếu nhập thành phẩm (Chờ nhập), điền sẵn {okValid ? num(ok) : '…'} khay</span>
+        <span>
+          {canComplete
+            ? `Báo xong: tự tạo phiếu nhập thành phẩm (Chờ nhập), điền sẵn ${okValid ? num(ok) : '…'} khay`
+            : 'Chỉ nhân viên kho / Chủ / Admin được báo làm xong.'}
+        </span>
         <span>
           {returned.map((r) => <span key={r.rawMaterialId}>Tạo lô <span className="font-mono">{r.sourceLot ? `${r.sourceLot.lotCode}-TL` : 'trả lại'}</span> {num(Number(leftOf(r).qty))} {unitLabel(r.unit)} · </span>)}
           lệnh chuyển "Chờ nhập kho"

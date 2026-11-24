@@ -8,7 +8,7 @@ import { StepTracker } from './StepTracker';
 
 /** Nhãn trạng thái trên tiêu đề lệnh (theo bản thiết kế). */
 const TITLE_STATUS: Record<ProductionOrderStatus, { label: string; tone: Tone }> = {
-  draft: { label: 'Nháp', tone: 'neutral' },
+  draft: { label: 'Chờ duyệt', tone: 'neutral' },
   approved: { label: 'Đã duyệt · chờ xuất nguyên liệu', tone: 'blue' },
   in_progress: { label: 'Đang sản xuất', tone: 'blue' },
   awaiting_receipt: { label: 'Chờ nhập kho', tone: 'amber' },

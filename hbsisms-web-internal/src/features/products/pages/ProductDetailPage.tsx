@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pencil, Plus } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
+import { isOwnerOrAdmin, useAuth } from '@/features/auth';
 import { money, num } from '@/shared/lib/format';
 import { Button, Card, Chip, DataTable, ErrorState, IconButton, InfoList, PageHeader, PageLoading, type Column } from '@/shared/ui';
 import { BomFormModal } from '../components/BomFormModal';
@@ -19,6 +20,8 @@ function ExpiryChip({ daysLeft }: { daysLeft: number | null }) {
 
 export default function ProductDetailPage() {
   const id = Number(useParams().id);
+  const { user } = useAuth();
+  const canEditCatalog = isOwnerOrAdmin(user?.roleCode);
   const { data: product, isLoading, error, refetch } = useProduct(id);
   const bomQuery = useProductBom(id, Number.isFinite(id) && id > 0);
   const [editing, setEditing] = useState(false);
@@ -43,7 +46,9 @@ export default function ProductDetailPage() {
         return <Chip tone={selling ? 'green' : 'neutral'}>{selling ? 'Đang bán' : 'Ngừng bán'}</Chip>;
       },
     },
-    { key: 'edit', header: '', align: 'right', cell: (v) => <IconButton label={`Sửa ${v.sku}`} onClick={() => setVariantModal({ variant: v })}><Pencil size={14} /></IconButton> },
+    ...(canEditCatalog
+      ? [{ key: 'edit', header: '', align: 'right' as const, cell: (v: VariantWithTiers) => <IconButton label={`Sửa ${v.sku}`} onClick={() => setVariantModal({ variant: v })}><Pencil size={14} /></IconButton> }]
+      : []),
   ];
 
   const bomLines = bomQuery.data?.lines ?? [];
@@ -90,11 +95,11 @@ export default function ProductDetailPage() {
       <PageHeader
         breadcrumb={<><Link to="/products" className="hover:underline">Sản phẩm</Link> / {product.code}</>}
         title={product.name}
-        actions={<Button icon={<Pencil size={14} />} onClick={() => setEditing(true)}>Sửa sản phẩm</Button>}
+        actions={canEditCatalog ? <Button icon={<Pencil size={14} />} onClick={() => setEditing(true)}>Sửa sản phẩm</Button> : undefined}
       />
       <div className="grid items-start gap-4 lg:grid-cols-[1fr_320px]">
         <div className="space-y-4">
-          <Card flush title="Quy cách và bậc giá" actions={<Button icon={<Plus size={14} />} onClick={() => setVariantModal({})}>Thêm quy cách</Button>}>
+          <Card flush title="Quy cách và bậc giá" actions={canEditCatalog ? <Button icon={<Plus size={14} />} onClick={() => setVariantModal({})}>Thêm quy cách</Button> : undefined}>
             <DataTable columns={columns} rows={product.variants} rowKey={(v) => v.id} emptyText="Sản phẩm chưa có quy cách" />
           </Card>
           <Card flush title="Lô hàng (chỉ xem)">
@@ -103,7 +108,7 @@ export default function ProductDetailPage() {
           <Card
             flush
             title="Định mức NVL (BOM)"
-            actions={<Button icon={<Pencil size={14} />} onClick={() => setBomOpen(true)}>{bomLines.length ? 'Sửa định mức' : 'Thiết lập BOM'}</Button>}
+            actions={canEditCatalog ? <Button icon={<Pencil size={14} />} onClick={() => setBomOpen(true)}>{bomLines.length ? 'Sửa định mức' : 'Thiết lập BOM'}</Button> : undefined}
           >
             {bomQuery.isLoading ? (
               <p className="p-4 text-small text-ink-faint">Đang tải định mức…</p>

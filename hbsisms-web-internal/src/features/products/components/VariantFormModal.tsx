@@ -2,12 +2,27 @@ import { useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { useAction } from '@/shared/api/useAction';
 import type { ID } from '@/shared/domain/entities';
-import { formatThousands, parseThousands } from '@/shared/lib/format';
-import { Button, Checkbox, Field, IconButton, Input, Modal } from '@/shared/ui';
+import { formatThousands, money, parseThousands } from '@/shared/lib/format';
+import { Button, Checkbox, Field, IconButton, Input, Modal, Select } from '@/shared/ui';
 import { productsApi } from '../api';
 import type { VariantInput, VariantWithTiers } from '../types';
 
 interface TierRow { minQtyKhay: string; unitPrice: string }
+
+type PackSize = '500' | '1000';
+
+const PACK_PRESETS: Record<PackSize, { label: string; weightG: number }> = {
+  '500': { label: 'Khay 0,5 kg', weightG: 500 },
+  '1000': { label: 'Khay 1 kg', weightG: 1000 },
+};
+
+function detectPackSize(packLabel: string, weightG: number | null | undefined): PackSize {
+  if (weightG === 1000) return '1000';
+  if (weightG === 500) return '500';
+  const n = packLabel.toLowerCase();
+  if (/(^|[^0-9])1\s*kg/.test(n) || n.includes('1kg')) return '1000';
+  return '500';
+}
 
 export function VariantFormModal({
   open,
@@ -24,10 +39,7 @@ export function VariantFormModal({
   onClose: () => void;
 }) {
   const [sku, setSku] = useState('');
-  const [packLabel, setPackLabel] = useState('');
-  const [weight, setWeight] = useState('');
-  const [listPrice, setListPrice] = useState('');
-  const [packPerCase, setPackPerCase] = useState('1');
+  const [packSize, setPackSize] = useState<PackSize>('500');
   const [barcode, setBarcode] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [tiers, setTiers] = useState<TierRow[]>([]);
@@ -37,10 +49,7 @@ export function VariantFormModal({
     if (!open) return;
     setTouched(false);
     setSku(variant?.sku ?? '');
-    setPackLabel(variant?.packLabel ?? '');
-    setWeight(variant?.unitWeightG ? String(variant.unitWeightG) : '');
-    setListPrice(variant ? parseThousands(String(variant.listPrice)) : '');
-    setPackPerCase(String(variant?.packPerCase ?? 1));
+    setPackSize(detectPackSize(variant?.packLabel ?? '', variant?.unitWeightG));
     setBarcode(variant?.barcode ?? '');
     setIsActive(variant?.isActive ?? true);
     setTiers(
@@ -51,14 +60,22 @@ export function VariantFormModal({
     );
   }, [open, variant]);
 
+  const preset = PACK_PRESETS[packSize];
   const tiersValid = tiers.every((t) => Number(t.minQtyKhay) > 0 && Number(t.unitPrice) > 0);
-  const valid = sku.trim() && packLabel.trim() && Number(listPrice) > 0 && Number(packPerCase) >= 1 && tiersValid;
+  const valid = sku.trim() && tiersValid;
+  const displayListPrice = variant ? Number(variant.listPrice) : 0;
 
   const save = useAction(
     () => {
       const body: VariantInput = {
-        sku: sku.trim(), packLabel: packLabel.trim(), unitWeightG: weight ? Number(weight) : null, listPrice: Number(listPrice), packPerCase: Number(packPerCase),
-        barcode: barcode.trim() || null, isActive, tiers: tiers.map((t) => ({ minQtyKhay: Number(t.minQtyKhay), unitPrice: Number(t.unitPrice) })),
+        sku: sku.trim(),
+        packLabel: preset.label,
+        unitWeightG: preset.weightG,
+        listPrice: displayListPrice,
+        packPerCase: 1,
+        barcode: barcode.trim() || null,
+        isActive,
+        tiers: tiers.map((t) => ({ minQtyKhay: Number(t.minQtyKhay), unitPrice: Number(t.unitPrice) })),
       };
       return variant ? productsApi.updateVariant(variant.id, body) : productsApi.addVariant(productId, body);
     },
@@ -77,22 +94,33 @@ export function VariantFormModal({
       }}
       footer={<><Button onClick={onClose}>Hủy bỏ</Button><Button type="submit" variant="primary" loading={save.isPending}>Lưu</Button></>}
     >
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Field label="SKU" required error={touched && !sku.trim() ? 'Bắt buộc' : undefined}><Input value={sku} onChange={(e) => setSku(e.target.value)} /></Field>
-        <Field label="Quy cách" required error={touched && !packLabel.trim() ? 'Bắt buộc' : undefined}><Input placeholder="Khay 0,5kg" value={packLabel} onChange={(e) => setPackLabel(e.target.value)} /></Field>
-        <Field label="Khối lượng (g)"><Input type="number" min={0} value={weight} onChange={(e) => setWeight(e.target.value)} /></Field>
-        <Field label="Giá niêm yết / khay" required error={touched && !(Number(listPrice) > 0) ? 'Phải lớn hơn 0' : undefined}>
-          <Input
-            type="text"
-            inputMode="numeric"
-            autoComplete="off"
-            value={formatThousands(listPrice)}
-            onChange={(e) => setListPrice(parseThousands(e.target.value))}
-          />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="SKU" required error={touched && !sku.trim() ? 'Bắt buộc' : undefined}>
+          <Input value={sku} onChange={(e) => setSku(e.target.value)} autoComplete="off" placeholder="VD: SP-CHA-CA-05" />
         </Field>
-        <Field label="Số khay / thùng" required error={touched && !(Number(packPerCase) >= 1) ? 'Từ 1 trở lên' : undefined}><Input type="number" min={1} value={packPerCase} onChange={(e) => setPackPerCase(e.target.value)} /></Field>
-        <Field label="Mã vạch"><Input value={barcode} onChange={(e) => setBarcode(e.target.value)} /></Field>
+        <Field label="Loại khay" required tip="Chỉ hai quy cách chuẩn; khối lượng dùng khi cập nhật giá bán sau SX.">
+          <Select value={packSize} onChange={(e) => setPackSize(e.target.value as PackSize)}>
+            <option value="500">Khay 0,5 kg</option>
+            <option value="1000">Khay 1 kg</option>
+          </Select>
+        </Field>
+        <Field label="Mã vạch" className="sm:col-span-2">
+          <Input value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="Không bắt buộc" autoComplete="off" />
+        </Field>
       </div>
+
+      <div className="mt-3 rounded-md border border-line bg-rowalt/50 px-3 py-2.5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <span className="text-small font-medium text-ink-muted">Giá niêm yết / khay</span>
+          <span className={`text-h2 tabular-nums ${displayListPrice > 0 ? 'text-ink' : 'text-ink-faint'}`}>
+            {displayListPrice > 0 ? money(displayListPrice) : 'Chưa có'}
+          </span>
+        </div>
+        <p className="mt-1 text-small text-ink-faint">
+          Tự ghi sau nhập thành phẩm từ lệnh SX. Không nhập tay.
+        </p>
+      </div>
+
       <div className="mt-3">
         <Checkbox
           label="Quy cách đang bán"

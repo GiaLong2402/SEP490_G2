@@ -42,7 +42,14 @@ export function SummaryPanel({ order }: { order: ProductionOrder }) {
   const received = order.receivedQty ?? order.actualQty ?? 0;
   const est = estimatedUnitCost(order);
   const total = actualTotalCost(order);
-  const unit = total !== null && received > 0 ? Math.round(total / received) : null;
+  const unit = order.unitCost ?? (total !== null && received > 0 ? Math.round(total / received) : null);
+  /** API trả sẵn; nếu chưa (API cũ / chưa restart) tự tính theo markup mặc định 30%. */
+  const markupPercent = order.markupPercent ?? 30;
+  const suggestedSellPrice =
+    order.suggestedSellPrice
+    ?? (unit != null ? Math.round((unit * (1 + markupPercent / 100)) / 1000) * 1000 : null);
+  const halfKgPrice =
+    suggestedSellPrice != null ? Math.round(suggestedSellPrice / 2 / 1000) * 1000 : null;
   const unitDiff = unit !== null && est !== null ? unit - est : null;
   const leftover = leftoverTotal(order);
   const pct = order.plannedQty > 0 ? Math.round((received / order.plannedQty) * 100) : 0;
@@ -120,12 +127,36 @@ export function SummaryPanel({ order }: { order: ProductionOrder }) {
             <Row k="Phiếu nhập" v={order.finishedReceiptCode ? <Link to="/receipts" className="font-mono font-normal text-primary hover:underline">{order.finishedReceiptCode}</Link> : '—'} />
           </dl>
         </section>
-        <section className="flex flex-col gap-3 rounded-lg border border-line bg-card p-4 shadow-card">
-          <h2 className="text-h2 text-ink">Gợi ý giá bán</h2>
-          <p className="text-small text-ink-muted">
-            Từ giá vốn {money(unit)}/khay, hệ thống gợi ý giá bán theo mức lời mong muốn. Chỉ là gợi ý: <b className="text-ink">không tự đổi giá bán</b> của sản phẩm, Chủ tự quyết.
+        <section className="flex flex-col rounded-lg border border-line bg-card p-4 shadow-card">
+          <div className="flex items-start justify-between gap-2">
+            <h2 className="text-h2 text-ink">Giá bán (đã cập nhật)</h2>
+            <InfoTip label="Cách tính giá bán">
+              Giá vốn / khay × (1 + {markupPercent}% lời), làm tròn 1.000 ₫ → khay 1 kg. Khay 0,5 kg = một nửa (cũng
+              tròn 1.000 ₫). Hệ thống ghi vào niêm yết quy cách — không nhập tay.
+            </InfoTip>
+          </div>
+          <p className="mt-1 text-small text-ink-muted">
+            {money(unit)} vốn → +{markupPercent}% → tròn 1.000 ₫
           </p>
-          <div className="rounded-md bg-rowalt px-3 py-2.5 text-small text-ink-muted">Giá bán gợi ý: <b className="text-ink">[theo công thức dòng 53]</b></div>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="rounded-md border border-line bg-rowalt/60 px-3 py-3">
+              <div className="text-micro font-semibold uppercase tracking-wide text-ink-muted">Khay 1 kg</div>
+              <div className="mt-1 text-h2 tabular-nums text-primary">{money(suggestedSellPrice)}</div>
+            </div>
+            <div className="rounded-md border border-line bg-rowalt/60 px-3 py-3">
+              <div className="text-micro font-semibold uppercase tracking-wide text-ink-muted">Khay 0,5 kg</div>
+              <div className="mt-1 text-h2 tabular-nums text-ink">{money(halfKgPrice)}</div>
+              <div className="mt-0.5 text-small text-ink-faint">= ½ giá 1 kg</div>
+            </div>
+          </div>
+          {order.productId != null && (
+            <Link
+              to={`/products/${order.productId}`}
+              className="mt-3 text-small font-medium text-primary hover:underline"
+            >
+              Xem trên sản phẩm →
+            </Link>
+          )}
         </section>
       </div>
 

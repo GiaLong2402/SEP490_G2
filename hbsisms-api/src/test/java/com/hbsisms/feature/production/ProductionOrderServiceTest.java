@@ -19,6 +19,7 @@ import com.hbsisms.feature.inventory.RawMaterialStockService;
 import com.hbsisms.feature.production.dto.ProductionOrderCreateRequest;
 import com.hbsisms.feature.production.dto.ProductionOrderResponse;
 import com.hbsisms.feature.production.dto.ProductionOrderUpdateRequest;
+import com.hbsisms.feature.system.AppConfigService;
 import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.UserRepository;
 import java.math.BigDecimal;
@@ -63,6 +64,8 @@ class ProductionOrderServiceTest {
     @Mock
     private BusinessCodeService businessCodeService;
     @Mock
+    private AppConfigService appConfigService;
+    @Mock
     private UserRepository userRepository;
 
     private ProductionOrderService service;
@@ -81,9 +84,11 @@ class ProductionOrderServiceTest {
                 goodsReceiptService,
                 rawMaterialStockService,
                 businessCodeService,
+                appConfigService,
                 userRepository,
                 Clock.fixed(Instant.parse("2026-11-23T03:00:00Z"), ZoneOffset.UTC));
         lenient().when(leftoverRepository.findByProductionOrder_IdOrderByIdAsc(anyLong())).thenReturn(List.of());
+        lenient().when(appConfigService.sellPriceMarkupPercent()).thenReturn(30);
     }
 
     @Test
@@ -231,6 +236,24 @@ class ProductionOrderServiceTest {
                         100L, new ProductionOrderUpdateRequest(BigDecimal.ONE, null, null, null)))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.CONFLICT));
+    }
+
+    @Test
+    void get_completed_suggestsSellPriceFromUnitCostAndMarkup() {
+        ProductionOrder order = draftOrder(true);
+        order.setStatus(ProductionOrderStatus.COMPLETED);
+        order.setActualQty(new BigDecimal("10"));
+        order.setActualMaterialCost(new BigDecimal("70000"));
+        order.setActualProductionCost(new BigDecimal("30000"));
+        when(productionOrderRepository.findWithHeaderById(100L)).thenReturn(Optional.of(order));
+        when(appConfigService.sellPriceMarkupPercent()).thenReturn(30);
+        when(appConfigService.sellPriceFromUnitCost(any())).thenReturn(new BigDecimal("13000"));
+
+        ProductionOrderResponse response = service.get(100L);
+
+        assertThat(response.unitCost()).isEqualByComparingTo("10000");
+        assertThat(response.markupPercent()).isEqualTo(30);
+        assertThat(response.suggestedSellPrice()).isEqualByComparingTo("13000");
     }
 
     private ProductionOrder draftOrder(boolean sufficient) {

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Tags } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { isOwnerOrAdmin, useAuth } from '@/features/auth';
 import { money, num } from '@/shared/lib/format';
 import { Button, Card, Chip, DataTable, FilterBar, LinkButton, PageHeader, Pagination, SearchBox, useListParams, type Column } from '@/shared/ui';
 import { CategoryFilterMenu } from '../components/CategoryFilterMenu';
@@ -9,6 +10,8 @@ import { useCategories, useProducts } from '../hooks';
 import type { ProductListItem } from '../types';
 
 export default function ProductsPage() {
+  const { user } = useAuth();
+  const canEditCatalog = isOwnerOrAdmin(user?.roleCode);
   const list = useListParams(['categoryId'] as const);
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
@@ -26,7 +29,18 @@ export default function ProductsPage() {
 
   return (
     <>
-      <PageHeader title="Sản phẩm" subtitle="Loại sản phẩm, quy cách đóng khay và bậc giá" actions={<><LinkButton to="/categories" icon={<Tags size={15} />}>Quản lý loại</LinkButton><Button variant="primary" icon={<Plus size={15} />} onClick={() => setCreating(true)}>Thêm sản phẩm</Button></>} />
+      <PageHeader
+        title="Sản phẩm"
+        subtitle="Loại sản phẩm, quy cách đóng khay và bậc giá"
+        actions={
+          <>
+            <LinkButton to="/categories" icon={<Tags size={15} />}>Quản lý loại</LinkButton>
+            {canEditCatalog && (
+              <Button variant="primary" icon={<Plus size={15} />} onClick={() => setCreating(true)}>Thêm sản phẩm</Button>
+            )}
+          </>
+        }
+      />
       <Card flush>
         <FilterBar>
           <SearchBox value={list.q} onChange={list.setQ} placeholder="Tìm tên, mã, SKU..." />

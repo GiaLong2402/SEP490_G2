@@ -34,14 +34,14 @@ public class VariantController {
 
     @PostMapping("/products/{productId}/variants")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasAuthority('products')")
+    @PreAuthorize("hasAuthority('products') and @roles.ownerOrAdmin()")
     public void create(@PathVariable Long productId, @Valid @RequestBody VariantRequest request) {
         variantService.create(productId, request);
     }
 
     @PutMapping("/variants/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasAuthority('products')")
+    @PreAuthorize("hasAuthority('products') and @roles.ownerOrAdmin()")
     public void update(@PathVariable Long id, @Valid @RequestBody VariantRequest request) {
         variantService.update(id, request);
     }

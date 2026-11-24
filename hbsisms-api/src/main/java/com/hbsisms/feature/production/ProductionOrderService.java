@@ -4,6 +4,7 @@ import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.common.text.Strings;
 import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
+import com.hbsisms.feature.catalog.PackSizes;
 import com.hbsisms.feature.catalog.Product;
 import com.hbsisms.feature.catalog.ProductRepository;
 import com.hbsisms.feature.catalog.ProductVariant;
@@ -20,6 +21,7 @@ import com.hbsisms.feature.production.dto.ProductionOrderCreateRequest;
 import com.hbsisms.feature.production.dto.ProductionOrderMaterialLineResponse;
 import com.hbsisms.feature.production.dto.ProductionOrderResponse;
 import com.hbsisms.feature.production.dto.ProductionOrderUpdateRequest;
+import com.hbsisms.feature.system.AppConfigService;
 import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
@@ -55,6 +57,7 @@ public class ProductionOrderService {
     private final GoodsReceiptService goodsReceiptService;
     private final RawMaterialStockService rawMaterialStockService;
     private final BusinessCodeService businessCodeService;
+    private final AppConfigService appConfigService;
     private final UserRepository userRepository;
     private final Clock clock;
 
@@ -70,6 +73,7 @@ public class ProductionOrderService {
             GoodsReceiptService goodsReceiptService,
             RawMaterialStockService rawMaterialStockService,
             BusinessCodeService businessCodeService,
+            AppConfigService appConfigService,
             UserRepository userRepository,
             Clock clock) {
         this.productionOrderRepository = productionOrderRepository;
@@ -83,6 +87,7 @@ public class ProductionOrderService {
         this.goodsReceiptService = goodsReceiptService;
         this.rawMaterialStockService = rawMaterialStockService;
         this.businessCodeService = businessCodeService;
+        this.appConfigService = appConfigService;
         this.userRepository = userRepository;
         this.clock = clock;
     }
@@ -371,9 +376,16 @@ public class ProductionOrderService {
             }
             return variant;
         }
-        return productVariantRepository.findByProduct_IdOrderByIdAsc(order.getProduct().getId()).stream()
+        // BOM chuẩn khay 1 kg — ưu tiên quy cách 1 kg khi không chọn variantId.
+        List<ProductVariant> active = productVariantRepository
+                .findByProduct_IdOrderByIdAsc(order.getProduct().getId())
+                .stream()
                 .filter(ProductVariant::isActive)
+                .toList();
+        return active.stream()
+                .filter(PackSizes::isOneKg)
                 .findFirst()
+                .or(() -> active.stream().findFirst())
                 .orElseThrow(() -> ApiException.conflict(
                         "Sản phẩm chưa có quy cách đang bán — chọn variantId khi báo hoàn thành"));
     }
@@ -396,7 +408,23 @@ public class ProductionOrderService {
                 .stream()
                 .map(ProductionLeftoverResponse::from)
                 .toList();
-        return ProductionOrderResponse.from(order, materials, leftovers);
+        BigDecimal unitCost = null;
+        Integer markupPercent = null;
+        BigDecimal suggestedSellPrice = null;
+        if (order.getStatus() == ProductionOrderStatus.COMPLETED) {
+            BigDecimal qty = order.getActualQty();
+            BigDecimal material =
+                    order.getActualMaterialCost() == null ? BigDecimal.ZERO : order.getActualMaterialCost();
+            BigDecimal production =
+                    order.getActualProductionCost() == null ? BigDecimal.ZERO : order.getActualProductionCost();
+            if (qty != null && qty.signum() > 0) {
+                unitCost = material.add(production).divide(qty, 0, RoundingMode.HALF_UP);
+                markupPercent = appConfigService.sellPriceMarkupPercent();
+                suggestedSellPrice = appConfigService.sellPriceFromUnitCost(unitCost);
+            }
+        }
+        return ProductionOrderResponse.from(
+                order, materials, leftovers, unitCost, markupPercent, suggestedSellPrice, null);
     }
 
     private static String blankToNull(String value) {

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { PackageMinus, Printer, TriangleAlert } from 'lucide-react';
 import { useQueries } from '@tanstack/react-query';
-import { useAuth } from '@/features/auth';
+import { isOwnerOrAdmin, useAuth } from '@/features/auth';
 import { DiscardLotDialog, isLotExpired, RawMaterialLotsModal, receiptsApi, useUnitLabel, type LotsModalMaterial, type RawMaterialLot } from '@/features/receipts';
 import { useAction } from '@/shared/api/useAction';
 import { date, dateTimeFull, daysUntil, money, num } from '@/shared/lib/format';
@@ -78,6 +78,7 @@ function MaterialBlock({ plan, no }: { plan: Plan; no: number }) {
 /** Bước 02 (Cường, dòng 50): xuất nguyên liệu theo FEFO, giá riêng từng lô, thủ kho không đổi lô. */
 export function IssuePanel({ order }: { order: ProductionOrder }) {
   const { user } = useAuth();
+  const canConfirmExport = isOwnerOrAdmin(user?.roleCode);
   const unitOf = useUnitLabel();
   const issue = useMaterialIssue(order.materialIssueId);
   const [note, setNote] = useState('');
@@ -174,7 +175,9 @@ export function IssuePanel({ order }: { order: ProductionOrder }) {
           actions={
             <>
               <Button icon={<Printer size={15} />} onClick={() => window.print()}>In phiếu xuất</Button>
-              <Button variant="primary" icon={<PackageMinus size={15} />} disabled={anyShort} loading={confirm.isPending} onClick={() => confirm.mutate()}>Xác nhận xuất kho</Button>
+              {canConfirmExport && (
+                <Button variant="primary" icon={<PackageMinus size={15} />} disabled={anyShort} loading={confirm.isPending} onClick={() => confirm.mutate()}>Xác nhận xuất kho</Button>
+              )}
             </>
           }
         >
@@ -182,7 +185,11 @@ export function IssuePanel({ order }: { order: ProductionOrder }) {
             Tiền nguyên liệu thật: <b className="text-body tabular-nums text-ink">{money(total)}</b>{' '}
             {estimate > 0 && (total === estimate ? <span className="text-green-fg">(đúng như tạm tính)</span> : <span className="text-amber-fg">({total > estimate ? '+' : '−'}{money(Math.abs(total - estimate))} so với tạm tính)</span>)}
           </span>
-          <span>Xuất xong: trừ tồn từng lô, ghi sổ kho nguyên liệu, lệnh chuyển "Đang sản xuất".</span>
+          <span>
+            {canConfirmExport
+              ? 'Xuất xong: trừ tồn từng lô, ghi sổ kho nguyên liệu, lệnh chuyển "Đang sản xuất".'
+              : 'Chỉ Chủ / Admin được xác nhận xuất kho — bạn có thể xem và in phiếu.'}
+          </span>
         </ActionBar>
       )}
 

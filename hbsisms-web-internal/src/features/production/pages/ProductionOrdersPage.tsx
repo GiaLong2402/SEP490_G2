@@ -16,7 +16,7 @@ function lastAction(o: ProductionOrder) {
 }
 
 const STAT_STATUSES = [
-  { status: 'draft', label: 'Nháp', dot: 'bg-ink-faint' },
+  { status: 'draft', label: 'Chờ duyệt', dot: 'bg-ink-faint' },
   { status: 'approved', label: 'Chờ xuất nguyên liệu', dot: 'bg-blue-fg' },
   { status: 'in_progress', label: 'Đang sản xuất', dot: 'bg-primary' },
   { status: 'awaiting_receipt', label: 'Chờ nhập kho', dot: 'bg-amber-fg' },
@@ -72,7 +72,7 @@ export default function ProductionOrdersPage() {
             Lệnh sản xuất
             <InfoTip label="Ghi chú danh sách lệnh">
               <span className="block">Cột Tiến trình: 5 chấm theo 5 bước (xanh lá = xong, xanh = đang làm, xám = chưa tới). Bấm mã lệnh để mở đúng bước đang làm.</span>
-              <span className="block">Lệnh nháp thiếu nguyên liệu hiện chữ đỏ ngay ở danh sách.</span>
+              <span className="block">Lệnh chờ duyệt thiếu nguyên liệu hiện chữ đỏ ngay ở danh sách.</span>
             </InfoTip>
           </span>
         }

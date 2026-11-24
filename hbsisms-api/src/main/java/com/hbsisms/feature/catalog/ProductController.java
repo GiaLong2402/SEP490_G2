@@ -71,7 +71,7 @@ public class ProductController {
      * and the rest as {@code gallery} when creating/updating the product.
      */
     @PostMapping(value = "/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAuthority('products')")
+    @PreAuthorize("hasAuthority('products') and @roles.ownerOrAdmin()")
     public ImageUploadResponse uploadImages(@RequestParam("files") MultipartFile[] files) {
         List<MultipartFile> list = files == null ? List.of() : Arrays.asList(files);
         return new ImageUploadResponse(cloudinaryStorageService.uploadImages(list));
@@ -79,13 +79,13 @@ public class ProductController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasAuthority('products')")
+    @PreAuthorize("hasAuthority('products') and @roles.ownerOrAdmin()")
     public ProductResponse create(@Valid @RequestBody ProductRequest request) {
         return productService.create(request);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('products')")
+    @PreAuthorize("hasAuthority('products') and @roles.ownerOrAdmin()")
     public ProductResponse update(@PathVariable Long id, @Valid @RequestBody ProductRequest request) {
         return productService.update(id, request);
     }
