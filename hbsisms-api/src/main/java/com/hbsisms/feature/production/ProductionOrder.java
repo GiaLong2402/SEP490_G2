@@ -78,6 +78,17 @@ public class ProductionOrder extends AuditableEntity {
     @Column(name = "actual_material_cost", precision = 14, scale = 2)
     private BigDecimal actualMaterialCost;
 
+    /** Ngày làm xong (NSX lô TP khi nhập kho). */
+    @Column(name = "finished_date")
+    private LocalDate finishedDate;
+
+    /** Số khay hỏng lúc làm — không vào kho, không qua Báo hỏng. */
+    @Column(name = "defect_qty", precision = 14, scale = 4)
+    private BigDecimal defectQty;
+
+    @Column(name = "defect_reason", columnDefinition = "text")
+    private String defectReason;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "finished_variant_id")
     private ProductVariant finishedVariant;

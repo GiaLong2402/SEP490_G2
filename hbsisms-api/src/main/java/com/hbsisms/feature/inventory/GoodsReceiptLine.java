@@ -1,5 +1,6 @@
 package com.hbsisms.feature.inventory;
 
+import com.hbsisms.feature.catalog.ProductVariant;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -17,8 +18,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Dòng phiếu nhập nguyên vật liệu (Inter 1 dòng 46–47). Lúc tạo phiếu chỉ có NVL + SL dự kiến;
- * khi xác nhận nhập kho mới điền SL thực nhận, lô, NSX/HSD, đơn giá và gắn lô NVL đã tạo.
+ * Dòng phiếu nhập. RAW: gắn {@link RawMaterial}; FINISHED pending từ SX: gắn {@link ProductVariant}.
+ * Khi xác nhận nhập NVL điền SL thực nhận, lô, NSX/HSD, đơn giá.
  */
 @Entity
 @Table(name = "goods_receipt_line", indexes = @Index(name = "idx_grl_receipt", columnList = "goods_receipt_id"))
@@ -36,9 +37,15 @@ public class GoodsReceiptLine {
     @JoinColumn(name = "goods_receipt_id", nullable = false)
     private GoodsReceipt receipt;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "raw_material_id", nullable = false)
+    /** Phiếu NVL — bắt buộc; phiếu TP pending — trống. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "raw_material_id")
     private RawMaterial rawMaterial;
+
+    /** Phiếu TP pending từ lệnh SX. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "product_variant_id")
+    private ProductVariant productVariant;
 
     @Column(nullable = false)
     private int lineNo;

@@ -100,6 +100,36 @@ public class ProductionSchemaRunner implements ApplicationRunner {
                 "goods_receipt",
                 "production_order_id",
                 "alter table " + T + "goods_receipt add column if not exists production_order_id bigint");
+        alterAdd(
+                "production_order",
+                "finished_date",
+                "alter table " + T + "production_order add column if not exists finished_date date");
+        alterAdd(
+                "production_order",
+                "defect_qty",
+                "alter table " + T + "production_order add column if not exists defect_qty numeric(14,4)");
+        alterAdd(
+                "production_order",
+                "defect_reason",
+                "alter table " + T + "production_order add column if not exists defect_reason text");
+        exec(
+                "production_leftover table",
+                "create table if not exists " + T + "production_leftover ("
+                        + "id bigserial primary key, "
+                        + "production_order_id bigint not null references " + T + "production_order (id) on delete cascade, "
+                        + "raw_material_id bigint not null references " + T + "raw_material (id), "
+                        + "lot_id bigint not null references " + T + "raw_material_lot (id), "
+                        + "qty numeric(14,4) not null, "
+                        + "exp_date date not null, "
+                        + "amount numeric(14,2) not null)");
+        // PN TP pending: dòng variant + qty; NVL dòng vẫn dùng raw_material_id.
+        alterAdd(
+                "goods_receipt_line",
+                "product_variant_id",
+                "alter table " + T + "goods_receipt_line add column if not exists product_variant_id bigint");
+        exec(
+                "goods_receipt_line.raw_material_id nullable",
+                "alter table " + T + "goods_receipt_line alter column raw_material_id drop not null");
     }
 
     private void alterAdd(String table, String column, String sql) {

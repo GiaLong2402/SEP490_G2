@@ -100,10 +100,42 @@ class MaterialIssueConfirmServiceTest {
 
         assertThat(issue.getStatus()).isEqualTo(MaterialIssueStatus.COMPLETED);
         assertThat(issue.getCompletedAt()).isEqualTo(NOW);
+        assertThat(issue.getNote()).isNull();
         assertThat(order.getStatus()).isEqualTo(ProductionOrderStatus.IN_PROGRESS);
         assertThat(order.getActualMaterialCost()).isEqualByComparingTo("4000.00");
         assertThat(response.status()).isEqualTo(MaterialIssueStatus.COMPLETED);
         verify(rawMaterialStockService).issueFefo(eq(raw), eq(new BigDecimal("4")), any(), eq(5L), isNull(), any());
+    }
+
+    @Test
+    void confirm_persistsNote_andPassesToLedger() {
+        ProductionOrder order = order(1L, ProductionOrderStatus.APPROVED);
+        MaterialIssue issue = pendingIssue(5L, order);
+        RawMaterial raw = raw(9L);
+        MaterialIssueLine required = requiredLine(raw, "2");
+        when(materialIssueRepository.findByIdForUpdate(5L)).thenReturn(Optional.of(issue));
+        when(productionOrderRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(order));
+        when(materialIssueLineRepository.findByMaterialIssue_IdOrderBySortOrderAscIdAsc(5L))
+                .thenReturn(List.of(required))
+                .thenReturn(List.of());
+        when(rawMaterialRepository.findByIdForUpdate(9L)).thenReturn(Optional.of(raw));
+        RawMaterialLot lot = lot(raw, 20L, "L-1");
+        when(rawMaterialStockService.issueFefo(
+                        eq(raw),
+                        eq(new BigDecimal("2")),
+                        eq(RawMaterialStockService.REF_MATERIAL_ISSUE),
+                        eq(5L),
+                        isNull(),
+                        eq("Xuất gấp ca sáng")))
+                .thenReturn(List.of(new IssueSlice(lot, new BigDecimal("2"), new BigDecimal("500"))));
+        when(materialIssueRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(productionOrderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.confirm(5L, new MaterialIssueConfirmRequest("Xuất gấp ca sáng"), null);
+
+        assertThat(issue.getNote()).isEqualTo("Xuất gấp ca sáng");
+        verify(rawMaterialStockService)
+                .issueFefo(eq(raw), eq(new BigDecimal("2")), any(), eq(5L), isNull(), eq("Xuất gấp ca sáng"));
     }
 
     @Test

@@ -1,11 +1,11 @@
 package com.hbsisms.feature.production;
 
 import com.hbsisms.common.exception.ApiException;
+import com.hbsisms.common.text.Strings;
 import com.hbsisms.feature.inventory.RawMaterial;
 import com.hbsisms.feature.inventory.RawMaterialRepository;
 import com.hbsisms.feature.inventory.RawMaterialStockService;
 import com.hbsisms.feature.inventory.RawMaterialStockService.IssueSlice;
-import com.hbsisms.feature.production.dto.MaterialIssueAllocationRequest;
 import com.hbsisms.feature.production.dto.MaterialIssueConfirmRequest;
 import com.hbsisms.feature.production.dto.MaterialIssueLineResponse;
 import com.hbsisms.feature.production.dto.MaterialIssueResponse;
@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -96,7 +95,7 @@ public class MaterialIssueService {
     }
 
     /**
-     * Task 50: xác nhận xuất NVL — FEFO hoặc allocations tay, trừ tồn, lệnh → IN_PROGRESS.
+     * Task 50: xác nhận xuất NVL — luôn FEFO (bỏ lô hết hạn), trừ tồn, lệnh → IN_PROGRESS.
      * Đã COMPLETED → trả response, không trừ thêm.
      */
     @Transactional
@@ -136,16 +135,15 @@ public class MaterialIssueService {
         }
 
         AppUser actor = actorId == null ? null : userRepository.findById(actorId).orElse(null);
-        String note = "Xuất NVL phiếu " + locked.getCode() + " / lệnh " + order.getCode();
-
-        List<MaterialIssueAllocationRequest> allocations =
-                request == null || request.allocations() == null ? List.of() : request.allocations();
+        String userNote = request == null ? null : Strings.trimToNull(request.note());
+        String ledgerNote = userNote != null
+                ? userNote
+                : "Xuất NVL phiếu " + locked.getCode() + " / lệnh " + order.getCode();
 
         List<MaterialIssueLine> issuedLines = new ArrayList<>();
         BigDecimal totalCost = BigDecimal.ZERO;
         int sort = 0;
 
-        // Khóa NVL theo id tăng dần tránh deadlock.
         List<Long> materialIds = requiredByMaterial.keySet().stream().sorted().toList();
         Map<Long, RawMaterial> lockedMaterials = new LinkedHashMap<>();
         for (Long materialId : materialIds) {
@@ -155,55 +153,26 @@ public class MaterialIssueService {
             lockedMaterials.put(materialId, material);
         }
 
-        if (allocations.isEmpty()) {
-            for (Map.Entry<Long, BigDecimal> entry : requiredByMaterial.entrySet()) {
-                RawMaterial material = lockedMaterials.get(entry.getKey());
-                List<IssueSlice> slices = rawMaterialStockService.issueFefo(
-                        material,
-                        entry.getValue(),
-                        RawMaterialStockService.REF_MATERIAL_ISSUE,
-                        locked.getId(),
-                        actor,
-                        note);
-                boolean first = true;
-                for (IssueSlice slice : slices) {
-                    BigDecimal qtyRequiredOnLine = first ? entry.getValue() : BigDecimal.ZERO;
-                    first = false;
-                    issuedLines.add(toIssuedLine(material, qtyRequiredOnLine, slice, sort++));
-                    totalCost = totalCost.add(costOf(slice));
-                }
-            }
-        } else {
-            validateAllocationsCover(requiredByMaterial, allocations);
-            // Group allocations by material preserving order
-            Map<Long, List<MaterialIssueAllocationRequest>> byMaterial = allocations.stream()
-                    .collect(Collectors.groupingBy(
-                            MaterialIssueAllocationRequest::rawMaterialId, LinkedHashMap::new, Collectors.toList()));
-            for (Map.Entry<Long, BigDecimal> required : requiredByMaterial.entrySet()) {
-                Long materialId = required.getKey();
-                RawMaterial material = lockedMaterials.get(materialId);
-                BigDecimal materialRequired = required.getValue();
-                List<MaterialIssueAllocationRequest> group =
-                        byMaterial.getOrDefault(materialId, List.of());
-                boolean first = true;
-                for (MaterialIssueAllocationRequest alloc : group) {
-                    IssueSlice slice = rawMaterialStockService.issueFromLot(
-                            material,
-                            alloc.lotId(),
-                            alloc.qty(),
-                            RawMaterialStockService.REF_MATERIAL_ISSUE,
-                            locked.getId(),
-                            actor,
-                            note);
-                    BigDecimal qtyRequiredOnLine = first ? materialRequired : BigDecimal.ZERO;
-                    first = false;
-                    issuedLines.add(toIssuedLine(material, qtyRequiredOnLine, slice, sort++));
-                    totalCost = totalCost.add(costOf(slice));
-                }
+        for (Map.Entry<Long, BigDecimal> entry : requiredByMaterial.entrySet()) {
+            RawMaterial material = lockedMaterials.get(entry.getKey());
+            List<IssueSlice> slices = rawMaterialStockService.issueFefo(
+                    material,
+                    entry.getValue(),
+                    RawMaterialStockService.REF_MATERIAL_ISSUE,
+                    locked.getId(),
+                    actor,
+                    ledgerNote);
+            boolean first = true;
+            for (IssueSlice slice : slices) {
+                BigDecimal qtyRequiredOnLine = first ? entry.getValue() : BigDecimal.ZERO;
+                first = false;
+                issuedLines.add(toIssuedLine(material, qtyRequiredOnLine, slice, sort++));
+                totalCost = totalCost.add(costOf(slice));
             }
         }
 
         locked.replaceLines(issuedLines);
+        locked.setNote(userNote);
         locked.setStatus(MaterialIssueStatus.COMPLETED);
         locked.setCompletedAt(Instant.now(clock));
         locked.setCompletedBy(actor);
@@ -226,37 +195,6 @@ public class MaterialIssueService {
         }
         if (issue.getStatus() == MaterialIssueStatus.PENDING) {
             issue.setStatus(MaterialIssueStatus.CANCELLED);
-        }
-    }
-
-    private static void validateAllocationsCover(
-            Map<Long, BigDecimal> requiredByMaterial, List<MaterialIssueAllocationRequest> allocations) {
-        Map<Long, BigDecimal> got = new LinkedHashMap<>();
-        for (MaterialIssueAllocationRequest alloc : allocations) {
-            if (alloc == null || alloc.rawMaterialId() == null || alloc.lotId() == null || alloc.qty() == null) {
-                throw ApiException.badRequest("Phân bổ lô xuất không hợp lệ");
-            }
-            if (alloc.qty().signum() <= 0) {
-                throw ApiException.badRequest("Số lượng xuất phải lớn hơn 0");
-            }
-            if (!requiredByMaterial.containsKey(alloc.rawMaterialId())) {
-                throw ApiException.badRequest("Nguyên liệu không thuộc phiếu xuất");
-            }
-            got.merge(alloc.rawMaterialId(), alloc.qty(), BigDecimal::add);
-        }
-        for (Map.Entry<Long, BigDecimal> required : requiredByMaterial.entrySet()) {
-            BigDecimal issued = got.getOrDefault(required.getKey(), BigDecimal.ZERO);
-            if (issued.compareTo(required.getValue()) != 0) {
-                throw ApiException.conflict(
-                        "Tổng xuất NVL #" + required.getKey()
-                                + " phải đúng " + required.getValue()
-                                + " (đang " + issued + ")");
-            }
-        }
-        for (Long materialId : got.keySet()) {
-            if (!requiredByMaterial.containsKey(materialId)) {
-                throw ApiException.badRequest("Nguyên liệu không thuộc phiếu xuất");
-            }
         }
     }
 

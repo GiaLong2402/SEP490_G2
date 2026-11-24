@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -14,13 +15,17 @@ import com.hbsisms.feature.catalog.Product;
 import com.hbsisms.feature.catalog.ProductRepository;
 import com.hbsisms.feature.catalog.ProductVariantRepository;
 import com.hbsisms.feature.inventory.GoodsReceiptService;
+import com.hbsisms.feature.inventory.RawMaterialStockService;
 import com.hbsisms.feature.production.dto.ProductionOrderCreateRequest;
 import com.hbsisms.feature.production.dto.ProductionOrderResponse;
 import com.hbsisms.feature.production.dto.ProductionOrderUpdateRequest;
 import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.UserRepository;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -40,6 +45,10 @@ class ProductionOrderServiceTest {
     @Mock
     private ProductionOrderMaterialLineRepository materialLineRepository;
     @Mock
+    private ProductionLeftoverRepository leftoverRepository;
+    @Mock
+    private MaterialIssueLineRepository materialIssueLineRepository;
+    @Mock
     private ProductRepository productRepository;
     @Mock
     private ProductVariantRepository productVariantRepository;
@@ -49,6 +58,8 @@ class ProductionOrderServiceTest {
     private MaterialIssueService materialIssueService;
     @Mock
     private GoodsReceiptService goodsReceiptService;
+    @Mock
+    private RawMaterialStockService rawMaterialStockService;
     @Mock
     private BusinessCodeService businessCodeService;
     @Mock
@@ -61,13 +72,18 @@ class ProductionOrderServiceTest {
         service = new ProductionOrderService(
                 productionOrderRepository,
                 materialLineRepository,
+                leftoverRepository,
+                materialIssueLineRepository,
                 productRepository,
                 productVariantRepository,
                 bomExplosionService,
                 materialIssueService,
                 goodsReceiptService,
+                rawMaterialStockService,
                 businessCodeService,
-                userRepository);
+                userRepository,
+                Clock.fixed(Instant.parse("2026-11-23T03:00:00Z"), ZoneOffset.UTC));
+        lenient().when(leftoverRepository.findByProductionOrder_IdOrderByIdAsc(anyLong())).thenReturn(List.of());
     }
 
     @Test

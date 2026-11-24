@@ -185,13 +185,13 @@ Quyền `inventory`. **Duy (48–49):** tạo/sửa/duyệt/hủy lệnh + sinh 
 |---|---|---|
 | GET | `/production-orders` | Lọc `q`, `status` (`draft`/`approved`/`in_progress`/`awaiting_receipt`/`cancelled`) |
 | POST | `/production-orders` | **201** — bản nháp + explode BOM |
-| GET | `/production-orders/:id` | Chi tiết + `materials[]`; sau task 51 có `actualQty`, `actualMaterialCost`, `finishedReceiptId/code` |
+| GET | `/production-orders/:id` | Chi tiết + `materials[]`; sau complete có `actualQty`, `actualMaterialCost`, `finishedDate`, `defectQty`/`defectReason`, `leftovers[]`, `finishedReceiptId/code` |
 | PUT | `/production-orders/:id` | Chỉ `draft` |
 | POST | `/production-orders/:id/approve` | Duy — đủ NVL → `approved` + phiếu xuất `pending` |
 | POST | `/production-orders/:id/cancel` | `draft` / `approved` (chưa xuất) |
-| POST | `/production-orders/:id/complete` | **Cường** — body `{ actualQty, actualProductionCost?, variantId? }`; chỉ `in_progress`; tạo `goods-receipt` FINISHED **pending**; PO → `awaiting_receipt` (idempotent nếu đã có PN) |
+| POST | `/production-orders/:id/complete` | **Cường** — body `{ actualQty, actualProductionCost?, variantId?, finishedDate?, defectQty?, defectReason?, leftovers: [{ rawMaterialId, qty, expDate }] }`; chỉ `in_progress`; leftover → lô `<lô gốc>-TL` + trừ `actualMaterialCost`; tạo PN FINISHED **pending** kèm dòng variant+qty; PO → `awaiting_receipt` (idempotent nếu đã có PN). Vượt KH chỉ cảnh báo FE. |
 | GET | `/material-issues/:id` | Phiếu xuất NVL |
-| POST | `/material-issues/:id/confirm` | **Cường** — body tùy chọn `{ allocations: [{ rawMaterialId, lotId, qty }] }`; trống = FEFO đủ `qtyRequired`; trừ tồn lô + ledger `OUT` `refType=material_issue`; PO → `in_progress`; idempotent nếu đã `completed` |
+| POST | `/material-issues/:id/confirm` | **Cường** — body `{ note? }`; luôn FEFO (bỏ lô hết hạn, chỉ tồn dùng được); lưu `note`; trừ tồn lô + ledger `OUT` `refType=material_issue`; PO → `in_progress`; idempotent nếu đã `completed` |
 
 ## quotes
 

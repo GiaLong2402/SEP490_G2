@@ -29,7 +29,7 @@ public class MaterialIssueController {
         return materialIssueService.get(id);
     }
 
-    /** Task 50 (Cường): xác nhận xuất NVL — FEFO hoặc allocations; idempotent khi đã COMPLETED. */
+    /** Task 50 (Cường): xác nhận xuất NVL — luôn FEFO (bỏ lô hết hạn) + note; idempotent khi đã COMPLETED. */
     @PostMapping("/{id}/confirm")
     public MaterialIssueResponse confirm(
             @PathVariable Long id,
