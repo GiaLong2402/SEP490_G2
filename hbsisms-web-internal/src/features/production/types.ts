@@ -131,3 +131,38 @@ export interface ProductionCompleteInput {
   defectReason: string | null;
   leftovers: LeftoverInput[];
 }
+
+/** GET /production-orders/bom-products — quyền inventory. */
+export interface ProductionBomProduct {
+  id: ID;
+  code: string;
+  name: string;
+  isProducible: boolean;
+  bomLineCount: number;
+}
+
+/** GET /production-orders/material-preview — tồn dùng được (bỏ lô hết hạn). */
+export interface ProductionMaterialNeed {
+  rawMaterialId: ID;
+  rawMaterialCode: string;
+  rawMaterialName: string;
+  unit: string;
+  bomQtyPerUnit: number;
+  wastePercent: number | null;
+  requiredQty: number;
+  onHandQty: number;
+  expiredQty: number;
+  sufficient: boolean;
+  stockStatus: string;
+  lineEstimatedCost: number | null;
+}
+
+export interface ProductionMaterialPreview {
+  productId: ID;
+  productCode: string;
+  productName: string;
+  plannedQty: number;
+  estimatedMaterialCost: number;
+  allMaterialsSufficient: boolean;
+  materials: ProductionMaterialNeed[];
+}
