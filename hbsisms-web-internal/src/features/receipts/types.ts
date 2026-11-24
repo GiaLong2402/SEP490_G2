@@ -80,6 +80,22 @@ export interface RawReceiptCompleteInput {
   note: string | null;
 }
 
+/** Nhập kho phiếu thành phẩm chờ (từ lệnh sản xuất). Số khay điền sẵn = số báo đạt, sửa được. */
+export interface FinishedReceiptCompleteInput {
+  lotCode: string | null;
+  mfgDate: string | null;
+  expDate: string;
+  locationId: ID;
+  qty: number;
+  note: string | null;
+}
+
+export type DiscardReason = 'expired' | 'damaged' | 'other';
+export interface DiscardLotInput {
+  reason: DiscardReason;
+  note: string | null;
+}
+
 /** Lô NVL (FEFO: HSD gần nhất trước). */
 export interface RawMaterialLot {
   id: ID;

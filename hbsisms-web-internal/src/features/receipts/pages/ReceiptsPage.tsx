@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, Layers, PackageCheck, Pencil, Plus, Trash2, XCircle } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useVariantOptions } from '@/features/products';
 import { useWarehouses } from '@/features/warehouses';
 import { useAction } from '@/shared/api/useAction';
@@ -11,6 +11,7 @@ import { receiptsApi } from '../api';
 import { LocationPicker } from '../components/LocationPicker';
 import { RawMaterialFormModal } from '../components/RawMaterialFormModal';
 import { RawMaterialLotsModal } from '../components/RawMaterialLotsModal';
+import { FinishedReceiptCompleteModal } from '../components/FinishedReceiptCompleteModal';
 import { RawReceiptCompleteModal } from '../components/RawReceiptCompleteModal';
 import { useRawMaterials, useReceipts, useUnitLabel } from '../hooks';
 import type { RawMaterial, ReceiptListItem } from '../types';
@@ -28,6 +29,9 @@ const splitItem = (name: string) => {
 
 export default function ReceiptsPage() {
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  /** Mở từ lệnh sản xuất: lưu phiếu xong quay lại lệnh. */
+  const [returnTo, setReturnTo] = useState<string | null>(null);
   const [tab, setTab] = useState<'receipts' | 'raw'>('receipts');
   const list = useListParams(['receiptType', 'status', 'sort'] as const);
   const codeAsc = list.filters.sort === 'asc';
@@ -64,10 +68,12 @@ export default function ReceiptsPage() {
   const [touched, setTouched] = useState(false);
   const [materialForm, setMaterialForm] = useState<{ material?: RawMaterial; fromReceipt?: boolean } | null>(null);
   const [completing, setCompleting] = useState<ReceiptListItem | null>(null);
+  const [completingFinished, setCompletingFinished] = useState<ReceiptListItem | null>(null);
   const [cancelling, setCancelling] = useState<ReceiptListItem | null>(null);
   const [lotsOf, setLotsOf] = useState<RawMaterial | null>(null);
 
   const openForm = () => {
+    setReturnTo(null);
     setType('finished');
     setSource('');
     setExpectedDate('');
@@ -79,6 +85,19 @@ export default function ReceiptsPage() {
   useEffect(() => {
     if (params.get('new')) {
       openForm();
+      // Điền sẵn từ lệnh sản xuất thiếu nguyên liệu: ?new=raw&lines=<rawMaterialId>:<qty>,...&source=...&returnTo=...
+      if (params.get('new') === 'raw') {
+        setType('raw');
+        setSource(params.get('source') ?? '');
+        const lines = (params.get('lines') ?? '')
+          .split(',')
+          .map((x) => x.split(':'))
+          .filter(([id, qty]) => Number(id) > 0 && Number(qty) > 0)
+          .map(([id, qty]) => ({ ...rawRow(), rawMaterialId: id, qty: String(Number(qty)) }));
+        if (lines.length) setRawRows(lines);
+        const back = params.get('returnTo');
+        setReturnTo(back && back.startsWith('/') ? back : null);
+      }
       setParams({}, { replace: true });
     }
   }, [params]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -104,7 +123,10 @@ export default function ReceiptsPage() {
       }),
     {
       success: (r) => (r.status === 'pending' ? `Đã tạo phiếu ${r.code} - chờ nhập kho (chưa cộng tồn)` : `Đã tạo phiếu nhập ${r.code}`),
-      onDone: () => setOpen(false),
+      onDone: () => {
+        setOpen(false);
+        if (returnTo) navigate(returnTo);
+      },
     },
   );
   const cancel = useAction((note: string) => receiptsApi.cancel(cancelling!.id, note.trim() || null), {
@@ -206,7 +228,7 @@ export default function ReceiptsPage() {
       cell: (r) =>
         r.status === 'pending' ? (
           <div className="flex justify-end gap-1.5">
-            {r.receiptType === 'raw' && <Button className="!h-7 !px-2.5 text-small" variant="primary" icon={<PackageCheck size={14} />} onClick={() => setCompleting(r)}>Nhập kho</Button>}
+            <Button className="!h-7 !px-2.5 text-small" variant="primary" icon={<PackageCheck size={14} />} onClick={() => (r.receiptType === 'raw' ? setCompleting(r) : setCompletingFinished(r))}>Nhập kho</Button>
             <IconButton label={`Hủy phiếu ${r.code}`} onClick={() => setCancelling(r)}><XCircle size={14} /></IconButton>
           </div>
         ) : null,
@@ -413,6 +435,7 @@ export default function ReceiptsPage() {
       </Modal>
 
       <RawReceiptCompleteModal receipt={completing} onClose={() => setCompleting(null)} />
+      <FinishedReceiptCompleteModal receipt={completingFinished} context={null} onClose={() => setCompletingFinished(null)} />
       <RawMaterialLotsModal material={lotsOf} onClose={() => setLotsOf(null)} />
       <ConfirmDialog
         open={!!cancelling}
