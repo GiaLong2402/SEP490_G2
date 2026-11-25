@@ -16,13 +16,13 @@ import com.hbsisms.feature.sales.SalesRequestRepository;
 import com.hbsisms.feature.sales.SalesRequestService;
 import com.hbsisms.feature.sales.dto.OrderDetailResponse;
 import com.hbsisms.feature.sales.dto.SalesRequestInputRequest;
+import com.hbsisms.feature.sales.dto.SalesRequestResponse;
 import com.hbsisms.feature.storefront.dto.MeSalesRequestRejectRequest;
 import com.hbsisms.feature.storefront.dto.MeSalesRequestResponse;
-import com.hbsisms.feature.system.BusinessCodeService;
 import java.time.Clock;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,21 +35,21 @@ public class MeSalesRequestService {
     private static final Sort LIST_SORT = Sort.by(Sort.Direction.DESC, "receivedAt", "id");
 
     private final SalesRequestRepository salesRequestRepository;
+    private final SalesRequestService salesRequestService;
     private final QuoteRepository quoteRepository;
     private final SalesOrderService salesOrderService;
-    private final BusinessCodeService businessCodeService;
     private final Clock clock;
 
     public MeSalesRequestService(
             SalesRequestRepository salesRequestRepository,
+            SalesRequestService salesRequestService,
             QuoteRepository quoteRepository,
             SalesOrderService salesOrderService,
-            BusinessCodeService businessCodeService,
             Clock clock) {
         this.salesRequestRepository = salesRequestRepository;
+        this.salesRequestService = salesRequestService;
         this.quoteRepository = quoteRepository;
         this.salesOrderService = salesOrderService;
-        this.businessCodeService = businessCodeService;
         this.clock = clock;
     }
 
@@ -58,7 +58,7 @@ public class MeSalesRequestService {
         return PageResponse.from(salesRequestRepository
                 .findByCustomer_IdOrderByReceivedAtDescIdDesc(
                         customer.getId(), PageRequests.of(page, pageSize, LIST_SORT))
-                .map(this::toResponse));
+                .map(this::toListResponse));
     }
 
     @Transactional(readOnly = true)
@@ -71,25 +71,22 @@ public class MeSalesRequestService {
         if (!customer.isActive()) {
             throw ApiException.conflict("Khách hàng đã bị khóa, không thể gửi yêu cầu");
         }
-        String summary = Strings.trimToNull(request.summary());
-        if (summary == null) {
-            throw ApiException.badRequest("Vui lòng nhập nội dung yêu cầu");
-        }
         validateQty(request.requestedQty(), request.availableQty());
 
-        SalesRequest row = new SalesRequest();
-        row.setCode(businessCodeService.nextSalesRequestCode());
-        row.setCustomer(customer);
-        row.setCustomerName(customer.getName());
-        row.setContactPhone(Strings.trimToNull(request.contactPhone()));
-        row.setChannel(SaleChannel.WEB);
-        row.setSummary(summary);
-        row.setStatus(RequestStatus.NEW);
-        row.setReceivedAt(Instant.now(clock));
-        row.setHandledBy(null);
-        SalesRequestService.applyCustomerQtyFields(row, request);
-        salesRequestRepository.save(row);
-        return toResponse(row);
+        SalesRequestResponse created = salesRequestService.create(
+                new SalesRequestInputRequest(
+                        customer.getId(),
+                        null,
+                        request.contactPhone(),
+                        null,
+                        SaleChannel.WEB,
+                        request.summary(),
+                        request.neededDate(),
+                        request.requestedQty(),
+                        request.availableQty(),
+                        request.lines()),
+                null);
+        return toResponse(requireMine(customer, created.code()));
     }
 
     /**
@@ -134,6 +131,15 @@ public class MeSalesRequestService {
         row.setStatus(RequestStatus.REJECTED);
         row.setRejectReason(reason);
         return toResponse(row);
+    }
+
+    private MeSalesRequestResponse toListResponse(SalesRequest row) {
+        Quote quote = latestQuote(row.getId());
+        if (quote != null) {
+            quote = quoteRepository.findWithDetailsById(quote.getId()).orElse(quote);
+            expireIfNeeded(quote);
+        }
+        return MeSalesRequestResponse.from(row, quote, List.of());
     }
 
     private MeSalesRequestResponse toResponse(SalesRequest row) {

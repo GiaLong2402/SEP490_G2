@@ -4,13 +4,17 @@ import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.common.text.Strings;
 import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
+import com.hbsisms.feature.catalog.ProductVariant;
+import com.hbsisms.feature.catalog.ProductVariantRepository;
 import com.hbsisms.feature.customer.Customer;
 import com.hbsisms.feature.customer.CustomerRepository;
+import com.hbsisms.feature.customer.pricing.PricingService;
 import com.hbsisms.feature.sales.dto.FeasibilityResultResponse;
 import com.hbsisms.feature.sales.dto.OrderDetailResponse;
 import com.hbsisms.feature.sales.dto.SalesRequestCloseRequest;
 import com.hbsisms.feature.sales.dto.SalesRequestFeasibilityRequest;
 import com.hbsisms.feature.sales.dto.SalesRequestInputRequest;
+import com.hbsisms.feature.sales.dto.SalesRequestLineInput;
 import com.hbsisms.feature.sales.dto.SalesRequestRejectRequest;
 import com.hbsisms.feature.sales.dto.SalesRequestResponse;
 import com.hbsisms.feature.system.BusinessCodeService;
@@ -19,6 +23,9 @@ import com.hbsisms.feature.user.UserRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +37,7 @@ public class SalesRequestService {
 
     private final SalesRequestRepository salesRequestRepository;
     private final CustomerRepository customerRepository;
+    private final ProductVariantRepository productVariantRepository;
     private final UserRepository userRepository;
     private final SalesOrderService salesOrderService;
     private final BusinessCodeService businessCodeService;
@@ -38,12 +46,14 @@ public class SalesRequestService {
     public SalesRequestService(
             SalesRequestRepository salesRequestRepository,
             CustomerRepository customerRepository,
+            ProductVariantRepository productVariantRepository,
             UserRepository userRepository,
             SalesOrderService salesOrderService,
             BusinessCodeService businessCodeService,
             Clock clock) {
         this.salesRequestRepository = salesRequestRepository;
         this.customerRepository = customerRepository;
+        this.productVariantRepository = productVariantRepository;
         this.userRepository = userRepository;
         this.salesOrderService = salesOrderService;
         this.businessCodeService = businessCodeService;
@@ -70,7 +80,7 @@ public class SalesRequestService {
                                 parseDate(neededTo),
                                 customerId),
                         PageRequests.of(page, pageSize, LIST_SORT))
-                .map(SalesRequestResponse::from));
+                .map(row -> SalesRequestResponse.from(row, List.of())));
     }
 
     @Transactional(readOnly = true)
@@ -91,6 +101,15 @@ public class SalesRequestService {
             walkInName = "Khách vãng lai";
         }
 
+        List<SalesRequestLine> lines = buildLines(request.lines());
+        String summary = Strings.trimToNull(request.summary());
+        if (summary == null && lines.isEmpty()) {
+            throw ApiException.badRequest("Vui lòng nhập nội dung yêu cầu hoặc thêm dòng hàng");
+        }
+        if (summary == null) {
+            summary = autoSummary(lines);
+        }
+
         AppUser handler = actorId == null
                 ? null
                 : userRepository.findById(actorId).orElse(null);
@@ -99,22 +118,24 @@ public class SalesRequestService {
         row.setCode(nextCode());
         row.setCustomer(customer);
         row.setCustomerName(customer != null ? customer.getName() : walkInName);
-        // SĐT / địa chỉ chỉ lưu cho khách vãng lai; khách hệ thống lấy từ hồ sơ khi trả response.
-        if (customer == null) {
-            row.setContactPhone(Strings.trimToNull(request.contactPhone()));
-            row.setContactAddress(Strings.trimToNull(request.contactAddress()));
-        } else {
-            row.setContactPhone(null);
-            row.setContactAddress(null);
-        }
+        // Portal có thể gửi SĐT khác hồ sơ; staff chỉ gửi khi khách vãng lai.
+        row.setContactPhone(Strings.trimToNull(request.contactPhone()));
+        row.setContactAddress(Strings.trimToNull(request.contactAddress()));
         row.setChannel(request.channel());
-        row.setSummary(Strings.trimToNull(request.summary()));
+        row.setSummary(summary);
         row.setStatus(RequestStatus.NEW);
         row.setReceivedAt(Instant.now(clock));
         row.setHandledBy(handler);
         applyCustomerQtyFields(row, request);
+        if (!lines.isEmpty()) {
+            int totalKhay = lines.stream().mapToInt(SalesRequestLine::getQtyKhay).sum();
+            if (row.getRequestedQty() == null) {
+                row.setRequestedQty(totalKhay);
+            }
+            row.replaceLines(lines);
+        }
         salesRequestRepository.save(row);
-        return SalesRequestResponse.from(row);
+        return SalesRequestResponse.from(require(row.getId()));
     }
 
     @Transactional
@@ -123,24 +144,36 @@ public class SalesRequestService {
         SalesRequest row = require(id);
         assertOpen(row);
 
-        row.setFeasible(request.feasible());
-        row.setFulfillableQty(request.fulfillableQty());
-        row.setShortageQty(request.shortageQty());
+        if (Boolean.FALSE.equals(request.feasible())) {
+            String reason = Strings.trimToNull(request.note());
+            if (reason == null) {
+                throw ApiException.badRequest("Vui lòng nhập lý do từ chối");
+            }
+            row.setStatus(RequestStatus.REJECTED);
+            row.setRejectReason(reason);
+            row.setFeasible(false);
+            assignHandler(row, actorId);
+            return new FeasibilityResultResponse(SalesRequestResponse.from(row), null);
+        }
+
+        row.setFeasible(true);
         row.setExpectedDate(request.expectedDate());
         if (Strings.trimToNull(request.note()) != null) {
             row.setNote(Strings.trimToNull(request.note()));
         }
+        // Staff chọn SP + SL đáp ứng → ghi đè lines (prefill báo giá).
+        if (request.lines() != null && !request.lines().isEmpty()) {
+            List<SalesRequestLine> offer = buildOfferLines(request.lines());
+            row.replaceLines(offer);
+            int fulfillKhay = offer.stream().mapToInt(SalesRequestLine::getQtyKhay).sum();
+            row.setFulfillableQty(fulfillKhay);
+            row.setShortageQty(0);
+        } else {
+            row.setFulfillableQty(request.fulfillableQty());
+            row.setShortageQty(request.shortageQty());
+        }
         assignHandler(row, actorId);
 
-        if (Boolean.FALSE.equals(request.feasible())) {
-            // Không khả thi nhưng chưa từ chối chính thức — chuyển quoting để Sales theo dõi.
-            if (row.getStatus() == RequestStatus.NEW) {
-                row.setStatus(RequestStatus.QUOTING);
-            }
-            return new FeasibilityResultResponse(SalesRequestResponse.from(row), null);
-        }
-
-        // Khả thi
         if (row.getStatus() == RequestStatus.NEW) {
             row.setStatus(RequestStatus.QUOTING);
         }
@@ -196,6 +229,56 @@ public class SalesRequestService {
             return SalesRequestResponse.from(row);
         }
         throw ApiException.badRequest("PATCH chỉ hỗ trợ đóng yêu cầu (status=closed)");
+    }
+
+    /** Dòng đáp ứng Sales chọn: qty = fulfillableQty, shortage = 0. */
+    private List<SalesRequestLine> buildOfferLines(List<SalesRequestLineInput> inputs) {
+        List<SalesRequestLine> lines = buildLines(inputs);
+        for (SalesRequestLine line : lines) {
+            line.setFulfillableQty(line.getQty());
+            line.setShortageQty(0);
+        }
+        return lines;
+    }
+
+    private List<SalesRequestLine> buildLines(List<SalesRequestLineInput> inputs) {
+        if (inputs == null || inputs.isEmpty()) {
+            return List.of();
+        }
+        List<SalesRequestLine> lines = new ArrayList<>();
+        for (SalesRequestLineInput input : inputs) {
+            ProductVariant variant = productVariantRepository
+                    .findWithProductById(input.variantId())
+                    .orElseThrow(() -> ApiException.badRequest("Không tìm thấy quy cách sản phẩm"));
+            if (!variant.isActive()) {
+                throw ApiException.conflict("Quy cách đã ngừng bán: " + variant.getSku());
+            }
+            SellUnit unit = input.unit() == null ? SellUnit.PACK : input.unit();
+            int qtyKhay = toKhay(unit, input.qty(), variant.getPackPerCase());
+            SalesRequestLine line = new SalesRequestLine();
+            line.setVariant(variant);
+            line.setUnit(unit);
+            line.setQty(input.qty());
+            line.setQtyKhay(qtyKhay);
+            lines.add(line);
+        }
+        return lines;
+    }
+
+    private static String autoSummary(List<SalesRequestLine> lines) {
+        return lines.stream()
+                .map(line -> {
+                    var v = line.getVariant();
+                    String name = v.getProduct() == null ? v.getSku() : v.getProduct().getName();
+                    String pack = v.getPackLabel() == null ? "" : " · " + v.getPackLabel();
+                    String unit = line.getUnit() == SellUnit.CASE ? "thùng" : "khay";
+                    return name + pack + " × " + line.getQty() + " " + unit;
+                })
+                .collect(Collectors.joining("; "));
+    }
+
+    private static int toKhay(SellUnit unit, int qty, short packPerCase) {
+        return PricingService.toQtyKhay(unit, qty, packPerCase);
     }
 
     private void assertOpen(SalesRequest row) {

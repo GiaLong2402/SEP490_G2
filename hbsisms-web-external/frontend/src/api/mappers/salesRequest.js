@@ -45,6 +45,21 @@ export function fromSalesRequestDto(dto) {
     rejectReason: dto.rejectReason || '',
     note: dto.note || '',
     orderCode: dto.orderCode || null,
+    lines: Array.isArray(dto.lines)
+      ? dto.lines.map((l) => ({
+          id: l.id,
+          variantId: l.variantId,
+          sku: l.sku || '',
+          productName: l.productName || '',
+          packLabel: l.packLabel || '',
+          packPerCase: l.packPerCase ?? 1,
+          unit: l.unit == null ? 'pack' : String(l.unit).toLowerCase(),
+          qty: l.qty ?? 0,
+          qtyKhay: l.qtyKhay ?? 0,
+          fulfillableQty: l.fulfillableQty ?? null,
+          shortageQty: l.shortageQty ?? null,
+        }))
+      : [],
     quote,
   }
 }

@@ -39,7 +39,11 @@ export default function StockShortageDialog({ shortages, items, neededDate, onRe
         neededDate: toIsoDate(neededDate),
         requestedQty: rows.reduce((s, r) => s + r.requestedQty, 0),
         availableQty: rows.reduce((s, r) => s + r.availableQty, 0),
-        items: rows.map((r) => ({ variantId: r.variantId, requestedQty: r.requestedQty, availableQty: r.availableQty })),
+        lines: rows.map((r) => ({
+          variantId: Number(r.variantId),
+          unit: 'pack',
+          qty: r.requestedQty,
+        })),
       })
       setSent(created)
     } catch (err) {

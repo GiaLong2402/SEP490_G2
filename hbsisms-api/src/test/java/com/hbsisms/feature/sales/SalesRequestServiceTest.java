@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.hbsisms.common.exception.ApiException;
+import com.hbsisms.feature.catalog.ProductVariantRepository;
 import com.hbsisms.feature.customer.CustomerRepository;
 import com.hbsisms.feature.sales.dto.OrderDetailResponse;
 import com.hbsisms.feature.sales.dto.OrderInputRequest;
@@ -40,6 +41,8 @@ class SalesRequestServiceTest {
     @Mock
     private CustomerRepository customerRepository;
     @Mock
+    private ProductVariantRepository productVariantRepository;
+    @Mock
     private UserRepository userRepository;
     @Mock
     private SalesOrderService salesOrderService;
@@ -54,6 +57,7 @@ class SalesRequestServiceTest {
         service = new SalesRequestService(
                 salesRequestRepository,
                 customerRepository,
+                productVariantRepository,
                 userRepository,
                 salesOrderService,
                 businessCodeService,
@@ -68,10 +72,28 @@ class SalesRequestServiceTest {
             setId(r, 1L);
             return r;
         });
+        when(salesRequestRepository.findWithDetailsById(1L)).thenAnswer(inv -> {
+            SalesRequest r = openRequest(1L);
+            r.setCode("YC-2026-0001");
+            r.setCustomerName("Anh A");
+            r.setContactPhone("0912345678");
+            r.setContactAddress("12 Nguyễn Trãi");
+            r.setSummary("Cần 10 khay tôm");
+            return Optional.of(r);
+        });
 
         var response = service.create(
                 new SalesRequestInputRequest(
-                        null, "Anh A", "0912345678", "12 Nguyễn Trãi", SaleChannel.PHONE, "Cần 10 khay tôm", null, null, null),
+                        null,
+                        "Anh A",
+                        "0912345678",
+                        "12 Nguyễn Trãi",
+                        SaleChannel.PHONE,
+                        "Cần 10 khay tôm",
+                        null,
+                        null,
+                        null,
+                        null),
                 9L);
 
         assertThat(response.code()).isEqualTo("YC-2026-0001");
@@ -121,13 +143,12 @@ class SalesRequestServiceTest {
                 null,
                 null,
                 List.of());
-        // NotEmpty on lines would fail validation at controller; here we stub create.
         OrderDetailResponse stubOrder = org.mockito.Mockito.mock(OrderDetailResponse.class);
         when(salesOrderService.createFromRequest(any(), eq(1L))).thenReturn(stubOrder);
 
         var result = service.recordFeasibility(
                 4L,
-                new SalesRequestFeasibilityRequest(true, 10, 0, null, null, true, orderBody),
+                new SalesRequestFeasibilityRequest(true, 10, 0, null, null, true, orderBody, null),
                 1L);
 
         assertThat(result.request().status()).isEqualTo(RequestStatus.ORDERED);
@@ -143,7 +164,7 @@ class SalesRequestServiceTest {
 
         assertThatThrownBy(() -> service.recordFeasibility(
                         5L,
-                        new SalesRequestFeasibilityRequest(true, 5, 0, null, null, true, null),
+                        new SalesRequestFeasibilityRequest(true, 5, 0, null, null, true, null, null),
                         1L))
                 .isInstanceOf(ApiException.class)
                 .extracting(ex -> ((ApiException) ex).getStatus())
@@ -157,13 +178,44 @@ class SalesRequestServiceTest {
 
         var result = service.recordFeasibility(
                 6L,
-                new SalesRequestFeasibilityRequest(true, 8, 2, null, "ok", false, null),
+                new SalesRequestFeasibilityRequest(true, 8, 2, null, "ok", false, null, null),
                 1L);
 
         assertThat(result.order()).isNull();
         assertThat(result.request().status()).isEqualTo(RequestStatus.QUOTING);
         assertThat(result.request().feasible()).isTrue();
         verify(salesOrderService, never()).createFromRequest(any(), any());
+    }
+
+    @Test
+    void feasibility_false_rejectsWithNoteAsReason() {
+        SalesRequest row = openRequest(7L);
+        when(salesRequestRepository.findWithDetailsById(7L)).thenReturn(Optional.of(row));
+
+        var result = service.recordFeasibility(
+                7L,
+                new SalesRequestFeasibilityRequest(false, null, null, null, "Hết nguyên liệu", false, null, null),
+                1L);
+
+        assertThat(result.order()).isNull();
+        assertThat(result.request().status()).isEqualTo(RequestStatus.REJECTED);
+        assertThat(result.request().feasible()).isFalse();
+        assertThat(result.request().rejectReason()).isEqualTo("Hết nguyên liệu");
+        verify(salesOrderService, never()).createFromRequest(any(), any());
+    }
+
+    @Test
+    void feasibility_false_blankNoteFails() {
+        SalesRequest row = openRequest(8L);
+        when(salesRequestRepository.findWithDetailsById(8L)).thenReturn(Optional.of(row));
+
+        assertThatThrownBy(() -> service.recordFeasibility(
+                        8L,
+                        new SalesRequestFeasibilityRequest(false, null, null, null, "  ", false, null, null),
+                        1L))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     @Test

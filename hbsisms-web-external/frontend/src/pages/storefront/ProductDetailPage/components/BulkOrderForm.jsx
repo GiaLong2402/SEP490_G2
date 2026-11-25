@@ -55,10 +55,10 @@ function buildSummary({ productName, variantLabel, trays, phone, note }) {
  * Nút "Đặt số lượng lớn" + form gửi yêu cầu tư vấn → POST /me/sales-requests.
  *
  * props:
- * - productName, variantLabel
+ * - productName, variantLabel, variantId
  * - availableQty: tồn khay hiện tại (để lưu kèm; không bắt vượt tồn)
  */
-export default function BulkOrderForm({ productName, variantLabel, availableQty = 0 }) {
+export default function BulkOrderForm({ productName, variantLabel, variantId, availableQty = 0 }) {
   const navigate = useNavigate()
   const { isLoggedIn, user } = useAuth()
   const [isOpen, setIsOpen] = useState(false)
@@ -118,6 +118,9 @@ export default function BulkOrderForm({ productName, variantLabel, availableQty 
       neededDate: form.date,
       requestedQty: trays,
       contactPhone: form.phone.replace(/\s/g, ''),
+      lines: variantId
+        ? [{ variantId: Number(variantId), unit: 'pack', qty: trays }]
+        : undefined,
     }
     // Khi khách chọn nhiều hơn tồn, gắn availableQty để Sales thấy thiếu hàng (checkout-shortage style).
     if (trays > stock) {

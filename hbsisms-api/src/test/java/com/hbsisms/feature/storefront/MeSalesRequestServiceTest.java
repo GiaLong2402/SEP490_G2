@@ -23,11 +23,11 @@ import com.hbsisms.feature.sales.SaleChannel;
 import com.hbsisms.feature.sales.SalesOrderService;
 import com.hbsisms.feature.sales.SalesRequest;
 import com.hbsisms.feature.sales.SalesRequestRepository;
+import com.hbsisms.feature.sales.SalesRequestService;
 import com.hbsisms.feature.sales.SellUnit;
 import com.hbsisms.feature.sales.dto.OrderDetailResponse;
 import com.hbsisms.feature.storefront.dto.MeSalesRequestRejectRequest;
 import com.hbsisms.feature.storefront.dto.MeSalesRequestResponse;
-import com.hbsisms.feature.system.BusinessCodeService;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -50,18 +50,18 @@ class MeSalesRequestServiceTest {
     @Mock
     private SalesRequestRepository salesRequestRepository;
     @Mock
+    private SalesRequestService salesRequestService;
+    @Mock
     private QuoteRepository quoteRepository;
     @Mock
     private SalesOrderService salesOrderService;
-    @Mock
-    private BusinessCodeService businessCodeService;
 
     private MeSalesRequestService service;
 
     @BeforeEach
     void setUp() {
         service = new MeSalesRequestService(
-                salesRequestRepository, quoteRepository, salesOrderService, businessCodeService, CLOCK);
+                salesRequestRepository, salesRequestService, quoteRepository, salesOrderService, CLOCK);
     }
 
     @Test

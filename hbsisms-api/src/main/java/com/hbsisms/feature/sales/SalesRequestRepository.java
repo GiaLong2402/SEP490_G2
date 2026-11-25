@@ -17,15 +17,17 @@ public interface SalesRequestRepository
 
     Optional<SalesRequest> findByCode(String code);
 
-    @EntityGraph(attributePaths = {"customer", "handledBy"})
+    @EntityGraph(attributePaths = {"customer", "handledBy", "lines", "lines.variant", "lines.variant.product"})
     Optional<SalesRequest> findByCodeAndCustomer_Id(String code, Long customerId);
 
+    /** List portal — không fetch lines (tránh lệch phân trang). */
     @EntityGraph(attributePaths = {"customer", "handledBy"})
     Page<SalesRequest> findByCustomer_IdOrderByReceivedAtDescIdDesc(Long customerId, Pageable pageable);
 
-    @EntityGraph(attributePaths = {"customer", "handledBy"})
+    @EntityGraph(attributePaths = {"customer", "handledBy", "lines", "lines.variant", "lines.variant.product"})
     Optional<SalesRequest> findWithDetailsById(Long id);
 
+    /** List staff — không fetch lines (tránh lệch phân trang). */
     @Override
     @EntityGraph(attributePaths = {"customer", "handledBy"})
     Page<SalesRequest> findAll(Specification<SalesRequest> spec, Pageable pageable);

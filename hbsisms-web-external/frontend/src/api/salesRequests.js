@@ -16,7 +16,10 @@ export const salesRequestsApi = {
   },
 
   /**
-   * input: { summary, neededDate?, requestedQty?, availableQty?, items?: [{ variantId, requestedQty, availableQty }] }
+   * input: {
+   *   summary?, neededDate?, requestedQty?, availableQty?, contactPhone?,
+   *   lines?: [{ variantId, unit: 'pack'|'case', qty }]
+   * }
    */
   async create(input) {
     return fromSalesRequestDto(await api.post('/me/sales-requests', { channel: 'WEB', ...input }))

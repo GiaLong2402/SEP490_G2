@@ -14,6 +14,26 @@
   color: var(--color-danger) !important;
 }
 
+.rq-lines {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.rq-lines li {
+  padding: 8px 10px;
+  border: 1px solid var(--line, #e8e4dc);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.rq-lines__feas {
+  color: var(--ink-muted, #6b655c);
+}
+
 .rq-summary {
   margin: 0 0 14px;
   padding: 12px 14px;

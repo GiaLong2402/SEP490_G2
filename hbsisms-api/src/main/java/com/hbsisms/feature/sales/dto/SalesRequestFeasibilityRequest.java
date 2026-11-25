@@ -4,10 +4,11 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
+import java.util.List;
 
 /**
- * Ghi kết quả khả thi. Khi {@code customerAccepted=true} và {@code feasible=true},
- * bắt buộc {@code order} để Sales tự chốt tạo đơn (không cần Chủ duyệt).
+ * Ghi kết quả khả thi. {@code feasible=false} + {@code note} → từ chối.
+ * {@code feasible=true}: gửi {@code lines} (SP + đơn vị + SL đáp ứng) để lưu và prefill báo giá.
  */
 public record SalesRequestFeasibilityRequest(
         @NotNull(message = "feasible là bắt buộc") Boolean feasible,
@@ -16,4 +17,5 @@ public record SalesRequestFeasibilityRequest(
         LocalDate expectedDate,
         String note,
         boolean customerAccepted,
-        @Valid OrderInputRequest order) {}
+        @Valid OrderInputRequest order,
+        @Valid List<SalesRequestLineInput> lines) {}

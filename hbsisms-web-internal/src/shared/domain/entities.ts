@@ -107,6 +107,20 @@ export interface DamageReport {
   reportedBy: ID | null; reviewedBy: ID | null; reportedAt: ISODateTime; reviewedAt: ISODateTime | null; note: string | null;
 }
 
+export interface SalesRequestLine {
+  id: ID;
+  variantId: ID;
+  sku: string;
+  productName: string | null;
+  packLabel: string | null;
+  packPerCase: number;
+  unit: E.SellUnit;
+  qty: number;
+  qtyKhay: number;
+  fulfillableQty: number | null;
+  shortageQty: number | null;
+}
+
 export interface SalesRequest {
   id: ID; code: string; customerId: ID | null; customerName: string | null;
   contactPhone: string | null; contactAddress: string | null;
@@ -120,6 +134,8 @@ export interface SalesRequest {
   shortageQty: number | null;
   expectedDate: ISODate | null;
   rejectReason: string | null;
+  /** Dòng hàng (detail); list thường trả []. */
+  lines?: SalesRequestLine[];
 }
 
 export interface Quote {

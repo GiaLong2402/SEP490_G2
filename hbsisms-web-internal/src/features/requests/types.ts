@@ -1,9 +1,17 @@
-import type { ID, SalesRequest } from '@/shared/domain/entities';
-import type { RequestStatus, SaleChannel } from '@/shared/domain/enums';
+import type { ID, SalesRequest, SalesRequestLine } from '@/shared/domain/entities';
+import type { RequestStatus, SaleChannel, SellUnit } from '@/shared/domain/enums';
 import type { OrderInput } from '@/features/orders/types';
+
+export type { SalesRequestLine };
 
 export interface RequestListItem extends SalesRequest {
   handlerName: string | null;
+}
+
+export interface RequestLineInput {
+  variantId: ID;
+  unit: SellUnit;
+  qty: number;
 }
 
 export interface RequestInput {
@@ -13,6 +21,10 @@ export interface RequestInput {
   contactAddress: string | null;
   channel: SaleChannel;
   summary: string;
+  neededDate?: string | null;
+  requestedQty?: number | null;
+  availableQty?: number | null;
+  lines?: RequestLineInput[];
 }
 
 export interface RequestPatch {
@@ -20,6 +32,7 @@ export interface RequestPatch {
   note?: string;
 }
 
+/** Dòng SP Sales chọn khi ghi khả năng đáp ứng (prefill báo giá). */
 export interface FeasibilityInput {
   feasible: boolean;
   fulfillableQty?: number | null;
@@ -28,6 +41,7 @@ export interface FeasibilityInput {
   note?: string | null;
   customerAccepted: boolean;
   order?: OrderInput | null;
+  lines?: RequestLineInput[];
 }
 
 export interface RejectInput {

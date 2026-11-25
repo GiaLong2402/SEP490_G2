@@ -2,8 +2,11 @@ package com.hbsisms.feature.storefront.dto;
 
 import com.hbsisms.feature.sales.Quote;
 import com.hbsisms.feature.sales.SalesRequest;
+import com.hbsisms.feature.sales.dto.SalesRequestLineResponse;
+import com.hbsisms.feature.sales.dto.SalesRequestResponse;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * Portal {@code /me/sales-requests} shape — {@code status} UPPERCASE for external FE
@@ -25,13 +28,20 @@ public record MeSalesRequestResponse(
         String rejectReason,
         String note,
         String orderCode,
+        List<SalesRequestLineResponse> lines,
         MeQuoteSummaryResponse quote) {
 
     public static MeSalesRequestResponse from(SalesRequest request) {
-        return from(request, null);
+        return from(request, null, mapLines(request));
     }
 
     public static MeSalesRequestResponse from(SalesRequest request, Quote quote) {
+        return from(request, quote, mapLines(request));
+    }
+
+    /** List portal — truyền {@code lines} rỗng để tránh N+1. */
+    public static MeSalesRequestResponse from(
+            SalesRequest request, Quote quote, List<SalesRequestLineResponse> lines) {
         return new MeSalesRequestResponse(
                 request.getId(),
                 request.getCode(),
@@ -48,6 +58,32 @@ public record MeSalesRequestResponse(
                 request.getRejectReason() == null ? "" : request.getRejectReason(),
                 request.getNote() == null ? "" : request.getNote(),
                 request.getOrderCode(),
+                lines == null ? List.of() : lines,
                 quote == null ? null : MeQuoteSummaryResponse.from(quote));
+    }
+
+    public static MeSalesRequestResponse from(SalesRequestResponse staff) {
+        return new MeSalesRequestResponse(
+                staff.id(),
+                staff.code(),
+                staff.summary() == null ? "" : staff.summary(),
+                staff.status() == null ? null : staff.status().name(),
+                staff.receivedAt(),
+                staff.neededDate(),
+                staff.requestedQty(),
+                staff.availableQty(),
+                staff.feasible(),
+                staff.fulfillableQty(),
+                staff.shortageQty(),
+                staff.expectedDate(),
+                staff.rejectReason() == null ? "" : staff.rejectReason(),
+                staff.note() == null ? "" : staff.note(),
+                staff.orderCode(),
+                staff.lines() == null ? List.of() : staff.lines(),
+                null);
+    }
+
+    private static List<SalesRequestLineResponse> mapLines(SalesRequest request) {
+        return request.getLines().stream().map(SalesRequestLineResponse::from).toList();
     }
 }
