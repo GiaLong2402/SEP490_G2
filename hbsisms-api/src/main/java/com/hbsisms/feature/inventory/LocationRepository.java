@@ -1,6 +1,7 @@
 package com.hbsisms.feature.inventory;
 
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -20,6 +21,9 @@ public interface LocationRepository extends JpaRepository<Location, Long> {
 
     @Query("select l from Location l join fetch l.warehouse order by l.warehouse.code asc, l.code asc")
     List<Location> findAllWithWarehouse();
+
+    @Query("select l from Location l join fetch l.warehouse where l.id in :ids")
+    List<Location> findWithWarehouseByIdIn(@Param("ids") Collection<Long> ids);
 
     /** Serialize capacity checks for concurrent inbound/move into the same location. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

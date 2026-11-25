@@ -1,8 +1,10 @@
 package com.hbsisms.feature.sales;
 
+import com.hbsisms.feature.payment.PaymentStatus;
 import jakarta.persistence.LockModeType;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
@@ -70,6 +72,99 @@ public interface SalesOrderRepository
         long getOrderCount();
     }
 
+    /**
+     * Top variants trên đơn {@code COMPLETED} trong khoảng — sort/limit ở service.
+     */
+    @Query(
+            value = """
+                    select
+                        v.id as variantId,
+                        p.name as productName,
+                        v.sku as sku,
+                        v.pack_label as packLabel,
+                        coalesce(sum(l.qty_khay), 0) as qtyKhay,
+                        coalesce(sum(l.line_total), 0) as revenue,
+                        coalesce(sum(l.line_total - coalesce(l.unit_cost, 0) * l.qty_khay), 0) as profit
+                    from hbsisms.sales_order o
+                    join hbsisms.sales_order_line l on l.order_id = o.id
+                    join hbsisms.product_variant v on v.id = l.variant_id
+                    join hbsisms.product p on p.id = v.product_id
+                    where o.state = 'COMPLETED'
+                      and o.placed_at >= :fromInstant
+                      and o.placed_at < :toExclusive
+                    group by v.id, p.name, v.sku, v.pack_label
+                    """,
+            nativeQuery = true)
+    List<TopProductRow> aggregateTopProducts(
+            @Param("fromInstant") Instant fromInstant, @Param("toExclusive") Instant toExclusive);
+
+    interface TopProductRow {
+        Long getVariantId();
+
+        String getProductName();
+
+        String getSku();
+
+        String getPackLabel();
+
+        /** Postgres {@code sum} may surface as {@link BigDecimal}. */
+        Number getQtyKhay();
+
+        BigDecimal getRevenue();
+
+        BigDecimal getProfit();
+    }
+
+    /**
+     * Top khách trên đơn {@code COMPLETED} — walk-in ({@code customer_id} null) gộp một nhóm.
+     */
+    @Query(
+            value = """
+                    with order_stats as (
+                        select
+                            o.id as order_id,
+                            o.customer_id as customer_id,
+                            o.customer_name as customer_name,
+                            o.order_type as order_type,
+                            o.total as revenue,
+                            coalesce(sum(l.line_total - coalesce(l.unit_cost, 0) * l.qty_khay), 0) as profit
+                        from hbsisms.sales_order o
+                        left join hbsisms.sales_order_line l on l.order_id = o.id
+                        where o.state = 'COMPLETED'
+                          and o.placed_at >= :fromInstant
+                          and o.placed_at < :toExclusive
+                        group by o.id, o.customer_id, o.customer_name, o.order_type, o.total
+                    )
+                    select
+                        os.customer_id as customerId,
+                        coalesce(max(c.name), max(os.customer_name), 'Khách vãng lai') as customerName,
+                        max(os.order_type) as orderType,
+                        count(*) as orderCount,
+                        coalesce(sum(os.revenue), 0) as revenue,
+                        coalesce(sum(os.profit), 0) as profit
+                    from order_stats os
+                    left join hbsisms.customer c on c.id = os.customer_id
+                    group by os.customer_id
+                    """,
+            nativeQuery = true)
+    List<TopCustomerRow> aggregateTopCustomers(
+            @Param("fromInstant") Instant fromInstant, @Param("toExclusive") Instant toExclusive);
+
+    interface TopCustomerRow {
+        Long getCustomerId();
+
+        String getCustomerName();
+
+        String getOrderType();
+
+        /** Postgres {@code count} may surface as {@link Long} or {@link BigInteger}. */
+        Number getOrderCount();
+
+        BigDecimal getRevenue();
+
+        BigDecimal getProfit();
+    }
+
     Optional<SalesOrder> findByCode(String code);
 
     /** Khóa ghi bi quan (pessimistic) (SELECT ... FOR UPDATE) — gọi trong transaction trước khi đọc chi tiết/đổi trạng thái. */
@@ -78,7 +173,24 @@ public interface SalesOrderRepository
     Optional<SalesOrder> findByIdForUpdate(@Param("id") Long id);
 
     /** Inbox Chủ — đơn chờ hoàn tiền / lệch tiền. */
-    List<SalesOrder> findByPaymentStatusOrderByUpdatedAtDesc(com.hbsisms.feature.payment.PaymentStatus paymentStatus);
+    List<SalesOrder> findByPaymentStatusOrderByUpdatedAtDesc(PaymentStatus paymentStatus);
+
+    /**
+     * Ứng viên soạn hàng ngày: đã thu + giữ đủ + đang trong luồng chuẩn bị/giao.
+     * Lọc theo ngày giao nằm ở service (không giao hoặc có chuyến khớp ngày).
+     */
+    @EntityGraph(attributePaths = {"customer"})
+    @Query("""
+            select o from SalesOrder o
+            where o.state in :states
+              and o.paymentStatus = :paymentStatus
+              and o.allocationStatus = :allocationStatus
+            order by o.code asc
+            """)
+    List<SalesOrder> findForDailyPicking(
+            @Param("states") Collection<OrderState> states,
+            @Param("paymentStatus") PaymentStatus paymentStatus,
+            @Param("allocationStatus") AllocationStatus allocationStatus);
 
     Optional<SalesOrder> findFirstBySourceQuote_Id(Long quoteId);
 
