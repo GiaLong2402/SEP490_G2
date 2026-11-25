@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -52,6 +53,15 @@ public class QuoteController {
     public QuoteDetailResponse create(
             @Valid @RequestBody QuoteInputRequest request, @AuthenticationPrincipal AuthUser actor) {
         return quoteService.create(request, actor == null ? null : actor.id());
+    }
+
+    /** Sửa báo giá nháp — body giống POST /quotes. */
+    @PutMapping("/{id}")
+    public QuoteDetailResponse update(
+            @PathVariable Long id,
+            @Valid @RequestBody QuoteInputRequest request,
+            @AuthenticationPrincipal AuthUser actor) {
+        return quoteService.update(id, request, actor == null ? null : actor.id());
     }
 
     @PatchMapping("/{id}/status")

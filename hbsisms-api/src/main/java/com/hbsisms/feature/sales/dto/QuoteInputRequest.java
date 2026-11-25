@@ -7,7 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
 import java.util.List;
 
-/** Body of POST /quotes. Matches FE {@code QuoteInput}. */
+/** Body of POST /quotes và PUT /quotes/{id} (sửa nháp). Matches FE {@code QuoteInput}. */
 public record QuoteInputRequest(
         @NotNull(message = "Vui lòng chọn khách hàng")
         Long customerId,

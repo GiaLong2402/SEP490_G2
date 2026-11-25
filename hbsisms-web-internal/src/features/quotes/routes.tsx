@@ -8,5 +8,6 @@ const QuoteDetailPage = lazy(() => import('./pages/QuoteDetailPage'));
 export const quoteRoutes: FeatureRoute[] = [
   { path: 'quotes', element: <QuotesPage />, permission: 'orders' },
   { path: 'quotes/new', element: <QuoteFormPage />, permission: 'orders' },
+  { path: 'quotes/:id/edit', element: <QuoteFormPage />, permission: 'orders' },
   { path: 'quotes/:id', element: <QuoteDetailPage />, permission: 'orders' },
 ];

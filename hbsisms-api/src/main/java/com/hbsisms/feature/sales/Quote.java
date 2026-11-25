@@ -88,4 +88,12 @@ public class Quote extends AuditableEntity {
         lines.remove(line);
         line.setQuote(null);
     }
+
+    /** Thay toàn bộ dòng (sửa nháp). */
+    public void replaceLines(List<QuoteLine> next) {
+        lines.clear();
+        for (QuoteLine line : next) {
+            addLine(line);
+        }
+    }
 }
