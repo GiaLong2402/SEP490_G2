@@ -14,6 +14,7 @@ import com.hbsisms.feature.inventory.GoodsReceiptService;
 import com.hbsisms.feature.inventory.RawMaterial;
 import com.hbsisms.feature.inventory.RawMaterialLot;
 import com.hbsisms.feature.inventory.RawMaterialStockService;
+import com.hbsisms.feature.inventory.dto.FinishedPutAwayResponse;
 import com.hbsisms.feature.production.dto.ProductionLeftoverInput;
 import com.hbsisms.feature.production.dto.ProductionLeftoverResponse;
 import com.hbsisms.feature.production.dto.ProductionOrderCompleteRequest;
@@ -119,6 +120,7 @@ public class ProductionOrderService {
         if (!product.isActive()) {
             throw ApiException.badRequest("Sản phẩm đã ngừng kinh doanh");
         }
+        requireWholeTrays(request.plannedQty());
 
         BomExplosionService.ExplosionResult explosion =
                 bomExplosionService.explode(product.getId(), request.plannedQty());
@@ -146,6 +148,7 @@ public class ProductionOrderService {
         if (order.getStatus() != ProductionOrderStatus.DRAFT) {
             throw ApiException.conflict("Chỉ sửa được lệnh đang ở trạng thái bản nháp");
         }
+        requireWholeTrays(request.plannedQty());
 
         BomExplosionService.ExplosionResult explosion =
                 bomExplosionService.explode(order.getProduct().getId(), request.plannedQty());
@@ -263,7 +266,7 @@ public class ProductionOrderService {
     }
 
     /**
-     * Mỗi dòng leftover → lô {@code <lô xuất sau cùng>-TL}, trừ chi phí NVL thực tế.
+     * Mỗi dòng leftover → lô {@code <lô gốc>-TL} (trùng thì -TL2, -TL3…), trừ chi phí NVL thực tế.
      * Source lot = dòng xuất sau cùng của NVL trên phiếu (khớp FE {@code lots[last]}).
      */
     private void applyLeftovers(
@@ -311,7 +314,8 @@ public class ProductionOrderService {
 
             RawMaterialLot sourceLot = agg.lastLot;
             BigDecimal unitPrice = sourceLot.getUnitPrice() == null ? BigDecimal.ZERO : sourceLot.getUnitPrice();
-            String lotCode = sourceLot.getLotCode() + "-TL";
+            // Gốc-TL, đã có thì Gốc-TL2, TL3…; lô xuất ra là lô -TL thì vẫn lấy mã gốc (không thành -TL-TL).
+            String lotCode = rawMaterialStockService.nextLeftoverLotCode(agg.material, sourceLot.getLotCode());
             RawMaterialLot returned = rawMaterialStockService.receive(
                     agg.material,
                     lotCode,
@@ -411,7 +415,10 @@ public class ProductionOrderService {
         BigDecimal unitCost = null;
         Integer markupPercent = null;
         BigDecimal suggestedSellPrice = null;
+        FinishedPutAwayResponse putAway = null;
         if (order.getStatus() == ProductionOrderStatus.COMPLETED) {
+            GoodsReceipt finished = order.getFinishedReceipt();
+            putAway = finished == null ? null : goodsReceiptService.finishedPutAway(finished.getId());
             BigDecimal qty = order.getActualQty();
             BigDecimal material =
                     order.getActualMaterialCost() == null ? BigDecimal.ZERO : order.getActualMaterialCost();
@@ -424,7 +431,14 @@ public class ProductionOrderService {
             }
         }
         return ProductionOrderResponse.from(
-                order, materials, leftovers, unitCost, markupPercent, suggestedSellPrice, null);
+                order, materials, leftovers, unitCost, markupPercent, suggestedSellPrice, null, putAway);
+    }
+
+    /** Lệnh sản xuất tính theo khay — không có 1,5 khay. */
+    private static void requireWholeTrays(BigDecimal qty) {
+        if (qty == null || qty.signum() <= 0 || qty.stripTrailingZeros().scale() > 0) {
+            throw ApiException.badRequest("Số lượng kế hoạch phải là số khay nguyên lớn hơn 0");
+        }
     }
 
     private static String blankToNull(String value) {

@@ -122,6 +122,50 @@ class GoodsReceiptServiceTest {
         actor.setFullName("Thủ kho");
     }
 
+    // ---- Lô / HSD / vị trí của phiếu TP đã nhập (màn Hoàn thành lệnh SX) ----
+
+    @Test
+    void finishedPutAway_readsLotExpFromLine_andLocationFromInLedger() {
+        Warehouse warehouse = new Warehouse();
+        warehouse.setName("Kho thành phẩm");
+        location.setZone("Tôm");
+        location.setWarehouse(warehouse);
+        GoodsReceiptLine line = new GoodsReceiptLine();
+        line.setProductVariant(variant);
+        line.setQtyReceived(BigDecimal.valueOf(2));
+        line.setLotCode("LOT-261125-01");
+        line.setExpDate(LocalDate.of(2026, 12, 25));
+        StockLedger hold = new StockLedger();
+        hold.setEntryType(LedgerEntryType.HOLD);
+        hold.setLocation(new Location());
+        StockLedger in = new StockLedger();
+        in.setEntryType(LedgerEntryType.IN);
+        in.setLocation(location);
+        when(goodsReceiptLineRepository.findByReceipt_IdOrderByLineNoAsc(39L)).thenReturn(List.of(line));
+        when(stockLedgerRepository.findByRefTypeAndRefIdForAllocation("goods_receipt", 39L))
+                .thenReturn(List.of(hold, in));
+
+        var result = service.finishedPutAway(39L);
+
+        assertThat(result.lotCode()).isEqualTo("LOT-261125-01");
+        assertThat(result.expDate()).isEqualTo(LocalDate.of(2026, 12, 25));
+        assertThat(result.locationCode()).isEqualTo("A-01");
+        assertThat(result.locationZone()).isEqualTo("Tôm");
+        assertThat(result.warehouseName()).isEqualTo("Kho thành phẩm");
+    }
+
+    @Test
+    void finishedPutAway_pendingReceiptOrNullId_returnsNull() {
+        GoodsReceiptLine pending = new GoodsReceiptLine();
+        pending.setProductVariant(variant);
+        pending.setQtyExpected(BigDecimal.valueOf(2));
+        when(goodsReceiptLineRepository.findByReceipt_IdOrderByLineNoAsc(40L)).thenReturn(List.of(pending));
+
+        assertThat(service.finishedPutAway(40L)).isNull();
+        assertThat(service.finishedPutAway(null)).isNull();
+        verify(stockLedgerRepository, never()).findByRefTypeAndRefIdForAllocation(anyString(), any());
+    }
+
     // ---- Thành phẩm: giữ nguyên hành vi nhập ngay ----
 
     @Test

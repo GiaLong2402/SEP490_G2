@@ -213,6 +213,51 @@ class RawMaterialStockServiceTest {
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.CONFLICT));
     }
 
+    // ---- Mã lô nguyên liệu dư trả lại (-TL) ----
+
+    @Test
+    void nextLeftoverLotCode_firstReturn_isSourcePlusTl() {
+        when(rawMaterialLotRepository.existsByRawMaterial_IdAndLotCodeIgnoreCase(3L, "NVL-261124-01-TL"))
+                .thenReturn(false);
+
+        assertThat(service.nextLeftoverLotCode(ice, "NVL-261124-01")).isEqualTo("NVL-261124-01-TL");
+    }
+
+    @Test
+    void nextLeftoverLotCode_tlTaken_countsUpToTl2Tl3() {
+        when(rawMaterialLotRepository.existsByRawMaterial_IdAndLotCodeIgnoreCase(3L, "NVL-261124-01-TL"))
+                .thenReturn(true);
+        when(rawMaterialLotRepository.existsByRawMaterial_IdAndLotCodeIgnoreCase(3L, "NVL-261124-01-TL2"))
+                .thenReturn(true);
+        when(rawMaterialLotRepository.existsByRawMaterial_IdAndLotCodeIgnoreCase(3L, "NVL-261124-01-TL3"))
+                .thenReturn(false);
+
+        assertThat(service.nextLeftoverLotCode(ice, "NVL-261124-01")).isEqualTo("NVL-261124-01-TL3");
+    }
+
+    @Test
+    void nextLeftoverLotCode_sourceIsLeftoverLot_usesOriginalCode_notTlTl() {
+        when(rawMaterialLotRepository.existsByRawMaterial_IdAndLotCodeIgnoreCase(3L, "NVL-261124-01-TL"))
+                .thenReturn(true);
+        when(rawMaterialLotRepository.existsByRawMaterial_IdAndLotCodeIgnoreCase(3L, "NVL-261124-01-TL2"))
+                .thenReturn(false);
+
+        assertThat(service.nextLeftoverLotCode(ice, "NVL-261124-01-TL")).isEqualTo("NVL-261124-01-TL2");
+        assertThat(service.nextLeftoverLotCode(ice, "NVL-261124-01-TL-TL")).isEqualTo("NVL-261124-01-TL2");
+    }
+
+    @Test
+    void nextLeftoverLotCode_checksOnlyThisMaterial() {
+        RawMaterial film = new RawMaterial();
+        setId(film, 4L);
+        film.setName("Màng bọc");
+        when(rawMaterialLotRepository.existsByRawMaterial_IdAndLotCodeIgnoreCase(4L, "NVL-261124-01-TL"))
+                .thenReturn(false);
+
+        assertThat(service.nextLeftoverLotCode(film, "NVL-261124-01")).isEqualTo("NVL-261124-01-TL");
+        verify(rawMaterialLotRepository, never()).existsByRawMaterial_IdAndLotCodeIgnoreCase(3L, "NVL-261124-01-TL");
+    }
+
     private static RawMaterialLot lot(Long id, RawMaterial material, String code, BigDecimal remaining, BigDecimal price) {
         RawMaterialLot lot = new RawMaterialLot();
         setId(lot, id);

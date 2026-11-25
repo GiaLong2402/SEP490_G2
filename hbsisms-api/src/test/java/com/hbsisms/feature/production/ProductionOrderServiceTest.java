@@ -227,6 +227,36 @@ class ProductionOrderServiceTest {
     }
 
     @Test
+    void create_fractionalTrays_returns400_withoutSaving() {
+        Product product = product(10L, "TP-001", "Bánh quy");
+        when(productRepository.findById(10L)).thenReturn(Optional.of(product));
+
+        assertThatThrownBy(() -> service.create(
+                        new ProductionOrderCreateRequest(10L, new BigDecimal("1.5"), null, null, null), null))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("số khay nguyên")
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+        verify(bomExplosionService, never()).explode(anyLong(), any());
+        verify(productionOrderRepository, never()).save(any());
+    }
+
+    @Test
+    void update_fractionalTrays_returns400_wholeWithTrailingZerosOk() {
+        ProductionOrder order = draftOrder(true);
+        when(productionOrderRepository.findWithHeaderById(100L)).thenReturn(Optional.of(order));
+        when(bomExplosionService.explode(eq(10L), any())).thenReturn(explosion(true, "84"));
+
+        assertThatThrownBy(() -> service.update(
+                        100L, new ProductionOrderUpdateRequest(new BigDecimal("2.5"), null, null, null)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("số khay nguyên");
+        // 2.0000 (cách DB lưu numeric) vẫn là số nguyên.
+        assertThat(service.update(100L, new ProductionOrderUpdateRequest(new BigDecimal("2.0000"), null, null, null))
+                        .plannedQty())
+                .isEqualByComparingTo("2");
+    }
+
+    @Test
     void update_approved_returns409() {
         ProductionOrder order = draftOrder(true);
         order.setStatus(ProductionOrderStatus.APPROVED);
