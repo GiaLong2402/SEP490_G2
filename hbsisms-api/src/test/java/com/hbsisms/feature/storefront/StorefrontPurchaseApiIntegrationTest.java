@@ -265,9 +265,9 @@ class StorefrontPurchaseApiIntegrationTest {
 
     private void ensureAvailableStock(ProductVariant variant, int qty) {
         int n = SEQ.getAndIncrement();
-        Warehouse warehouse = warehouseRepository.findByCodeIgnoreCase("KHO-HP").orElseGet(() -> {
+        Warehouse warehouse = warehouseRepository.findByCodeIgnoreCase("KHO-TP").orElseGet(() -> {
             Warehouse created = new Warehouse();
-            created.setCode("KHO-HP-IT-" + n);
+            created.setCode("KHO-TP-IT-" + n);
             created.setName("Kho IT mua hang");
             created.setCapacity(500);
             created.setActive(true);

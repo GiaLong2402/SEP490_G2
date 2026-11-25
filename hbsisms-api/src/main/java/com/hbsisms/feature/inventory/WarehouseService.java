@@ -19,20 +19,24 @@ public class WarehouseService {
     private final WarehouseRepository warehouseRepository;
     private final LocationRepository locationRepository;
     private final StockRepository stockRepository;
+    private final RawMaterialRepository rawMaterialRepository;
 
     public WarehouseService(
             WarehouseRepository warehouseRepository,
             LocationRepository locationRepository,
-            StockRepository stockRepository) {
+            StockRepository stockRepository,
+            RawMaterialRepository rawMaterialRepository) {
         this.warehouseRepository = warehouseRepository;
         this.locationRepository = locationRepository;
         this.stockRepository = stockRepository;
+        this.rawMaterialRepository = rawMaterialRepository;
     }
 
     public List<WarehouseResponse> list() {
         List<Warehouse> warehouses = warehouseRepository.findAll(Sort.by(Sort.Direction.ASC, "code"));
         List<WarehouseResponse> result = new ArrayList<>(warehouses.size());
-        for (Warehouse warehouse : warehouses) {
+        // Kho thành phẩm trước, kho nguyên liệu sau; trong cùng loại giữ thứ tự theo mã.
+        for (Warehouse warehouse : warehouses.stream().sorted(java.util.Comparator.comparing(Warehouse::isRaw)).toList()) {
             result.add(toDetail(warehouse));
         }
         return result;
@@ -51,6 +55,7 @@ public class WarehouseService {
         warehouse.setAddress(Strings.trimToNull(request.address()));
         warehouse.setCapacity(capacity);
         warehouse.setActive(Boolean.TRUE.equals(request.isActive()));
+        warehouse.setKind(parseKind(request.kind()));
         return toDetail(warehouseRepository.save(warehouse));
     }
 
@@ -89,6 +94,14 @@ public class WarehouseService {
         warehouse.setAddress(Strings.trimToNull(request.address()));
         warehouse.setCapacity(capacity);
         warehouse.setActive(Boolean.TRUE.equals(request.isActive()));
+        if (request.kind() != null) {
+            WarehouseKind kind = parseKind(request.kind());
+            if (kind != warehouse.getKind()
+                    && !locationRepository.findByWarehouse_IdOrderByCodeAsc(id).isEmpty()) {
+                throw ApiException.conflict("Kho đã có vị trí, không đổi được loại kho");
+            }
+            warehouse.setKind(kind);
+        }
         return toDetail(warehouseRepository.save(warehouse));
     }
 
@@ -143,6 +156,11 @@ public class WarehouseService {
         if (stockRepository.existsByLocation_Id(id)) {
             throw ApiException.conflict("Vị trí đã có dữ liệu tồn kho, không thể xóa");
         }
+        long materials = rawMaterialRepository.countByStorageLocation_Id(id);
+        if (materials > 0) {
+            throw ApiException.conflict(String.format(
+                    "Khu đang là chỗ cất của %d nguyên liệu, hãy đổi khu cho các nguyên liệu đó trước khi xóa", materials));
+        }
         locationRepository.delete(location);
     }
 
@@ -155,10 +173,19 @@ public class WarehouseService {
                 continue;
             }
             long usedQty = stockRepository.sumQtyByLocationId(location.getId());
-            boolean canDelete = !stockRepository.existsByLocation_Id(location.getId());
-            locationResponses.add(LocationResponse.from(location, usedQty, canDelete));
+            long materialCount = warehouse.isRaw() ? rawMaterialRepository.countByStorageLocation_Id(location.getId()) : 0;
+            boolean canDelete = !stockRepository.existsByLocation_Id(location.getId()) && materialCount == 0;
+            locationResponses.add(LocationResponse.from(location, usedQty, canDelete, materialCount));
         }
         return WarehouseResponse.from(warehouse, locationResponses);
+    }
+
+    private static WarehouseKind parseKind(String raw) {
+        try {
+            return WarehouseKind.fromCode(raw);
+        } catch (IllegalArgumentException ex) {
+            throw ApiException.badRequest(ex.getMessage());
+        }
     }
 
     private static boolean isRetiredLocation(Location location) {

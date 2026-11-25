@@ -357,6 +357,8 @@ public class StockService {
                     Location location = locationRepository
                             .findById(locationId)
                             .orElseThrow(() -> ApiException.notFound("Không tìm thấy vị trí"));
+                    // Mọi luồng cất thành phẩm (nhập, chuyển vị trí, trả hàng…) đều tạo dòng tồn ở đây.
+                    assertFinishedLocation(location);
                     Stock created = new Stock();
                     created.setVariant(variant);
                     created.setLot(lot);
@@ -445,6 +447,14 @@ public class StockService {
         }
     }
 
+    /** Vị trí của kho nguyên liệu (Khu lạnh / Khu khô) chỉ để gắn nguyên liệu, không chứa tồn thành phẩm. */
+    private static void assertFinishedLocation(Location location) {
+        if (location.getWarehouse() != null && location.getWarehouse().isRaw()) {
+            throw ApiException.badRequest(
+                    "Vị trí " + location.getCode() + " thuộc kho nguyên liệu, không cất thành phẩm được");
+        }
+    }
+
     /**
      * Reject inbound qty that would exceed location or warehouse capacity (both required).
      * Locks location (and warehouse) so concurrent receives cannot both pass a stale capacity check.
@@ -458,6 +468,7 @@ public class StockService {
     }
 
     private void assertLocationCapacityAllows(Location location, int qtyToAdd) {
+        assertFinishedLocation(location);
         int capacity = requireCapacity(location.getCapacity(), "vị trí " + location.getCode());
         long used = stockRepository.sumQtyByLocationId(location.getId());
         long after = used + qtyToAdd;

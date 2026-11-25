@@ -20,6 +20,10 @@ public interface RawMaterialRepository extends JpaRepository<RawMaterial, Long> 
 
     List<RawMaterial> findAllByOrderByCodeAsc();
 
+    long countByStorageLocation_Id(Long locationId);
+
+    List<RawMaterial> findByStorageLocationIsNull();
+
     /** Khóa dòng NVL khi cộng / trừ tồn theo lô (nhập kho, xuất cho sản xuất). */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select m from RawMaterial m where m.id = :id")

@@ -102,6 +102,8 @@ public class StocktakeService {
 
         List<Location> scoped = locationRepository.findAllWithWarehouse().stream()
                 .filter(l -> l.getWarehouse() != null && l.getWarehouse().isActive())
+                // Kiểm kê thành phẩm: bỏ khu của kho nguyên liệu.
+                .filter(l -> !l.getWarehouse().isRaw())
                 .filter(l -> warehouseId == null || warehouseId.equals(l.getWarehouse().getId()))
                 .filter(l -> zone == null || zone.equals(l.getZone()))
                 .filter(l -> !QuarantineLocationSeeder.isQuarantineZone(l))

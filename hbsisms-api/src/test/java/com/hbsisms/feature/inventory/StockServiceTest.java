@@ -471,6 +471,46 @@ class StockServiceTest {
     }
 
     @Test
+    void receiveIn_rejectsZoneOfRawWarehouse() {
+        Location cold = rawZone();
+        when(locationRepository.findByIdForUpdate(300L)).thenReturn(Optional.of(cold));
+
+        assertThatThrownBy(() -> stockService.receiveIn(StockMutation.of(1L, 10L, 300L, 5, null, null, null, 1L)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException api = (ApiException) ex;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(api.getMessage()).contains("kho nguyên liệu");
+                });
+        verify(stockRepository, never()).saveAndFlush(any());
+        verify(stockLedgerRepository, never()).save(any());
+    }
+
+    @Test
+    void move_rejectsTargetZoneOfRawWarehouse() {
+        when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 10L, 100L))
+                .thenReturn(Optional.of(stock(1L, 20)));
+        when(locationRepository.findByIdForUpdate(300L)).thenReturn(Optional.of(rawZone()));
+
+        assertThatThrownBy(() -> stockService.move(StockMutation.move(1L, 10L, 100L, 300L, 5, null, 1L)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("kho nguyên liệu");
+        verify(stockLedgerRepository, never()).save(any());
+    }
+
+    private static Location rawZone() {
+        Warehouse raw = new Warehouse();
+        raw.setCode("KHO-NL");
+        raw.setCapacity(500);
+        raw.setKind(WarehouseKind.RAW);
+        Location cold = new Location();
+        cold.setCode("LANH");
+        cold.setCapacity(1);
+        cold.setWarehouse(raw);
+        return cold;
+    }
+
+    @Test
     void move_crossWarehouse_conflictsWhenTargetWarehouseFull() {
         when(stockRepository.findByVariant_IdAndLot_IdAndLocation_Id(1L, 10L, 100L))
                 .thenReturn(Optional.of(stock(1L, 20)));

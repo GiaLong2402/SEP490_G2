@@ -50,4 +50,9 @@ public class RawMaterial {
 
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
+
+    /** Khu cất trong kho nguyên liệu (Khu lạnh / Khu khô…). Mọi lô của nguyên liệu nằm ở khu này. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "storage_location_id")
+    private Location storageLocation;
 }

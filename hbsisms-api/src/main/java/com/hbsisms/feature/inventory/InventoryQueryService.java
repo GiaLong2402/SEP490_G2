@@ -137,9 +137,13 @@ public class InventoryQueryService {
     }
 
     public List<LocationOptionResponse> activeLocations() {
-        boolean multiWarehouse = warehouseRepository.count() > 1;
+        // Chỉ vị trí kho thành phẩm: khu của kho nguyên liệu không chứa tồn theo lô.
+        boolean multiWarehouse = warehouseRepository.findAll().stream()
+                .filter(w -> w.isActive() && !w.isRaw())
+                .count() > 1;
         return locationRepository.findAllWithWarehouse().stream()
                 .filter(l -> l.getWarehouse() != null && l.getWarehouse().isActive())
+                .filter(l -> !l.getWarehouse().isRaw())
                 .filter(l -> !QuarantineLocationSeeder.isQuarantineZone(l))
                 .filter(l -> {
                     String zone = l.getZone() == null ? "" : l.getZone();

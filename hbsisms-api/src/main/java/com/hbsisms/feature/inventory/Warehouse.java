@@ -2,6 +2,8 @@ package com.hbsisms.feature.inventory;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -37,4 +39,13 @@ public class Warehouse {
 
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
+
+    /** Thành phẩm / nguyên liệu. Kho cũ mặc định là thành phẩm. */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, columnDefinition = "varchar(20) not null default 'FINISHED'")
+    private WarehouseKind kind = WarehouseKind.FINISHED;
+
+    public boolean isRaw() {
+        return kind == WarehouseKind.RAW;
+    }
 }

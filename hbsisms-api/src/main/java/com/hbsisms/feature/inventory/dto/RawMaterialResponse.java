@@ -12,7 +12,10 @@ public record RawMaterialResponse(
         Long unitId,
         BigDecimal qtyOnHand,
         BigDecimal reorderLevel,
-        boolean isActive) {
+        boolean isActive,
+        Long storageLocationId,
+        String storageLocationCode,
+        String storageLocationName) {
 
     public static RawMaterialResponse from(RawMaterial material) {
         return new RawMaterialResponse(
@@ -23,6 +26,9 @@ public record RawMaterialResponse(
                 material.getUnitRef() == null ? null : material.getUnitRef().getId(),
                 material.getQtyOnHand(),
                 material.getReorderLevel(),
-                material.isActive());
+                material.isActive(),
+                material.getStorageLocation() == null ? null : material.getStorageLocation().getId(),
+                material.getStorageLocation() == null ? null : material.getStorageLocation().getCode(),
+                material.getStorageLocation() == null ? null : material.getStorageLocation().getZone());
     }
 }
