@@ -78,7 +78,12 @@ class RevenueAnalyticsApiIntegrationTest {
                 .andExpect(jsonPath("$.profit").exists())
                 .andExpect(jsonPath("$.marginPct").exists())
                 .andExpect(jsonPath("$.orderCount").exists())
-                .andExpect(jsonPath("$.series").isArray());
+                .andExpect(jsonPath("$.series").isArray())
+                .andExpect(jsonPath("$.previousFrom").exists())
+                .andExpect(jsonPath("$.previousTo").exists())
+                .andExpect(jsonPath("$.previousRevenue").exists())
+                .andExpect(jsonPath("$.previousProfit").exists())
+                .andExpect(jsonPath("$.previousOrderCount").exists());
     }
 
     @Test

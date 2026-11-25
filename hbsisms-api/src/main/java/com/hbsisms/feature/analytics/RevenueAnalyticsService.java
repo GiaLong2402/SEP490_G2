@@ -10,12 +10,13 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** COMPLETED-order revenue / COGS / profit series (Inter 4 — Doanh). */
+/** COMPLETED-order revenue / COGS / profit series + period-over-period growth (Inter 4). */
 @Service
 public class RevenueAnalyticsService {
 
@@ -39,6 +40,34 @@ public class RevenueAnalyticsService {
         }
         AnalyticsGroupBy bucket = groupBy == null ? AnalyticsGroupBy.DAY : groupBy;
 
+        PeriodTotals current = loadTotals(fromDate, toDate, bucket);
+
+        long spanDays = ChronoUnit.DAYS.between(fromDate, toDate);
+        LocalDate previousTo = fromDate.minusDays(1);
+        LocalDate previousFrom = previousTo.minusDays(spanDays);
+        PeriodTotals previous = loadTotals(previousFrom, previousTo, bucket);
+
+        return new RevenueAnalyticsResponse(
+                fromDate,
+                toDate,
+                bucket,
+                current.revenue(),
+                current.cogs(),
+                current.profit(),
+                marginPct(current.revenue(), current.profit()),
+                current.orderCount(),
+                current.series(),
+                previousFrom,
+                previousTo,
+                previous.revenue(),
+                previous.profit(),
+                previous.orderCount(),
+                growthPct(current.revenue(), previous.revenue()),
+                growthPct(current.profit(), previous.profit()),
+                growthPct(current.orderCount(), previous.orderCount()));
+    }
+
+    private PeriodTotals loadTotals(LocalDate fromDate, LocalDate toDate, AnalyticsGroupBy bucket) {
         Instant from = AnalyticsDateSupport.startInclusive(fromDate);
         Instant toExclusive = AnalyticsDateSupport.endExclusive(toDate);
         List<RevenueBucketRow> rows = salesOrderRepository.aggregateCompletedRevenue(
@@ -70,16 +99,8 @@ public class RevenueAnalyticsService {
         }
 
         BigDecimal totalProfit = totalRevenue.subtract(totalCogs);
-        return new RevenueAnalyticsResponse(
-                fromDate,
-                toDate,
-                bucket,
-                totalRevenue,
-                totalCogs,
-                totalProfit,
-                marginPct(totalRevenue, totalProfit),
-                totalOrders,
-                List.copyOf(series));
+        return new PeriodTotals(
+                totalRevenue, totalCogs, totalProfit, totalOrders, List.copyOf(series));
     }
 
     static BigDecimal marginPct(BigDecimal revenue, BigDecimal profit) {
@@ -89,6 +110,24 @@ public class RevenueAnalyticsService {
         return profit
                 .multiply(BigDecimal.valueOf(100))
                 .divide(revenue, 2, RoundingMode.HALF_UP);
+    }
+
+    /** {@code null} when previous is zero (avoid divide-by-zero). */
+    static BigDecimal growthPct(BigDecimal current, BigDecimal previous) {
+        if (previous == null || previous.signum() == 0) {
+            return null;
+        }
+        return current
+                .subtract(previous)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(previous, 2, RoundingMode.HALF_UP);
+    }
+
+    static BigDecimal growthPct(long current, long previous) {
+        if (previous == 0L) {
+            return null;
+        }
+        return growthPct(BigDecimal.valueOf(current), BigDecimal.valueOf(previous));
     }
 
     static String formatPeriod(Instant bucketStart, AnalyticsGroupBy groupBy) {
@@ -106,4 +145,11 @@ public class RevenueAnalyticsService {
     private static BigDecimal nz(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
     }
+
+    private record PeriodTotals(
+            BigDecimal revenue,
+            BigDecimal cogs,
+            BigDecimal profit,
+            long orderCount,
+            List<RevenueSeriesPointResponse> series) {}
 }
