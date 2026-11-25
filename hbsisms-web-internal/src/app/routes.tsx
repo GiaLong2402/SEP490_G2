@@ -14,7 +14,6 @@ import { marketingRoutes } from '@/features/marketing';
 import { orderRoutes } from '@/features/orders';
 import { paymentRoutes } from '@/features/payments';
 import { pickingRoutes } from '@/features/picking';
-import { posRoutes } from '@/features/pos';
 import { productRoutes } from '@/features/products';
 import { productionRoutes } from '@/features/production';
 import { quoteRoutes } from '@/features/quotes';
@@ -23,7 +22,6 @@ import { reportRoutes } from '@/features/reports';
 import { requestRoutes } from '@/features/requests';
 import { returnRoutes } from '@/features/returns';
 import { stocktakeRoutes } from '@/features/stocktakes';
-import { supplierRoutes } from '@/features/suppliers';
 import { warehouseRoutes } from '@/features/warehouses';
 import { Button, LinkButton, PageLoading } from '@/shared/ui';
 import { AppLayout } from './AppLayout';
@@ -32,7 +30,7 @@ const LoginPage = lazy(() => import('@/features/auth/pages/LoginPage'));
 
 // Thêm feature mới: khai báo routes trong feature rồi đưa vào danh sách này.
 const featureRoutes = [
-  ...dashboardRoutes, ...posRoutes, ...requestRoutes, ...quoteRoutes, ...orderRoutes, ...pickingRoutes, ...deliveryRoutes, ...returnRoutes, ...inventoryRoutes, ...receiptRoutes, ...productionRoutes, ...stocktakeRoutes, ...warehouseRoutes, ...supplierRoutes,
+  ...dashboardRoutes, ...requestRoutes, ...quoteRoutes, ...orderRoutes, ...pickingRoutes, ...deliveryRoutes, ...returnRoutes, ...inventoryRoutes, ...receiptRoutes, ...productionRoutes, ...stocktakeRoutes, ...warehouseRoutes,
   ...damageRoutes, ...paymentRoutes, ...debtRoutes, ...customerRoutes, ...productRoutes, ...marketingRoutes, ...approvalRoutes, ...reportRoutes, ...adminRoutes,
 ];
 

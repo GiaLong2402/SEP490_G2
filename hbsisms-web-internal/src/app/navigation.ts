@@ -1,4 +1,4 @@
-import { BarChart3, Boxes, ChefHat, ClipboardCheck, ClipboardList, ClipboardPen, CreditCard, Factory, FileText, HandCoins, History, LayoutDashboard, PackagePlus, PackageSearch, PackageX, Ruler, RotateCcw, ScanBarcode, Settings, ShieldCheck, ShoppingCart, Star, Store, Tags, TicketPercent, Truck, Users, UsersRound, Warehouse, type LucideIcon } from 'lucide-react';
+import { BarChart3, Boxes, ChefHat, ClipboardCheck, ClipboardList, ClipboardPen, CreditCard, FileText, HandCoins, History, LayoutDashboard, PackagePlus, PackageSearch, PackageX, Ruler, RotateCcw, Settings, ShieldCheck, ShoppingCart, Star, Store, Tags, TicketPercent, Truck, Users, UsersRound, Warehouse, type LucideIcon } from 'lucide-react';
 import type { Permission } from '@/shared/domain/enums';
 
 export interface NavItem {
@@ -18,7 +18,6 @@ export const navigation: NavGroup[] = [
   {
     label: 'Bán hàng',
     items: [
-      { to: '/pos', label: 'Bán tại quầy', icon: ScanBarcode, permission: 'orders' },
       { to: '/requests', label: 'Yêu cầu', icon: ClipboardList, permission: 'orders' },
       { to: '/quotes', label: 'Báo giá', icon: FileText, permission: 'orders' },
       { to: '/orders', label: 'Đơn hàng', icon: ShoppingCart, permission: 'orders' },
@@ -35,7 +34,6 @@ export const navigation: NavGroup[] = [
       { to: '/production-orders', label: 'Lệnh sản xuất', icon: ChefHat, permission: 'inventory' },
       { to: '/stocktakes', label: 'Kiểm kê', icon: ClipboardPen, permission: 'inventory' },
       { to: '/damage', label: 'Báo hỏng', icon: PackageX, permission: 'inventory' },
-      { to: '/suppliers', label: 'Nhà cung cấp', icon: Factory, permission: 'inventory' },
       { to: '/warehouses', label: 'Kho và vị trí', icon: Warehouse, permission: 'inventory' },
     ],
   },
