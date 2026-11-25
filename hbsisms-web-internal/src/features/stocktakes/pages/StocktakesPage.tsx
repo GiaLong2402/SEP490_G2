@@ -18,7 +18,8 @@ export default function StocktakesPage() {
   const { data, isLoading, error, refetch } = useStocktakes({ q: list.q, page: list.page, status: list.filters.status });
   const locations = useLocations().data ?? [];
   const { data: warehouses = [] } = useQuery({ queryKey: ['warehouses'], queryFn: warehousesApi.list });
-  const activeWarehouses = useMemo(() => warehouses.filter((w) => w.isActive), [warehouses]);
+  // Kiểm kê thành phẩm: không hiện kho nguyên liệu (khu cất không chứa tồn theo lô).
+  const activeWarehouses = useMemo(() => warehouses.filter((w) => w.isActive && w.kind !== 'raw'), [warehouses]);
 
   const [open, setOpen] = useState(false);
   const [warehouseId, setWarehouseId] = useState('');

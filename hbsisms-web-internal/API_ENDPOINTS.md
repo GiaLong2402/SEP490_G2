@@ -83,7 +83,7 @@ Contract FE: `features/deliveries/api.ts`. **Không có người giao nội bộ
 | GET | `/inventory/lots` |
 | GET | `/inventory/near-expiry` |
 | GET | `/inventory/ledger` | query: `q`, `entryType`, `from`, `to` (yyyy-MM-dd), page |
-| GET | `/locations` |
+| GET | `/locations` | Chỉ vị trí kho **thành phẩm** (bỏ khu của kho nguyên liệu) |
 | POST | `/inventory/moves` | body: `{ stockId, toLocationId, qty }` → 204; ledger `move` |
 | POST | `/inventory/adjusts` | body: `{ stockId, qtyDelta, note }` → 204; ledger `adjust` + audit |
 
@@ -209,9 +209,9 @@ Contract FE: `features/receipts/api.ts`. **Long (Inter 1 dòng 46–47):** phi�
 
 | Phương thức | Đường dẫn | Ghi chú |
 |---|---|---|
-| GET | `/raw-materials` | |
-| POST | `/raw-materials` | |
-| PUT | `/raw-materials/:id` | |
+| GET | `/raw-materials` | Lọc `q`, `activeOnly`, `lowStock`, `storageLocationId` (khu cất). Trả thêm `storageLocationId`, `storageLocationCode`, `storageLocationName` |
+| POST | `/raw-materials` | `storageLocationId` **bắt buộc**: khu cất thuộc kho nguyên liệu (Khu lạnh / Khu khô) |
+| PUT | `/raw-materials/:id` | `storageLocationId` bỏ trống = giữ khu cũ |
 | GET | `/raw-materials/:id/lots` | Lô NVL theo FEFO (HSD gần nhất trước, lô không HSD cuối). `availableOnly=true` chỉ lô còn tồn. Mỗi lô: mã lô, NSX, HSD, **đơn giá nhập**, SL nhập / còn, phiếu nhập. Dòng 50 (xuất NVL) dùng thứ tự này |
 | GET | `/goods-receipts` | Lọc `q`, `receiptType` (`finished`/`raw`), `status` (`pending`/`completed`/`cancelled`; phiếu cũ không có trạng thái = `completed`), `sort` (`asc` = mã phiếu tăng dần; mặc định giảm dần). Trả thêm `status`, `expectedDate`, `completedAt`, `completerName`, `totalAmount`, `lines` |
 | GET | `/goods-receipts/:id` | Chi tiết + `lines` (NVL: dự kiến / thực nhận / lô / HSD / đơn giá / thành tiền) |
@@ -268,11 +268,13 @@ Contract FE: `features/requests/api.ts` → `/sales-requests` (path const `API_P
 
 ## warehouses
 
-| Phương thức | Đường dẫn |
-|---|---|
-| GET | `/warehouses` |
-| POST | `/warehouses` |
-| PUT | `/warehouses/:id` |
-| POST | `/warehouses/:id/locations` |
-| PUT | `/locations/:id` |
-| DELETE | `/locations/:id` |
+Hai loại kho (`kind`): **`finished`** — kho thành phẩm, vị trí chứa tồn theo lô, có sức chứa (khay); **`raw`** — kho nguyên liệu, vị trí là **khu cất** (`LANH` Khu lạnh / `KHO` Khu khô) gắn với từng nguyên liệu, không chứa tồn theo lô. Mọi luồng cất thành phẩm (nhập, chuyển vị trí, trả hàng, kiểm kê) từ chối vị trí của kho `raw`. Lúc bật API, `RawWarehouseSeeder` đặt `KHO-NL` là kho nguyên liệu, tạo 2 khu nếu chưa có, gắn khu cho nguyên liệu chưa có khu (đơn vị kg → Khu lạnh, còn lại → Khu khô).
+
+| Phương thức | Đường dẫn | Ghi chú |
+|---|---|---|
+| GET | `/warehouses` | Kho thành phẩm trước, kho nguyên liệu sau. Mỗi kho có `kind`; mỗi vị trí có `materialCount` (số nguyên liệu cất ở khu, kho `raw`) |
+| POST | `/warehouses` | body thêm `kind` (`finished` mặc định / `raw`) |
+| PUT | `/warehouses/:id` | `kind` chỉ đổi được khi kho chưa có vị trí |
+| POST | `/warehouses/:id/locations` | |
+| PUT | `/locations/:id` | |
+| DELETE | `/locations/:id` | Chặn khi còn tồn, hoặc khi khu đang là khu cất của nguyên liệu |

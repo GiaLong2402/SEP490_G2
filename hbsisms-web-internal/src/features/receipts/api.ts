@@ -15,6 +15,8 @@ export interface RawMaterialQuery extends Query {
   /** true = đang dùng, false = ngừng dùng, omit = tất cả */
   activeOnly?: boolean;
   lowStock?: boolean;
+  /** Lọc theo khu cất (Khu lạnh / Khu khô). */
+  storageLocationId?: number;
 }
 
 export const receiptsApi = {

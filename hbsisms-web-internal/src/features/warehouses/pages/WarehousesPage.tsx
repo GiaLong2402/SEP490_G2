@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, MapPin, Pencil, Plus, Trash2, Warehouse } from 'lucide-react';
+import { ChevronDown, MapPin, Pencil, Plus, Snowflake, Trash2, Warehouse } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAction } from '@/shared/api/useAction';
 import { num } from '@/shared/lib/format';
 import { Button, Chip, ConfirmDialog, DataTable, ErrorState, IconButton, Meter, PageHeader, PageLoading, type Column } from '@/shared/ui';
@@ -57,6 +58,52 @@ export default function WarehousesPage() {
     });
   };
 
+  const actionsCell = (warehouse: WarehouseDetail, l: WarehouseLocation) => (
+    <div className="flex justify-end">
+      <IconButton label={`Sửa ${l.code}`} onClick={() => setLocationForm({ warehouse, location: l })}>
+        <Pencil size={14} />
+      </IconButton>
+      <IconButton
+        label={
+          l.canDelete
+            ? `Xóa ${l.code}`
+            : warehouse.kind === 'raw'
+              ? `Không thể xóa ${l.code} vì đang là khu cất của nguyên liệu`
+              : `Không thể xóa ${l.code} vì đã có dữ liệu tồn kho`
+        }
+        disabled={!l.canDelete}
+        onClick={() => setDeleting(l)}
+      >
+        <Trash2 size={14} />
+      </IconButton>
+    </div>
+  );
+
+  /** Kho nguyên liệu: mỗi vị trí là một khu cất, gắn với nguyên liệu (không tính tồn theo khay). */
+  const rawColumnsFor = (warehouse: WarehouseDetail): Column<WarehouseLocation>[] => [
+    { key: 'code', header: 'Mã khu', cell: (l) => <span className="num font-medium">{l.code}</span> },
+    {
+      key: 'zone', header: 'Khu',
+      cell: (l) => (
+        <span className="inline-flex items-center gap-1.5 font-medium">
+          {l.code.toUpperCase() === 'LANH' && <Snowflake size={14} className="text-primary" aria-hidden />}
+          {l.zone ?? '—'}
+        </span>
+      ),
+    },
+    { key: 'materials', header: 'Nguyên liệu', align: 'right', cell: (l) => <span className="num">{num(l.materialCount ?? 0)}</span> },
+    { key: 'note', header: 'Ghi chú', hideOnMobile: true, cell: (l) => l.note ?? '—' },
+    {
+      key: 'link', header: '', align: 'right',
+      cell: (l) => (
+        <Link to={`/receipts?tab=raw&zone=${l.id}`} className="whitespace-nowrap text-small font-medium text-primary hover:underline">
+          Xem tồn nguyên liệu →
+        </Link>
+      ),
+    },
+    { key: 'actions', header: '', align: 'right', cell: (l) => actionsCell(warehouse, l) },
+  ];
+
   const columnsFor = (warehouse: WarehouseDetail): Column<WarehouseLocation>[] => [
     { key: 'code', header: 'Mã vị trí', cell: (l) => <span className="num font-medium">{l.code}</span> },
     { key: 'zone', header: 'Khu', cell: (l) => l.zone ?? '—' },
@@ -64,32 +111,14 @@ export default function WarehousesPage() {
     { key: 'capacity', header: 'Sức chứa', align: 'right', cell: (l) => <span className="num">{num(l.capacity)}</span> },
     { key: 'ratio', header: 'Lấp đầy', width: '160px', hideOnMobile: true, cell: (l) => <Meter value={l.usedQty} max={l.capacity} label={`Lấp đầy ${l.code}`} /> },
     { key: 'note', header: 'Ghi chú', hideOnMobile: true, cell: (l) => l.note ?? '—' },
-    {
-      key: 'actions',
-      header: '',
-      align: 'right',
-      cell: (l) => (
-        <div className="flex justify-end">
-          <IconButton label={`Sửa ${l.code}`} onClick={() => setLocationForm({ warehouse, location: l })}>
-            <Pencil size={14} />
-          </IconButton>
-          <IconButton
-            label={l.canDelete ? `Xóa ${l.code}` : `Không thể xóa ${l.code} vì đã có dữ liệu tồn kho`}
-            disabled={!l.canDelete}
-            onClick={() => setDeleting(l)}
-          >
-            <Trash2 size={14} />
-          </IconButton>
-        </div>
-      ),
-    },
+    { key: 'actions', header: '', align: 'right', cell: (l) => actionsCell(warehouse, l) },
   ];
 
   return (
     <>
       <PageHeader
         title="Kho và vị trí"
-        subtitle="Bấm vào kho để xem vị trí. Sức chứa kho giới hạn tổng chỗ các vị trí và lượng hàng nhập vào."
+        subtitle="Bấm vào kho để xem vị trí. Kho thành phẩm chứa hàng theo vị trí và sức chứa; kho nguyên liệu chia theo khu cất (Khu lạnh / Khu khô)."
         actions={
           <Button variant="primary" icon={<Plus size={15} />} onClick={() => setWarehouseForm({})}>
             Thêm kho
@@ -105,6 +134,8 @@ export default function WarehousesPage() {
         <div className="space-y-3">
           {data.map((warehouse) => {
             const open = expandedIds.has(warehouse.id);
+            const raw = warehouse.kind === 'raw';
+            const materialTotal = warehouse.locations.reduce((sum, l) => sum + (l.materialCount ?? 0), 0);
             const freeSlots = Math.max(0, warehouse.capacity - warehouse.allocatedCapacity);
             return (
               <section key={warehouse.id} className="overflow-hidden rounded-md border border-line bg-card shadow-card">
@@ -128,7 +159,9 @@ export default function WarehousesPage() {
                         <span className="text-h2 text-ink">{warehouse.name}</span>
                         <span className="num text-small text-ink-faint">{warehouse.code}</span>
                         {!warehouse.isActive && <Chip>Ngừng dùng</Chip>}
-                        <Chip tone="blue">{warehouse.locations.length} vị trí</Chip>
+                        <Chip>{raw ? 'Nguyên liệu' : 'Thành phẩm'}</Chip>
+                        <Chip tone="blue">{warehouse.locations.length} {raw ? 'khu' : 'vị trí'}</Chip>
+                        {raw && <Chip tone="green">{num(materialTotal)} nguyên liệu</Chip>}
                       </div>
                       {warehouse.address && (
                         <p className="mt-1 flex items-center gap-1 text-small text-ink-muted">
@@ -151,7 +184,21 @@ export default function WarehousesPage() {
                   </div>
                 </div>
 
-                {open && (
+                {open && raw && (
+                  <div className="border-t border-line bg-canvas/40">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2">
+                      <p className="text-small text-ink-muted">
+                        Mỗi nguyên liệu chọn một khu cất ở form nguyên liệu; mọi lô của nó nằm ở khu đó. Kho nguyên liệu không tính sức chứa theo khay.
+                      </p>
+                      <Button icon={<Plus size={14} />} onClick={() => setLocationForm({ warehouse })}>
+                        Thêm khu
+                      </Button>
+                    </div>
+                    <DataTable columns={rawColumnsFor(warehouse)} rows={warehouse.locations} rowKey={(l) => l.id} emptyText="Kho chưa có khu nào" />
+                  </div>
+                )}
+
+                {open && !raw && (
                   <div className="border-t border-line bg-canvas/40">
                     <div className="flex flex-col gap-2 border-b border-line px-4 py-3 sm:flex-row">
                       <CapacityStat
@@ -202,7 +249,7 @@ export default function WarehousesPage() {
       <ConfirmDialog
         open={!!deleting}
         danger
-        title={`Xóa vị trí ${deleting?.code ?? ''}?`}
+        title={`Xóa ${deleting?.code ?? ''}?`}
         message="Thao tác này không thể hoàn tác."
         confirmLabel="Xóa vị trí"
         loading={remove.isPending}

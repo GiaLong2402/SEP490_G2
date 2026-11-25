@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, Layers, PackageCheck, Pencil, Plus, Trash2, XCircle } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useVariantOptions } from '@/features/products';
-import { useWarehouses } from '@/features/warehouses';
+import { useFinishedWarehouses, useRawZones } from '@/features/warehouses';
 import { useAction } from '@/shared/api/useAction';
 import { receiptStatusMeta, receiptTypeLabels, type ReceiptType } from '@/shared/domain/enums';
 import { date, dateTimeFull, money, num, todayISO } from '@/shared/lib/format';
@@ -37,12 +37,16 @@ export default function ReceiptsPage() {
   const codeAsc = list.filters.sort === 'asc';
   const [rawQ, setRawQ] = useState('');
   const [rawStatus, setRawStatus] = useState('');
+  /** Lọc theo khu cất (Khu lạnh / Khu khô) — mở từ màn Kho và vị trí: /receipts?tab=raw&zone=<id>. */
+  const [rawZone, setRawZone] = useState('');
+  const rawZones = useRawZones().data ?? [];
   const { data, isLoading, error, refetch } = useReceipts({ q: list.q, page: list.page, receiptType: list.filters.receiptType, status: list.filters.status, sort: list.filters.sort });
   const raw = useRawMaterials(
     {
       q: rawQ,
       activeOnly: rawStatus === 'active' ? true : rawStatus === 'inactive' ? false : undefined,
       lowStock: rawStatus === 'low' ? true : undefined,
+      storageLocationId: rawZone ? Number(rawZone) : undefined,
     },
     tab === 'raw',
   );
@@ -50,7 +54,7 @@ export default function ReceiptsPage() {
   const rawCatalog = useRawMaterials({ activeOnly: true });
   const variants = useVariantOptions().data ?? [];
   const unitLabel = useUnitLabel();
-  const warehouses = useWarehouses().data ?? [];
+  const warehouses = useFinishedWarehouses().data ?? [];
   /** Số khay còn để được ở mỗi vị trí = min(chỗ trống của vị trí, chỗ trống của cả kho) — giống kiểm tra ở backend. */
   const roomOf = new Map<number, number>();
   for (const w of warehouses) {
@@ -83,6 +87,12 @@ export default function ReceiptsPage() {
     setOpen(true);
   };
   useEffect(() => {
+    if (params.get('tab') === 'raw' && !params.get('new')) {
+      setTab('raw');
+      setRawZone(params.get('zone') ?? '');
+      setParams({}, { replace: true });
+      return;
+    }
     if (params.get('new')) {
       openForm();
       // Điền sẵn từ lệnh sản xuất thiếu nguyên liệu: ?new=raw&lines=<rawMaterialId>:<qty>,...&source=...&returnTo=...
@@ -237,6 +247,7 @@ export default function ReceiptsPage() {
   const rawColumns: Column<RawMaterial>[] = [
     { key: 'code', header: 'Mã', cell: (m) => <span className="num">{m.code}</span> },
     { key: 'name', header: 'Nguyên liệu', cell: (m) => <span className="font-medium">{m.name}</span> },
+    { key: 'zone', header: 'Khu', cell: (m) => (m.storageLocationId ? <Chip tone={m.storageLocationCode === 'LANH' ? 'blue' : undefined}>{m.storageLocationName ?? m.storageLocationCode}</Chip> : <span className="text-ink-faint">Chưa gắn khu</span>) },
     { key: 'qty', header: 'Tồn', align: 'right', cell: (m) => <span className="num">{num(m.qtyOnHand)} {unitLabel(m.unit)}</span> },
     { key: 'reorder', header: 'Mức đặt lại', align: 'right', cell: (m) => <span className="num">{num(m.reorderLevel)} {unitLabel(m.unit)}</span> },
     { key: 'status', header: 'Tình trạng', cell: (m) => (!m.isActive ? <Chip>Ngừng dùng</Chip> : m.reorderLevel !== null && m.qtyOnHand < m.reorderLevel ? <Chip tone="red">Cần đặt thêm</Chip> : <Chip tone="green">Đủ dùng</Chip>) },
@@ -288,6 +299,9 @@ export default function ReceiptsPage() {
                 <option value="active">Đang dùng</option>
                 <option value="inactive">Ngừng dùng</option>
                 <option value="low">Cần đặt thêm</option>
+              </FilterSelect>
+              <FilterSelect label="Khu" value={rawZone} onChange={setRawZone}>
+                {rawZones.map((z) => <option key={z.id} value={z.id}>{z.zone ?? z.code}</option>)}
               </FilterSelect>
             </FilterBar>
             <DataTable columns={rawColumns} rows={raw.data} rowKey={(m) => m.id} loading={raw.isLoading} error={raw.error} onRetry={raw.refetch} emptyText="Chưa có nguyên liệu" />

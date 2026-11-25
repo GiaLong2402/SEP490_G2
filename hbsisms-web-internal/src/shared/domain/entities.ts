@@ -51,10 +51,16 @@ export interface CustomerPrice {
   approvedBy: ID | null; approvedAt: ISODateTime | null; updatedAt: ISODateTime;
 }
 
-export interface Warehouse { id: ID; code: string; name: string; address: string | null; capacity: number; isActive: boolean }
+/** Kho thành phẩm (vị trí chứa tồn theo lô) hoặc kho nguyên liệu (vị trí là khu cất: Khu lạnh / Khu khô). */
+export type WarehouseKind = 'finished' | 'raw';
+export interface Warehouse { id: ID; code: string; name: string; address: string | null; capacity: number; isActive: boolean; kind?: WarehouseKind }
 export interface Location { id: ID; warehouseId: ID; code: string; zone: string | null; capacity: number; note: string | null }
 export interface UnitOfMeasure { id: ID; code: string; name: string; isActive: boolean }
-export interface RawMaterial { id: ID; code: string; name: string; unit: string; unitId: ID | null; qtyOnHand: number; reorderLevel: number | null; isActive: boolean }
+export interface RawMaterial {
+  id: ID; code: string; name: string; unit: string; unitId: ID | null; qtyOnHand: number; reorderLevel: number | null; isActive: boolean;
+  /** Khu cất trong kho nguyên liệu (vị trí của kho loại "raw"). */
+  storageLocationId?: ID | null; storageLocationCode?: string | null; storageLocationName?: string | null;
+}
 /** Dòng BOM — qty cho 1 đơn vị thành phẩm. */
 export interface ProductBomLine {
   id: ID;

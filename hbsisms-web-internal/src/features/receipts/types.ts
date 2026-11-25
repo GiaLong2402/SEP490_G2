@@ -119,6 +119,8 @@ export interface RawMaterialInput {
   unitId: ID;
   reorderLevel: number | null;
   isActive: boolean;
+  /** Khu cất trong kho nguyên liệu — bắt buộc khi tạo mới. */
+  storageLocationId: ID | null;
 }
 
 export type { RawMaterial };

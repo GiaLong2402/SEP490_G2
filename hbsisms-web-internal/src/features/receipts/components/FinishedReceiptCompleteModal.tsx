@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useWarehouses } from '@/features/warehouses';
+import { useFinishedWarehouses } from '@/features/warehouses';
 import { useAction } from '@/shared/api/useAction';
 import { money, num, todayISO } from '@/shared/lib/format';
 import { Alert, Button, DateInput, Field, Input, Modal } from '@/shared/ui';
@@ -24,7 +24,7 @@ export interface FinishedReceiptContext {
  * giá vốn chia theo số này; nhập xong lệnh tự chuyển Hoàn thành. Dùng chung cho form trong trang lệnh và popup ở màn Nhập kho.
  */
 export function useFinishedReceiptForm(receipt: ReceiptListItem | null | undefined, context: FinishedReceiptContext | null, onDone?: () => void) {
-  const warehouses = useWarehouses().data ?? [];
+  const warehouses = useFinishedWarehouses().data ?? [];
   const [lotCode, setLotCode] = useState('');
   const [mfgDate, setMfgDate] = useState('');
   const [expDate, setExpDate] = useState('');
