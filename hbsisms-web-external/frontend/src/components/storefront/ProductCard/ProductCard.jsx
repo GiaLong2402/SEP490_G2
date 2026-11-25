@@ -57,8 +57,14 @@ export default function ProductCard({
         }
 
     addToCart({ product: cartProduct, variant: displayVariant, quantity: 1 })
-      .then(() => showToast('Sản phẩm đã được thêm vào giỏ hàng'))
-      .catch(() => {})
+      .then(({ alreadyInCart }) =>
+        showToast(
+          alreadyInCart
+            ? 'Đã cập nhật số lượng trong giỏ hàng'
+            : 'Sản phẩm đã được thêm vào giỏ hàng',
+        ),
+      )
+      .catch((err) => showToast(err?.message || 'Không thêm được vào giỏ hàng'))
   }
 
   const cartLabel = `Thêm ${name}${displayVariant ? ` ${displayVariant.label}` : ''} vào giỏ`

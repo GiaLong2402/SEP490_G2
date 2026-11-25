@@ -230,6 +230,26 @@ export const salesRequests = [
     expectedDate: dayIso(2),
     rejectReason: null,
     orderCode: null,
+    quote: {
+      id: 61,
+      code: 'BG-0006',
+      status: 'SENT',
+      subtotal: 2250000,
+      total: 2250000,
+      validUntil: dayIso(5),
+      lines: [
+        {
+          productName: 'Tôm sú',
+          packLabel: 'Khay 1kg',
+          sku: 'TOM-1KG',
+          qty: 15,
+          qtyKhay: 15,
+          unitPrice: 150000,
+          lineTotal: 2250000,
+          priceBasis: 'list',
+        },
+      ],
+    },
   },
   {
     id: 5,

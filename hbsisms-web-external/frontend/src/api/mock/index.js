@@ -134,6 +134,21 @@ function requestRoutes(method, parts, body) {
   }
   const r = salesRequests.find((x) => x.code === decodeURIComponent(parts[2])) || notFound('yêu cầu')
   if (parts.length === 3 && method === 'GET') return clone(r)
+  if (parts.length === 4 && parts[3] === 'accept' && method === 'POST') {
+    if (r.status !== 'QUOTING' && r.status !== 'quoting') throw new ApiError(409, 'Chỉ đồng ý được khi cửa hàng đang báo giá')
+    r.status = 'ORDERED'
+    r.orderCode = r.orderCode || `HB${String(900 + r.id).padStart(5, '0')}`
+    if (r.quote) r.quote.status = 'APPROVED'
+    return clone(r)
+  }
+  if (parts.length === 4 && parts[3] === 'reject' && method === 'POST') {
+    const reason = String(body?.rejectReason ?? '').trim()
+    if (!reason) throw new ApiError(400, 'Vui lòng nhập lý do từ chối')
+    r.status = 'REJECTED'
+    r.rejectReason = reason
+    if (r.quote) r.quote.status = 'REJECTED'
+    return clone(r)
+  }
   return NOT_MOCKED
 }
 

@@ -39,52 +39,62 @@ export function CartProvider({ children }) {
     refreshCart()
   }, [refreshCart])
 
-  async function addToCart({ product, variant, quantity = 1 }) {
-    const variantId = variant?.id
-    if (!variantId) throw new Error('Thiếu quy cách sản phẩm')
-    setError('')
-    try {
-      const cart = await cartApi.addItem(variantId, quantity)
-      applyCart(cart)
-      return cart
-    } catch (err) {
-      setError(err?.message || 'Không thêm được vào giỏ')
-      throw err
-    }
-  }
+  const addToCart = useCallback(
+    async ({ product, variant, quantity = 1 }) => {
+      const variantId = variant?.id
+      if (!variantId) throw new Error('Thiếu quy cách sản phẩm')
+      const alreadyInCart = items.some((row) => String(row.variant?.id) === String(variantId))
+      setError('')
+      try {
+        const cart = await cartApi.addItem(variantId, quantity)
+        applyCart(cart)
+        return { cart, alreadyInCart }
+      } catch (err) {
+        setError(err?.message || 'Không thêm được vào giỏ')
+        throw err
+      }
+    },
+    [applyCart, items],
+  )
 
-  async function updateQuantity(key, quantity) {
-    const item = items.find((row) => row.key === key)
-    if (!item) return
-    setError('')
-    try {
-      if (quantity < 1) {
+  const updateQuantity = useCallback(
+    async (key, quantity) => {
+      const item = items.find((row) => row.key === key)
+      if (!item) return
+      setError('')
+      try {
+        if (quantity < 1) {
+          const cart = await cartApi.removeItem(item.itemId)
+          applyCart(cart)
+          return
+        }
+        const cart = await cartApi.updateQty(item.itemId, quantity)
+        applyCart(cart)
+      } catch (err) {
+        setError(err?.message || 'Không cập nhật được số lượng')
+        throw err
+      }
+    },
+    [applyCart, items],
+  )
+
+  const removeItem = useCallback(
+    async (key) => {
+      const item = items.find((row) => row.key === key)
+      if (!item) return
+      setError('')
+      try {
         const cart = await cartApi.removeItem(item.itemId)
         applyCart(cart)
-        return
+      } catch (err) {
+        setError(err?.message || 'Không xóa được dòng giỏ')
+        throw err
       }
-      const cart = await cartApi.updateQty(item.itemId, quantity)
-      applyCart(cart)
-    } catch (err) {
-      setError(err?.message || 'Không cập nhật được số lượng')
-      throw err
-    }
-  }
+    },
+    [applyCart, items],
+  )
 
-  async function removeItem(key) {
-    const item = items.find((row) => row.key === key)
-    if (!item) return
-    setError('')
-    try {
-      const cart = await cartApi.removeItem(item.itemId)
-      applyCart(cart)
-    } catch (err) {
-      setError(err?.message || 'Không xóa được dòng giỏ')
-      throw err
-    }
-  }
-
-  async function clearCart() {
+  const clearCart = useCallback(async () => {
     setError('')
     try {
       const cart = await cartApi.clear()
@@ -93,7 +103,7 @@ export function CartProvider({ children }) {
       setError(err?.message || 'Không xóa được giỏ hàng')
       throw err
     }
-  }
+  }, [applyCart])
 
   const value = useMemo(
     () => ({
@@ -108,7 +118,18 @@ export function CartProvider({ children }) {
       removeItem,
       clearCart,
     }),
-    [items, totalItems, totalAmount, loading, error, refreshCart],
+    [
+      items,
+      totalItems,
+      totalAmount,
+      loading,
+      error,
+      refreshCart,
+      addToCart,
+      updateQuantity,
+      removeItem,
+      clearCart,
+    ],
   )
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>

@@ -1029,6 +1029,7 @@ public class SalesOrderService {
                 && linked.getStatus() != RequestStatus.REJECTED
                 && linked.getStatus() != RequestStatus.CLOSED) {
             linked.setStatus(RequestStatus.ORDERED);
+            linked.setOrderCode(order.getCode());
         }
 
         if (order.isOverLimit()) {
