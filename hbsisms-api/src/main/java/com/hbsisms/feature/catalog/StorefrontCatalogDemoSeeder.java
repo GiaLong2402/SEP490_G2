@@ -37,6 +37,7 @@ public class StorefrontCatalogDemoSeeder implements ApplicationRunner {
     static final String SKU_IN_STOCK = "TOM-SU-500";
     static final String SKU_OUT = "TOM-SU-1000";
     static final String LOT_CODE = "LOT-TOM-SU-01";
+    static final String FINISHED_WAREHOUSE_CODE = "KHO-TP";
 
     private final CategoryRepository categoryRepository;
     private final ProductRepository productRepository;
@@ -165,23 +166,25 @@ public class StorefrontCatalogDemoSeeder implements ApplicationRunner {
         if (lotRepository.findByLotCodeIgnoreCase(LOT_CODE).isPresent()) {
             return;
         }
-        Warehouse warehouse = warehouseRepository.findByCodeIgnoreCase("KHO-HP").orElseGet(() -> {
+        // Chỉ còn Kho thành phẩm (KHO-TP) + Kho nguyên liệu; hàng tôm nằm ở vị trí nhóm TOM.
+        Warehouse warehouse = warehouseRepository.findByCodeIgnoreCase(FINISHED_WAREHOUSE_CODE).orElseGet(() -> {
             Warehouse created = new Warehouse();
-            created.setCode("KHO-HP");
-            created.setName("Kho lạnh Hải Phòng (demo)");
+            created.setCode(FINISHED_WAREHOUSE_CODE);
+            created.setName("Kho thành phẩm");
             created.setAddress("Hải Phòng");
             created.setCapacity(500);
             created.setActive(true);
             return warehouseRepository.save(created);
         });
         Location location = locationRepository.findByWarehouse_IdOrderByCodeAsc(warehouse.getId()).stream()
+                .filter(l -> "TOM".equalsIgnoreCase(l.getCode()))
                 .findFirst()
                 .orElseGet(() -> {
                     Location created = new Location();
                     created.setWarehouse(warehouse);
-                    created.setCode("A-01");
-                    created.setZone("Lạnh 1");
-                    created.setCapacity(100);
+                    created.setCode("TOM");
+                    created.setZone("Tôm");
+                    created.setCapacity(70);
                     return locationRepository.save(created);
                 });
 
@@ -203,6 +206,6 @@ public class StorefrontCatalogDemoSeeder implements ApplicationRunner {
         stock.setQtyQuarantine(0);
         stock.setQtyExpired(0);
         stockRepository.save(stock);
-        log.info("Seeded stock qty=20 for SKU {} at KHO-HP/{}", SKU_IN_STOCK, location.getCode());
+        log.info("Seeded stock qty=20 for SKU {} at {}/{}", SKU_IN_STOCK, FINISHED_WAREHOUSE_CODE, location.getCode());
     }
 }

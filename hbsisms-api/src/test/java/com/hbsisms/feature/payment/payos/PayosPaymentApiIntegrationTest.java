@@ -750,9 +750,9 @@ class PayosPaymentApiIntegrationTest {
 
     private void ensureAvailableStock(ProductVariant v, int qty) {
         int n = SEQ.getAndIncrement();
-        Warehouse warehouse = warehouseRepository.findByCodeIgnoreCase("KHO-HP").orElseGet(() -> {
+        Warehouse warehouse = warehouseRepository.findByCodeIgnoreCase("KHO-TP").orElseGet(() -> {
             Warehouse created = new Warehouse();
-            created.setCode("KHO-HP-PIT-" + n);
+            created.setCode("KHO-TP-PIT-" + n);
             created.setName("Kho IT PayOS");
             created.setCapacity(500);
             created.setActive(true);
