@@ -11,9 +11,15 @@ public record LocationResponse(
         int capacity,
         String note,
         long usedQty,
-        boolean canDelete) {
+        boolean canDelete,
+        /** Kho nguyên liệu: số nguyên liệu cất ở khu này. Kho thành phẩm: 0. */
+        long materialCount) {
 
     public static LocationResponse from(Location location, long usedQty, boolean canDelete) {
+        return from(location, usedQty, canDelete, 0);
+    }
+
+    public static LocationResponse from(Location location, long usedQty, boolean canDelete, long materialCount) {
         return new LocationResponse(
                 location.getId(),
                 location.getWarehouse().getId(),
@@ -22,6 +28,7 @@ public record LocationResponse(
                 location.getCapacity(),
                 location.getNote(),
                 usedQty,
-                canDelete);
+                canDelete,
+                materialCount);
     }
 }

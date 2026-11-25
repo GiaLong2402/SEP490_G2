@@ -35,8 +35,9 @@ public class RawMaterialController {
     public List<RawMaterialResponse> list(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) Boolean activeOnly,
-            @RequestParam(required = false) Boolean lowStock) {
-        return rawMaterialService.list(q, activeOnly, lowStock);
+            @RequestParam(required = false) Boolean lowStock,
+            @RequestParam(required = false) Long storageLocationId) {
+        return rawMaterialService.list(q, activeOnly, lowStock, storageLocationId);
     }
 
     @GetMapping("/{id}")

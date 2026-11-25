@@ -30,12 +30,14 @@ class WarehouseServiceTest {
     private LocationRepository locationRepository;
     @Mock
     private StockRepository stockRepository;
+    @Mock
+    private RawMaterialRepository rawMaterialRepository;
 
     private WarehouseService warehouseService;
 
     @BeforeEach
     void setUp() {
-        warehouseService = new WarehouseService(warehouseRepository, locationRepository, stockRepository);
+        warehouseService = new WarehouseService(warehouseRepository, locationRepository, stockRepository, rawMaterialRepository);
     }
 
     @Test
@@ -130,6 +132,82 @@ class WarehouseServiceTest {
     }
 
     @Test
+    void create_rawKind_isStoredAndReturned() {
+        when(warehouseRepository.existsByCodeIgnoreCase("KHO-NL")).thenReturn(false);
+        when(warehouseRepository.save(any(Warehouse.class))).thenAnswer(inv -> withId(inv.getArgument(0), 11L));
+        when(locationRepository.findByWarehouse_IdOrderByCodeAsc(11L)).thenReturn(List.of());
+
+        WarehouseResponse response = warehouseService.create(
+                new WarehouseRequest("KHO-NL", "Kho nguyên liệu", null, 500, true, "raw"));
+
+        assertThat(response.kind()).isEqualTo(WarehouseKind.RAW);
+    }
+
+    @Test
+    void create_rejectsUnknownKind() {
+        when(warehouseRepository.existsByCodeIgnoreCase("KHO-X")).thenReturn(false);
+
+        assertThatThrownBy(() -> warehouseService.create(new WarehouseRequest("KHO-X", "Kho X", null, 100, true, "lanh")))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(warehouseRepository, never()).save(any());
+    }
+
+    @Test
+    void update_rejectsKindChangeWhenWarehouseHasLocations() {
+        Warehouse warehouse = withId(newWarehouse("KHO-TP", "Kho thành phẩm", 100, true), 1L);
+        when(warehouseRepository.findById(1L)).thenReturn(Optional.of(warehouse));
+        when(warehouseRepository.existsByCodeIgnoreCaseAndIdNot("KHO-TP", 1L)).thenReturn(false);
+        when(stockRepository.sumQtyByWarehouseId(1L)).thenReturn(0L);
+        when(locationRepository.findByWarehouse_IdOrderByCodeAsc(1L))
+                .thenReturn(List.of(newLocation(warehouse, "CHA", 50)));
+
+        assertThatThrownBy(() -> warehouseService.update(
+                        1L, new WarehouseRequest("KHO-TP", "Kho thành phẩm", null, 100, true, "raw")))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+        verify(warehouseRepository, never()).save(any());
+    }
+
+    @Test
+    void deleteLocation_blocksWhenRawMaterialsUseZone() {
+        Warehouse raw = withId(newWarehouse("KHO-NL", "Kho nguyên liệu", 500, true), 2L);
+        raw.setKind(WarehouseKind.RAW);
+        Location cold = withLocationId(newLocation(raw, "LANH", 1), 8L);
+        when(locationRepository.findById(8L)).thenReturn(Optional.of(cold));
+        when(stockRepository.existsByLocation_Id(8L)).thenReturn(false);
+        when(rawMaterialRepository.countByStorageLocation_Id(8L)).thenReturn(3L);
+
+        assertThatThrownBy(() -> warehouseService.deleteLocation(8L))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("3 nguyên liệu");
+        verify(locationRepository, never()).delete(any());
+    }
+
+    @Test
+    void list_rawWarehouse_countsMaterialsPerZoneAndComesLast() {
+        Warehouse raw = withId(newWarehouse("KHO-NL", "Kho nguyên liệu", 500, true), 2L);
+        raw.setKind(WarehouseKind.RAW);
+        Warehouse finished = withId(newWarehouse("KHO-TP", "Kho thành phẩm", 500, true), 1L);
+        Location cold = withLocationId(newLocation(raw, "LANH", 1), 8L);
+        when(warehouseRepository.findAll(any(Sort.class))).thenReturn(List.of(raw, finished));
+        when(locationRepository.findByWarehouse_IdOrderByCodeAsc(1L)).thenReturn(List.of());
+        when(locationRepository.findByWarehouse_IdOrderByCodeAsc(2L)).thenReturn(List.of(cold));
+        when(stockRepository.sumQtyByLocationId(8L)).thenReturn(0L);
+        when(stockRepository.existsByLocation_Id(8L)).thenReturn(false);
+        when(rawMaterialRepository.countByStorageLocation_Id(8L)).thenReturn(2L);
+
+        List<WarehouseResponse> list = warehouseService.list();
+
+        assertThat(list).extracting(WarehouseResponse::code).containsExactly("KHO-TP", "KHO-NL");
+        assertThat(list.get(1).kind()).isEqualTo(WarehouseKind.RAW);
+        assertThat(list.get(1).locations().get(0).materialCount()).isEqualTo(2L);
+        assertThat(list.get(1).locations().get(0).canDelete()).isFalse();
+    }
+
+    @Test
     void deleteLocation_blocksWhenStockExists() {
         Warehouse warehouse = withId(newWarehouse("KHO-1", "Kho 1", 100, true), 1L);
         Location location = withLocationId(newLocation(warehouse, "A-01", 20), 7L);
@@ -211,7 +289,7 @@ class WarehouseServiceTest {
     }
 
     private static WarehouseRequest warehouseRequest(String code, String name, Integer capacity, boolean active) {
-        return new WarehouseRequest(code, name, null, capacity, active);
+        return new WarehouseRequest(code, name, null, capacity, active, null);
     }
 
     private static Warehouse newWarehouse(String code, String name, int capacity, boolean active) {

@@ -18,14 +18,23 @@ public class RawMaterialService {
 
     private final RawMaterialRepository rawMaterialRepository;
     private final UnitOfMeasureRepository unitRepository;
+    private final LocationRepository locationRepository;
 
     public RawMaterialService(
-            RawMaterialRepository rawMaterialRepository, UnitOfMeasureRepository unitRepository) {
+            RawMaterialRepository rawMaterialRepository,
+            UnitOfMeasureRepository unitRepository,
+            LocationRepository locationRepository) {
         this.rawMaterialRepository = rawMaterialRepository;
         this.unitRepository = unitRepository;
+        this.locationRepository = locationRepository;
     }
 
     public List<RawMaterialResponse> list(String q, Boolean activeOnly, Boolean lowStock) {
+        return list(q, activeOnly, lowStock, null);
+    }
+
+    /** {@code storageLocationId} lọc theo khu cất (Khu lạnh / Khu khô) trong kho nguyên liệu. */
+    public List<RawMaterialResponse> list(String q, Boolean activeOnly, Boolean lowStock, Long storageLocationId) {
         String needle = Strings.trimToNull(q);
         String pattern = needle == null ? null : needle.toLowerCase(Locale.ROOT);
         return rawMaterialRepository.findAllByOrderByCodeAsc().stream()
@@ -34,6 +43,8 @@ public class RawMaterialService {
                         || m.getName().toLowerCase(Locale.ROOT).contains(pattern))
                 .filter(m -> activeOnly == null || m.isActive() == activeOnly)
                 .filter(m -> !Boolean.TRUE.equals(lowStock) || isLowStock(m))
+                .filter(m -> storageLocationId == null
+                        || (m.getStorageLocation() != null && storageLocationId.equals(m.getStorageLocation().getId())))
                 .map(RawMaterialResponse::from)
                 .toList();
     }
@@ -47,6 +58,9 @@ public class RawMaterialService {
         String code = normalizeCode(request.code());
         if (rawMaterialRepository.existsByCodeIgnoreCase(code)) {
             throw ApiException.conflict("Mã " + code + " đã tồn tại");
+        }
+        if (request.storageLocationId() == null) {
+            throw ApiException.badRequest("Vui lòng chọn khu cất trong kho nguyên liệu");
         }
         RawMaterial material = new RawMaterial();
         apply(material, request, code);
@@ -89,6 +103,20 @@ public class RawMaterialService {
         material.setName(name);
         material.setReorderLevel(request.reorderLevel());
         material.setActive(Boolean.TRUE.equals(request.isActive()));
+        if (request.storageLocationId() != null) {
+            material.setStorageLocation(requireRawStorage(request.storageLocationId()));
+        }
+    }
+
+    /** Khu cất phải là vị trí của kho nguyên liệu, không cất nguyên liệu vào vị trí kho thành phẩm. */
+    private Location requireRawStorage(Long locationId) {
+        Location location = locationRepository
+                .findById(locationId)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy khu cất"));
+        if (location.getWarehouse() == null || !location.getWarehouse().isRaw()) {
+            throw ApiException.badRequest("Khu cất phải thuộc kho nguyên liệu");
+        }
+        return location;
     }
 
     /** Prefers {@code unitId}; falls back to legacy free-text {@code unit} (linked to master by code when found). */

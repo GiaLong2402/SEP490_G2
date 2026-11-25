@@ -21,5 +21,8 @@ public record WarehouseRequest(
         Integer capacity,
 
         @NotNull(message = "Trạng thái là bắt buộc")
-        Boolean isActive) {
+        Boolean isActive,
+
+        /** "finished" (mặc định) hoặc "raw". Chỉ đổi được khi kho chưa có vị trí. */
+        String kind) {
 }

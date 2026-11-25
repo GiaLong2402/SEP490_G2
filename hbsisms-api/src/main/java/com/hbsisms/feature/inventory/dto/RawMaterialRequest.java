@@ -19,5 +19,7 @@ public record RawMaterialRequest(
         /** Legacy free-text unit; used only when {@code unitId} is absent. */
         @Size(max = 20, message = "Đơn vị tối đa 20 ký tự") String unit,
         @DecimalMin(value = "0", message = "Mức đặt lại không được âm") BigDecimal reorderLevel,
-        @NotNull(message = "Trạng thái là bắt buộc") Boolean isActive) {
+        @NotNull(message = "Trạng thái là bắt buộc") Boolean isActive,
+        /** Khu cất trong kho nguyên liệu; bắt buộc khi tạo mới, để trống khi sửa = giữ khu cũ. */
+        Long storageLocationId) {
 }

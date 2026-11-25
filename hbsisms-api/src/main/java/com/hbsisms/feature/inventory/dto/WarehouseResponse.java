@@ -1,6 +1,7 @@
 package com.hbsisms.feature.inventory.dto;
 
 import com.hbsisms.feature.inventory.Warehouse;
+import com.hbsisms.feature.inventory.WarehouseKind;
 import java.util.List;
 
 /** Matches FE {@code WarehouseDetail}. */
@@ -13,7 +14,8 @@ public record WarehouseResponse(
         boolean isActive,
         List<LocationResponse> locations,
         long totalQty,
-        long allocatedCapacity) {
+        long allocatedCapacity,
+        WarehouseKind kind) {
 
     public static WarehouseResponse from(Warehouse warehouse, List<LocationResponse> locations) {
         long totalQty = locations.stream().mapToLong(LocationResponse::usedQty).sum();
@@ -27,6 +29,7 @@ public record WarehouseResponse(
                 warehouse.isActive(),
                 locations,
                 totalQty,
-                allocatedCapacity);
+                allocatedCapacity,
+                warehouse.getKind());
     }
 }
