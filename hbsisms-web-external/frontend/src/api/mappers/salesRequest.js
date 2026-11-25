@@ -9,6 +9,26 @@ const REQUIRED = ['id', 'code', 'summary', 'status', 'receivedAt']
  */
 export function fromSalesRequestDto(dto) {
   checkDto(dto, REQUIRED, 'SalesRequestResponse', '3. Yêu cầu')
+  const quote = dto.quote
+    ? {
+        id: dto.quote.id,
+        code: dto.quote.code || '',
+        status: dto.quote.status == null ? null : String(dto.quote.status).toUpperCase(),
+        subtotal: dto.quote.subtotal ?? null,
+        total: dto.quote.total ?? null,
+        validUntil: dto.quote.validUntil || null,
+        lines: (dto.quote.lines || []).map((l) => ({
+          productName: l.productName || '',
+          packLabel: l.packLabel || '',
+          sku: l.sku || '',
+          qty: l.qty ?? 0,
+          qtyKhay: l.qtyKhay ?? 0,
+          unitPrice: l.unitPrice ?? null,
+          lineTotal: l.lineTotal ?? null,
+          priceBasis: l.priceBasis || null,
+        })),
+      }
+    : null
   return {
     id: dto.id,
     code: dto.code,
@@ -25,5 +45,6 @@ export function fromSalesRequestDto(dto) {
     rejectReason: dto.rejectReason || '',
     note: dto.note || '',
     orderCode: dto.orderCode || null,
+    quote,
   }
 }

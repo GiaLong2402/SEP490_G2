@@ -36,4 +36,6 @@ public interface QuoteRepository extends JpaRepository<Quote, Long>, JpaSpecific
 
     @Query("select q.code from Quote q where q.code like concat(:prefix, '%')")
     List<String> findCodesByPrefix(@Param("prefix") String prefix);
+
+    Optional<Quote> findFirstByRequest_IdOrderByIdDesc(Long requestId);
 }

@@ -21,4 +21,16 @@ export const salesRequestsApi = {
   async create(input) {
     return fromSalesRequestDto(await api.post('/me/sales-requests', { channel: 'WEB', ...input }))
   },
+
+  /** Khách đồng ý báo giá → tạo đơn. */
+  async accept(code) {
+    return fromSalesRequestDto(await api.post(`/me/sales-requests/${encodeURIComponent(code)}/accept`))
+  },
+
+  /** Khách từ chối báo giá — bắt buộc lý do. */
+  async reject(code, rejectReason) {
+    return fromSalesRequestDto(
+      await api.post(`/me/sales-requests/${encodeURIComponent(code)}/reject`, { rejectReason }),
+    )
+  },
 }

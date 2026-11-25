@@ -1,5 +1,6 @@
 package com.hbsisms.feature.storefront.dto;
 
+import com.hbsisms.feature.sales.Quote;
 import com.hbsisms.feature.sales.SalesRequest;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -23,9 +24,14 @@ public record MeSalesRequestResponse(
         LocalDate expectedDate,
         String rejectReason,
         String note,
-        String orderCode) {
+        String orderCode,
+        MeQuoteSummaryResponse quote) {
 
     public static MeSalesRequestResponse from(SalesRequest request) {
+        return from(request, null);
+    }
+
+    public static MeSalesRequestResponse from(SalesRequest request, Quote quote) {
         return new MeSalesRequestResponse(
                 request.getId(),
                 request.getCode(),
@@ -41,6 +47,7 @@ public record MeSalesRequestResponse(
                 request.getExpectedDate(),
                 request.getRejectReason() == null ? "" : request.getRejectReason(),
                 request.getNote() == null ? "" : request.getNote(),
-                request.getOrderCode());
+                request.getOrderCode(),
+                quote == null ? null : MeQuoteSummaryResponse.from(quote));
     }
 }

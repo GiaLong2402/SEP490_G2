@@ -102,10 +102,14 @@ function ProductDetailContent({ product, related }) {
 
   async function handleAddToCart(quantity) {
     try {
-      await addToCart({ product, variant, quantity })
-      showToast('Sản phẩm đã được thêm vào giỏ hàng')
-    } catch {
-      // lỗi hiện qua CartContext
+      const { alreadyInCart } = await addToCart({ product, variant, quantity })
+      showToast(
+        alreadyInCart
+          ? 'Đã cập nhật số lượng trong giỏ hàng'
+          : 'Sản phẩm đã được thêm vào giỏ hàng',
+      )
+    } catch (err) {
+      showToast(err?.message || 'Không thêm được vào giỏ hàng')
     }
   }
 
@@ -113,8 +117,8 @@ function ProductDetailContent({ product, related }) {
     try {
       await addToCart({ product, variant, quantity })
       navigate(ROUTES.CART)
-    } catch {
-      // giữ lại trang detail nếu add thất bại
+    } catch (err) {
+      showToast(err?.message || 'Không thêm được vào giỏ hàng')
     }
   }
 
