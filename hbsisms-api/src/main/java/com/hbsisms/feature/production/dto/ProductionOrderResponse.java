@@ -1,6 +1,7 @@
 package com.hbsisms.feature.production.dto;
 
 import com.hbsisms.feature.inventory.GoodsReceipt;
+import com.hbsisms.feature.inventory.dto.FinishedPutAwayResponse;
 import com.hbsisms.feature.production.MaterialIssue;
 import com.hbsisms.feature.production.ProductionOrder;
 import com.hbsisms.feature.production.ProductionOrderStatus;
@@ -48,6 +49,8 @@ public record ProductionOrderResponse(
         BigDecimal suggestedSellPrice,
         /** Giá niêm yết quy cách thành phẩm (sau nhập TP = suggestedSellPrice). */
         BigDecimal currentListPrice,
+        /** Lô / HSD / vị trí thành phẩm đã nhập kho (null nếu chưa nhập). */
+        FinishedPutAwayResponse finishedPutAway,
         List<ProductionOrderMaterialLineResponse> materials,
         List<ProductionLeftoverResponse> leftovers) {
 
@@ -55,7 +58,7 @@ public record ProductionOrderResponse(
             ProductionOrder order,
             List<ProductionOrderMaterialLineResponse> materials,
             List<ProductionLeftoverResponse> leftovers) {
-        return from(order, materials, leftovers, null, null, null, null);
+        return from(order, materials, leftovers, null, null, null, null, null);
     }
 
     public static ProductionOrderResponse from(
@@ -65,7 +68,8 @@ public record ProductionOrderResponse(
             BigDecimal unitCost,
             Integer markupPercent,
             BigDecimal suggestedSellPrice,
-            BigDecimal currentListPrice) {
+            BigDecimal currentListPrice,
+            FinishedPutAwayResponse finishedPutAway) {
         MaterialIssue issue = order.getMaterialIssue();
         GoodsReceipt finished = order.getFinishedReceipt();
         var variant = order.getFinishedVariant();
@@ -109,6 +113,7 @@ public record ProductionOrderResponse(
                 currentListPrice != null
                         ? currentListPrice
                         : (variant == null ? null : variant.getListPrice()),
+                finishedPutAway,
                 materials,
                 leftovers == null ? List.of() : leftovers);
     }

@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -283,6 +284,28 @@ public class RawMaterialStockService {
             created++;
         }
         return created;
+    }
+
+    /** Đuôi lô trả lại ở cuối mã: -TL, -TL2, -TL3… (có thể lặp nếu dữ liệu cũ là -TL-TL). */
+    private static final Pattern LEFTOVER_SUFFIX = Pattern.compile("(?i)(-TL\\d*)+$");
+
+    /**
+     * Mã lô cho nguyên liệu dư trả lại kho: lấy mã lô gốc (bỏ đuôi -TL… nếu lô xuất ra vốn là lô trả lại),
+     * rồi chọn mã đầu tiên còn trống của nguyên liệu đó: {@code gốc-TL}, {@code gốc-TL2}, {@code gốc-TL3}…
+     */
+    public String nextLeftoverLotCode(RawMaterial material, String sourceLotCode) {
+        String source = Strings.trimToNull(sourceLotCode);
+        String base = source == null ? "" : LEFTOVER_SUFFIX.matcher(source).replaceFirst("");
+        if (base.isEmpty()) {
+            return autoLotCode(material) + "-TL";
+        }
+        for (int i = 1; i <= 999; i++) {
+            String candidate = base + (i == 1 ? "-TL" : "-TL" + i);
+            if (!rawMaterialLotRepository.existsByRawMaterial_IdAndLotCodeIgnoreCase(material.getId(), candidate)) {
+                return candidate;
+            }
+        }
+        throw ApiException.conflict("Không sinh được mã lô trả lại cho " + material.getName());
     }
 
     private String autoLotCode(RawMaterial material) {

@@ -3,7 +3,7 @@ import { CheckCircle2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { receiptsApi } from '@/features/receipts';
-import { money, num } from '@/shared/lib/format';
+import { date, money, num } from '@/shared/lib/format';
 import { InfoTip, LinkButton } from '@/shared/ui';
 import { useMaterialIssue } from '../hooks';
 import type { ProductionOrder } from '../types';
@@ -54,8 +54,12 @@ export function SummaryPanel({ order }: { order: ProductionOrder }) {
   const leftover = leftoverTotal(order);
   const pct = order.plannedQty > 0 ? Math.round((received / order.plannedQty) * 100) : 0;
   const tone = (v: number, upIsBad = true) => (v === 0 ? 'text-ink-muted' : (v > 0) === upIsBad ? 'text-amber-fg' : 'text-green-fg');
-  /** Dòng hàng của phiếu thành phẩm có dạng "SKU · mã lô". */
-  const lotCode = receipt.data?.items[0]?.name.split(' · ').slice(1).join(' · ') || null;
+  const putAway = order.finishedPutAway ?? null;
+  /** Ưu tiên API; dự phòng: dòng hàng của phiếu thành phẩm có dạng "SKU · mã lô". */
+  const lotCode = putAway?.lotCode ?? (receipt.data?.items[0]?.name.split(' · ').slice(1).join(' · ') || null);
+  const locationText = putAway?.locationCode
+    ? [putAway.locationCode, putAway.locationZone, putAway.warehouseName].filter(Boolean).join(' · ')
+    : '—';
   const leftoverNames = (order.leftovers ?? []).map((l) => l.rawMaterialName.toLowerCase()).join(', ');
 
   const rows = [
@@ -122,8 +126,8 @@ export function SummaryPanel({ order }: { order: ProductionOrder }) {
             <Row k="Mã lô" v={<span className="font-mono">{lotCode ?? '—'}</span>} />
             <Row k="Số khay" v={`Báo ${num(order.actualQty)} · Nhập kho ${num(received)}`} />
             <Row k="Nguyên liệu trả lại" v={order.leftovers?.length ? <span className="font-mono">{order.leftovers.map((l) => `${l.lotCode} · ${num(l.qty)} ${l.unit}`).join(', ')}</span> : 'Không'} />
-            <Row k="Vị trí" v="—" />
-            <Row k="Hạn sử dụng" v="—" />
+            <Row k="Vị trí" v={locationText} />
+            <Row k="Hạn sử dụng" v={putAway?.expDate ? date(putAway.expDate) : '—'} />
             <Row k="Phiếu nhập" v={order.finishedReceiptCode ? <Link to="/receipts" className="font-mono font-normal text-primary hover:underline">{order.finishedReceiptCode}</Link> : '—'} />
           </dl>
         </section>

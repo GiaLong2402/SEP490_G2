@@ -153,6 +153,7 @@ class ProductionOrderCompleteServiceTest {
         when(materialIssueLineRepository.findByMaterialIssue_IdOrderBySortOrderAscIdAsc(5L))
                 .thenReturn(List.of(issued));
         RawMaterialLot returned = lot(raw, 99L, "L-A-TL", new BigDecimal("2000"), TODAY.plusDays(1));
+        when(rawMaterialStockService.nextLeftoverLotCode(raw, "L-A")).thenReturn("L-A-TL");
         when(rawMaterialStockService.receive(
                         eq(raw),
                         eq("L-A-TL"),

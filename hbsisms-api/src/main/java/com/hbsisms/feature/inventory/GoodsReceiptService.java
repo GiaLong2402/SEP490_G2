@@ -7,6 +7,7 @@ import com.hbsisms.common.web.PageResponse;
 import com.hbsisms.feature.catalog.PackSizes;
 import com.hbsisms.feature.catalog.ProductVariant;
 import com.hbsisms.feature.catalog.ProductVariantRepository;
+import com.hbsisms.feature.inventory.dto.FinishedPutAwayResponse;
 import com.hbsisms.feature.inventory.dto.FinishedReceiptCompleteRequest;
 import com.hbsisms.feature.inventory.dto.FinishedReceiptLineRequest;
 import com.hbsisms.feature.inventory.dto.GoodsReceiptRequest;
@@ -395,6 +396,36 @@ public class GoodsReceiptService {
         detail.put("qtyReceived", totalReceived);
         auditLogService.record(actorId, "complete", REF_TYPE, receipt.getId(), detail);
         return toResponse(receipt, lines);
+    }
+
+    /**
+     * Lô / HSD / vị trí của phiếu thành phẩm đã nhập kho (màn Hoàn thành của lệnh SX).
+     * {@code null} khi phiếu chưa nhập. Vị trí đọc từ dòng sổ kho IN của phiếu.
+     */
+    public FinishedPutAwayResponse finishedPutAway(Long receiptId) {
+        if (receiptId == null) {
+            return null;
+        }
+        GoodsReceiptLine line = goodsReceiptLineRepository.findByReceipt_IdOrderByLineNoAsc(receiptId).stream()
+                .filter(l -> l.getProductVariant() != null
+                        && l.getQtyReceived() != null
+                        && l.getQtyReceived().signum() > 0)
+                .findFirst()
+                .orElse(null);
+        if (line == null) {
+            return null;
+        }
+        Location location = stockLedgerRepository.findByRefTypeAndRefIdForAllocation(REF_TYPE, receiptId).stream()
+                .filter(e -> e.getEntryType() == LedgerEntryType.IN && e.getLocation() != null)
+                .map(StockLedger::getLocation)
+                .findFirst()
+                .orElse(null);
+        return new FinishedPutAwayResponse(
+                line.getLotCode(),
+                line.getExpDate(),
+                location == null ? null : location.getCode(),
+                location == null ? null : location.getZone(),
+                location == null || location.getWarehouse() == null ? null : location.getWarehouse().getName());
     }
 
     /**
