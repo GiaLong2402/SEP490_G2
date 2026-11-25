@@ -203,9 +203,14 @@ export const stocktakeStatusMeta: Meta<StocktakeStatus> = {
 export type ReviewStatus = 'approved' | 'pending' | 'rejected';
 export const reviewStatusMeta: Meta<ReviewStatus> = { approved: { label: 'Đã duyệt', tone: 'green' }, pending: { label: 'Chờ duyệt', tone: 'amber' }, rejected: { label: 'Đã ẩn', tone: 'neutral' } };
 
-export type ApprovalType = 'over_limit_order' | 'damage_report' | 'price_list' | 'stocktake' | 'other';
+export type ApprovalType = 'over_limit_order' | 'order_price_override' | 'damage_report' | 'price_list' | 'stocktake' | 'other';
 export const approvalTypeLabels: Record<ApprovalType, string> = {
-  over_limit_order: 'Đơn vượt hạn mức', damage_report: 'Báo hỏng', price_list: 'Giá riêng', stocktake: 'Kiểm kê', other: 'Khác',
+  over_limit_order: 'Đơn vượt hạn mức',
+  order_price_override: 'Giảm giá / giá tay',
+  damage_report: 'Báo hỏng',
+  price_list: 'Giá riêng',
+  stocktake: 'Kiểm kê',
+  other: 'Khác',
 };
 
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';

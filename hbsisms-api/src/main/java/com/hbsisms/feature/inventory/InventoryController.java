@@ -3,6 +3,7 @@ package com.hbsisms.feature.inventory;
 import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
 import com.hbsisms.feature.inventory.dto.AdjustStockRequest;
+import com.hbsisms.feature.inventory.dto.ExpiryWarningsResponse;
 import com.hbsisms.feature.inventory.dto.InventoryAlertsResponse;
 import com.hbsisms.feature.inventory.dto.InventorySummaryResponse;
 import com.hbsisms.feature.inventory.dto.LedgerRowResponse;
@@ -84,6 +85,21 @@ public class InventoryController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "" + PageRequests.DEFAULT_PAGE_SIZE) int pageSize) {
         return inventoryQueryService.nearExpiry(q, page, pageSize);
+    }
+
+    /** Task 9 — lô đã hết hạn còn qtyExpired (chưa tiêu hủy), kèm vị trí. */
+    @GetMapping("/inventory/expired")
+    public PageResponse<LotStockRowResponse> expired(
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "" + PageRequests.DEFAULT_PAGE_SIZE) int pageSize) {
+        return inventoryQueryService.expired(q, page, pageSize);
+    }
+
+    /** Task 9 — gộp sắp hết hạn + đã hết hạn (FEFO / báo hỏng). */
+    @GetMapping("/inventory/expiry-warnings")
+    public ExpiryWarningsResponse expiryWarnings() {
+        return inventoryQueryService.expiryWarnings();
     }
 
     @GetMapping("/inventory/ledger")

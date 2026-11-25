@@ -3,6 +3,7 @@ package com.hbsisms.feature.inventory;
 import com.hbsisms.common.text.Strings;
 import com.hbsisms.common.web.PageResponse;
 import com.hbsisms.feature.catalog.ProductVariant;
+import com.hbsisms.feature.inventory.dto.ExpiryWarningsResponse;
 import com.hbsisms.feature.inventory.dto.InventoryAlertsResponse;
 import com.hbsisms.feature.inventory.dto.InventorySummaryResponse;
 import com.hbsisms.feature.inventory.dto.LedgerRowResponse;
@@ -54,11 +55,13 @@ public class InventoryQueryService {
         int expiryWarningDays = appConfigService.expiryWarningDays();
         List<VariantStockRowResponse> variants = variantRows(null, null, false, lowStockThreshold);
         List<LotStockRowResponse> nearExpiry = nearExpiryRows(expiryWarningDays);
+        List<LotStockRowResponse> expired = expiredRows();
         return new InventorySummaryResponse(
                 variants.stream().mapToInt(VariantStockRowResponse::available).sum(),
                 variants.stream().mapToInt(VariantStockRowResponse::held).sum(),
                 variants.stream().mapToInt(VariantStockRowResponse::quarantine).sum(),
                 nearExpiry.size(),
+                expired.size(),
                 (int) variants.stream().filter(VariantStockRowResponse::isLow).count(),
                 lowStockThreshold,
                 expiryWarningDays);
@@ -82,8 +85,14 @@ public class InventoryQueryService {
                                 l.lotCode(),
                                 l.productName(),
                                 l.daysLeft() == null ? 0 : l.daysLeft(),
-                                l.available() + l.held() + l.quarantine() + l.expired()))
+                                l.available()))
                         .toList());
+    }
+
+    /** Task 9 — list sắp hết hạn + đã hết hạn (kèm vị trí). */
+    public ExpiryWarningsResponse expiryWarnings() {
+        int expiryWarningDays = appConfigService.expiryWarningDays();
+        return new ExpiryWarningsResponse(expiryWarningDays, nearExpiryRows(expiryWarningDays), expiredRows());
     }
 
     public PageResponse<VariantStockRowResponse> variants(
@@ -103,6 +112,13 @@ public class InventoryQueryService {
 
     public PageResponse<LotStockRowResponse> nearExpiry(String q, int page, int pageSize) {
         List<LotStockRowResponse> rows = nearExpiryRows(appConfigService.expiryWarningDays()).stream()
+                .filter(r -> matches(q, r.lotCode(), r.sku(), r.productName()))
+                .toList();
+        return paginate(rows, page, pageSize);
+    }
+
+    public PageResponse<LotStockRowResponse> expired(String q, int page, int pageSize) {
+        List<LotStockRowResponse> rows = expiredRows().stream()
                 .filter(r -> matches(q, r.lotCode(), r.sku(), r.productName()))
                 .toList();
         return paginate(rows, page, pageSize);
@@ -162,11 +178,23 @@ public class InventoryQueryService {
                 .toList();
     }
 
+    /**
+     * Task 9: còn khả dụng và sắp/đã chạm HSD theo {@code expiry_warning_days}.
+     * Sắp xếp FEFO (HSD sớm trước) để thủ kho ưu tiên xuất.
+     */
     private List<LotStockRowResponse> nearExpiryRows(int expiryWarningDays) {
         return lotRows().stream()
-                .filter(r -> r.daysLeft() != null
-                        && r.daysLeft() <= expiryWarningDays
-                        && r.available() + r.held() + r.quarantine() + r.expired() > 0)
+                .filter(r -> r.available() > 0
+                        && r.daysLeft() != null
+                        && r.daysLeft() <= expiryWarningDays)
+                .sorted(byFefo())
+                .toList();
+    }
+
+    /** Task 9: còn qtyExpired &gt; 0 — chưa tiêu hủy / báo hỏng. */
+    private List<LotStockRowResponse> expiredRows() {
+        return lotRows().stream()
+                .filter(r -> r.expired() > 0)
                 .sorted(byFefo())
                 .toList();
     }

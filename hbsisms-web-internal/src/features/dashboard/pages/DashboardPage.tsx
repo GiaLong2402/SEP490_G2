@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, ClipboardCheck, Clock, HandCoins, PackageMinus, Truck } from 'lucide-react';
+import { ChevronRight, ClipboardCheck, Clock, HandCoins, PackageMinus, ShoppingCart, Truck } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '@/features/auth';
+import { isOwnerOrAdmin, useAuth } from '@/features/auth';
 import { deliveryStateMeta, orderStateMeta } from '@/shared/domain/enums';
 import { money, moneyShort, num } from '@/shared/lib/format';
 import { BarChart, Card, Chip, ErrorState, PageHeader, PageLoading, StatCard, StatusChip } from '@/shared/ui';
@@ -32,54 +32,95 @@ function greeting() {
   return 'Chào buổi tối';
 }
 
+/** Tên gọi thân mật: tên người Việt = từ cuối; tránh cắt nhầm chức danh / role. */
+function greetName(fullName: string | undefined, username: string | undefined, roleName: string | undefined) {
+  const name = fullName?.trim();
+  if (!name || /nhân viên|quản trị|chủ cửa|khách hàng/i.test(name) || (roleName && name === roleName)) {
+    return username?.trim() || roleName || 'bạn';
+  }
+  const parts = name.split(/\s+/).filter(Boolean);
+  return parts[parts.length - 1] ?? name;
+}
+
+/** % so với hôm qua — ẩn khi base quá nhỏ (tránh +44900%). */
+function revenueChangePct(today: number, yesterday: number): number | null {
+  if (yesterday < 10_000) return null;
+  return Math.round(((today - yesterday) / yesterday) * 100);
+}
+
 export default function DashboardPage() {
   const { user } = useAuth();
+  const elevated = isOwnerOrAdmin(user?.roleCode);
   const { data, isLoading, error, refetch } = useQuery({ queryKey: ['dashboard'], queryFn: dashboardApi.summary, refetchInterval: 60_000 });
   if (isLoading) return <PageLoading />;
   if (error || !data) return <ErrorState error={error} onRetry={refetch} />;
   const { sales, debt, approvals, inventory, deliveries } = data;
-  const change = sales && sales.revenueYesterday > 0 ? Math.round(((sales.revenueToday - sales.revenueYesterday) / sales.revenueYesterday) * 100) : null;
+  const change = sales ? revenueChangePct(sales.revenueToday, sales.revenueYesterday) : null;
+  const showRevenue = elevated && !!sales;
 
   const stats: ReactNode[] = [];
+  if (showRevenue) {
+    stats.push(
+      <StatCard
+        key="revenue"
+        label="Doanh thu hôm nay"
+        value={moneyShort(sales.revenueToday)}
+        hint={change === null ? (sales.revenueYesterday > 0 ? 'So với hôm qua (mốc nhỏ)' : 'Hôm qua chưa có doanh thu') : `${change >= 0 ? '+' : ''}${change}% so với hôm qua`}
+      />,
+    );
+  }
   if (sales) {
-    stats.push(<StatCard key="revenue" label="Doanh thu hôm nay" value={moneyShort(sales.revenueToday)} hint={change === null ? 'Hôm qua chưa có doanh thu' : `${change >= 0 ? '+' : ''}${change}% so với hôm qua`} />);
-    stats.push(<StatCard key="orders" label="Đơn cần xử lý" value={num(sales.ordersToProcess)} hint="Chờ xác nhận đến chờ giao" />);
+    stats.push(<StatCard key="orders" label="Đơn cần xử lý" value={num(sales.ordersToProcess)} hint="Chờ xác nhận đến chờ giao" tone={sales.ordersToProcess ? 'warning' : undefined} />);
   }
   if (debt) stats.push(<StatCard key="debt" label="Công nợ quá hạn" value={moneyShort(debt.overdue)} hint={`Tổng nợ ${moneyShort(debt.total)}`} tone={debt.overdue > 0 ? 'danger' : undefined} />);
   if (approvals) stats.push(<StatCard key="approvals" label="Việc chờ duyệt" value={num(approvals.pending)} tone={approvals.pending > 0 ? 'warning' : undefined} />);
   if (inventory) {
     stats.push(<StatCard key="stock" label="Khả dụng (khay)" value={num(inventory.available)} />);
+    if (elevated && inventory.inventoryValue != null) {
+      stats.push(<StatCard key="value" label="Giá trị tồn" value={moneyShort(inventory.inventoryValue)} hint="SL khả dụng × giá vốn lô" />);
+    }
     stats.push(<StatCard key="low" label="Quy cách tồn thấp" value={num(inventory.lowStock.length)} tone={inventory.lowStock.length ? 'danger' : undefined} />);
-    stats.push(<StatCard key="expiry" label="Lô sắp hết hạn" value={num(inventory.nearExpiry.length)} tone={inventory.nearExpiry.length ? 'warning' : undefined} />);
+    stats.push(<StatCard key="expiry" label="Lô sắp hết hạn" value={num(inventory.nearExpiryLots ?? inventory.nearExpiry.length)} tone={(inventory.nearExpiryLots ?? inventory.nearExpiry.length) ? 'warning' : undefined} />);
+    stats.push(<StatCard key="expired" label="Lô hết hạn (chưa hủy)" value={num(inventory.expiredLots ?? 0)} tone={(inventory.expiredLots ?? 0) > 0 ? 'danger' : undefined} />);
   }
   if (deliveries) stats.push(<StatCard key="deliveries" label="Đợt giao hôm nay" value={num(deliveries.today)} />);
 
-  const hasAttention = !!(approvals?.items.length || inventory?.nearExpiry.length || inventory?.lowStock.length || debt?.overdueCustomers.length || deliveries?.items.length);
+  const hasAttention = !!(
+    (sales && sales.ordersToProcess > 0) ||
+    approvals?.items.length ||
+    inventory?.nearExpiry.length ||
+    inventory?.lowStock.length ||
+    debt?.overdueCustomers.length ||
+    deliveries?.items.length
+  );
 
   return (
     <>
-      <PageHeader title={`${greeting()}, ${user?.fullName.split(' ').slice(-1)[0]}`} subtitle="Những việc cần chú ý hôm nay" />
+      <PageHeader
+        title={`${greeting()}, ${greetName(user?.fullName, user?.username, user?.roleName)}`}
+        subtitle="Những việc cần chú ý hôm nay"
+      />
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">{stats.slice(0, 8)}</div>
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0 space-y-4">
+          {showRevenue && sales.daily.length > 0 && (
+            <Card title="Doanh thu 14 ngày qua">
+              <BarChart title="Doanh thu 14 ngày qua" data={sales.daily.map((d) => ({ label: `${d.date.slice(8, 10)}/${d.date.slice(5, 7)}`, value: d.revenue, display: money(d.revenue) }))} />
+            </Card>
+          )}
           {sales && (
-            <>
-              <Card title="Doanh thu 14 ngày qua">
-                <BarChart title="Doanh thu 14 ngày qua" data={sales.daily.map((d) => ({ label: `${d.date.slice(8, 10)}/${d.date.slice(5, 7)}`, value: d.revenue, display: money(d.revenue) }))} />
-              </Card>
-              <Card title="Đơn hàng mới nhất" flush actions={<Link to="/orders" className="text-small text-primary hover:underline">Xem tất cả</Link>}>
-                <ul>
-                  {sales.recentOrders.map((o) => (
-                    <li key={o.id} className="flex items-center gap-3 border-t border-line px-4 py-2 first:border-t-0">
-                      <Link to={`/orders/${o.id}`} className="num shrink-0 text-primary hover:underline">{o.code}</Link>
-                      <span className="min-w-0 flex-1 truncate">{o.customerName}</span>
-                      <span className="num shrink-0">{money(o.total)}</span>
-                      <span className="hidden w-[104px] shrink-0 text-right sm:block"><StatusChip meta={orderStateMeta} value={o.state} /></span>
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            </>
+            <Card title="Đơn hàng mới nhất" flush actions={<Link to="/orders" className="text-small text-primary hover:underline">Xem tất cả</Link>}>
+              <ul>
+                {sales.recentOrders.map((o) => (
+                  <li key={o.id} className="flex items-center gap-3 border-t border-line px-4 py-2 first:border-t-0">
+                    <Link to={`/orders/${o.id}`} className="num shrink-0 text-primary hover:underline">{o.code}</Link>
+                    <span className="min-w-0 flex-1 truncate">{o.customerName}</span>
+                    <span className="num shrink-0">{money(o.total)}</span>
+                    <span className="hidden w-[104px] shrink-0 text-right sm:block"><StatusChip meta={orderStateMeta} value={o.state} /></span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
           )}
           {!sales && inventory && (
             <Card title="Lô sắp hết hạn" flush actions={<Link to="/inventory?tab=expiry" className="text-small text-primary hover:underline">Xem tất cả</Link>}>
@@ -101,6 +142,16 @@ export default function DashboardPage() {
         <Card title="Cần chú ý" flush>
           {!hasAttention && <p className="p-6 text-center text-ink-muted">Không có việc gì cần chú ý</p>}
           <ul className="-mt-px">
+            {sales && sales.ordersToProcess > 0 && (
+              <AttentionItem
+                key="orders"
+                icon={<ShoppingCart size={15} />}
+                title={`${num(sales.ordersToProcess)} đơn cần xử lý`}
+                detail="Chờ xác nhận đến chờ giao"
+                to="/orders"
+                chip={<Chip tone="amber">Đơn hàng</Chip>}
+              />
+            )}
             {approvals?.items.map((a) => <AttentionItem key={`a${a.id}`} icon={<ClipboardCheck size={15} />} title={a.title} to="/approvals" chip={<Chip tone="amber">Chờ duyệt</Chip>} />)}
             {sales && inventory?.nearExpiry.map((l) => <AttentionItem key={`e${l.lotCode}`} icon={<Clock size={15} />} title={l.productName} detail={`${l.lotCode} · ${num(l.qty)} khay`} to="/inventory?tab=expiry" chip={<Chip tone={l.daysLeft <= 1 ? 'red' : 'amber'}>{l.daysLeft < 0 ? 'Quá hạn' : `Còn ${l.daysLeft} ngày`}</Chip>} />)}
             {inventory?.lowStock.map((s) => <AttentionItem key={`l${s.sku}`} icon={<PackageMinus size={15} />} title={s.productName} detail={`${s.sku} · còn ${num(s.available)} khay`} to="/inventory" chip={<Chip tone="red">Tồn thấp</Chip>} />)}

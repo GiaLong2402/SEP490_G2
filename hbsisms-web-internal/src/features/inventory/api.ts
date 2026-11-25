@@ -1,5 +1,5 @@
 import { api, type ListQuery, type Page } from '@/shared/api/client';
-import type { AdjustInput, InventoryAlerts, InventorySummary, LedgerRow, LocationOption, LotStockRow, MoveInput, VariantStockRow } from './types';
+import type { AdjustInput, ExpiryWarnings, InventoryAlerts, InventorySummary, LedgerRow, LocationOption, LotStockRow, MoveInput, VariantStockRow } from './types';
 
 export interface InventoryQuery extends ListQuery {
   locationId?: string;
@@ -23,6 +23,9 @@ export const inventoryApi = {
   alerts: () => api.get<InventoryAlerts>('/inventory/alerts'),
   variants: (query: InventoryQuery, signal?: AbortSignal) => api.get<Page<VariantStockRow>>('/inventory/variants', query, signal),
   nearExpiry: (query: ListQuery, signal?: AbortSignal) => api.get<Page<LotStockRow>>('/inventory/near-expiry', query, signal),
+  expired: (query: ListQuery, signal?: AbortSignal) => api.get<Page<LotStockRow>>('/inventory/expired', query, signal),
+  /** Task 9 — gộp sắp hết hạn + đã hết hạn kèm vị trí. */
+  expiryWarnings: () => api.get<ExpiryWarnings>('/inventory/expiry-warnings'),
   lots: (query: InventoryQuery, signal?: AbortSignal) => api.get<Page<LotStockRow>>('/inventory/lots', query, signal),
   ledger: (query: LedgerQuery, signal?: AbortSignal) => api.get<Page<LedgerRow>>('/inventory/ledger', query, signal),
   locations: () => api.get<LocationOption[]>('/locations'),

@@ -34,4 +34,8 @@ public interface DeliveryRepository extends JpaRepository<Delivery, Long>, JpaSp
     /** Tổng khay của từng đơn (dùng cho đợt giao "Trọn đơn" không có danh sách hàng riêng). Mỗi dòng: [orderId, tổng khay]. */
     @Query("select l.order.id, sum(l.qtyKhay) from SalesOrderLine l where l.order.id in :orderIds group by l.order.id")
     List<Object[]> sumQtyKhayByOrderIds(@Param("orderIds") Collection<Long> orderIds);
+
+    /** Dashboard — đợt giao theo ngày (kèm đơn/khách). */
+    @EntityGraph(attributePaths = {"order", "order.customer"})
+    List<Delivery> findByScheduledDateOrderByIdAsc(java.time.LocalDate scheduledDate);
 }
