@@ -1,6 +1,7 @@
 package com.hbsisms.feature.sales;
 
 import jakarta.persistence.LockModeType;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -16,6 +17,58 @@ import org.springframework.data.repository.query.Param;
 /** Persistence for {@link SalesOrder}. */
 public interface SalesOrderRepository
         extends JpaRepository<SalesOrder, Long>, JpaSpecificationExecutor<SalesOrder> {
+
+    /**
+     * Bucket doanh thu / COGS đơn {@code COMPLETED} theo {@code date_trunc} (day|month|year).
+     * Revenue lấy từ {@code sales_order.total}; COGS = Σ coalesce(unit_cost,0)×qty_khay.
+     */
+    @Query(
+            value = """
+                    with order_buckets as (
+                        select
+                            (date_trunc(:truncUnit, o.placed_at at time zone 'Asia/Ho_Chi_Minh')
+                                at time zone 'Asia/Ho_Chi_Minh') as bucket_start,
+                            o.id as order_id,
+                            o.total as revenue
+                        from hbsisms.sales_order o
+                        where o.state = 'COMPLETED'
+                          and o.placed_at >= :fromInstant
+                          and o.placed_at < :toExclusive
+                    ),
+                    order_cogs as (
+                        select
+                            ob.order_id,
+                            coalesce(sum(coalesce(l.unit_cost, 0) * l.qty_khay), 0) as cogs
+                        from order_buckets ob
+                        left join hbsisms.sales_order_line l on l.order_id = ob.order_id
+                        group by ob.order_id
+                    )
+                    select
+                        ob.bucket_start as bucketStart,
+                        coalesce(sum(ob.revenue), 0) as revenue,
+                        coalesce(sum(oc.cogs), 0) as cogs,
+                        count(*) as orderCount
+                    from order_buckets ob
+                    join order_cogs oc on oc.order_id = ob.order_id
+                    group by ob.bucket_start
+                    order by ob.bucket_start
+                    """,
+            nativeQuery = true)
+    List<RevenueBucketRow> aggregateCompletedRevenue(
+            @Param("fromInstant") Instant fromInstant,
+            @Param("toExclusive") Instant toExclusive,
+            @Param("truncUnit") String truncUnit);
+
+    /** Projection for {@link #aggregateCompletedRevenue}. */
+    interface RevenueBucketRow {
+        Instant getBucketStart();
+
+        BigDecimal getRevenue();
+
+        BigDecimal getCogs();
+
+        long getOrderCount();
+    }
 
     Optional<SalesOrder> findByCode(String code);
 

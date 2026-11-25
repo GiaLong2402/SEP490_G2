@@ -11,6 +11,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import lombok.Getter;
@@ -42,6 +43,12 @@ public class Lot {
     private LocalDate expDate;
 
     private Instant receivedAt;
+
+    /**
+     * Giá vốn / khay — snapshot lúc nhập thành phẩm. Dùng khi xuất bán để ghi COGS lên dòng đơn.
+     */
+    @Column(name = "unit_cost", precision = 14, scale = 2)
+    private BigDecimal unitCost;
 
     @Column(length = 200)
     private String note;
