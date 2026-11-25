@@ -15,6 +15,7 @@ import com.hbsisms.feature.catalog.ProductVariant;
 import com.hbsisms.feature.inventory.LedgerEntryType;
 import com.hbsisms.feature.inventory.Location;
 import com.hbsisms.feature.inventory.Lot;
+import com.hbsisms.feature.inventory.LotRepository;
 import com.hbsisms.feature.inventory.Stock;
 import com.hbsisms.feature.inventory.StockLedger;
 import com.hbsisms.feature.inventory.StockLedgerRepository;
@@ -48,6 +49,8 @@ class OrderAllocationServiceTest {
     @Mock
     private StockService stockService;
     @Mock
+    private LotRepository lotRepository;
+    @Mock
     private SalesOrderRepository salesOrderRepository;
     @Mock
     private SalesOrderLineRepository salesOrderLineRepository;
@@ -68,6 +71,7 @@ class OrderAllocationServiceTest {
                 stockRepository,
                 stockLedgerRepository,
                 stockService,
+                lotRepository,
                 salesOrderRepository,
                 salesOrderLineRepository,
                 appConfigService,
@@ -291,13 +295,45 @@ class OrderAllocationServiceTest {
         when(stockLedgerRepository.findByRefTypeAndRefIdForAllocation("sales_order", 7L))
                 .thenReturn(List.of(ledger(LedgerEntryType.HOLD, -5)));
         when(salesOrderLineRepository.sumOutstandingByOrderId(7L)).thenReturn(0);
+        lot.setUnitCost(new BigDecimal("12000.00"));
+        when(lotRepository.findById(10L)).thenReturn(Optional.of(lot));
 
         SalesOrder order = order(7L, SaleChannel.COUNTER, PaymentStatus.PAID, 5);
+        when(salesOrderRepository.findWithDetailsById(7L)).thenReturn(Optional.of(order));
         int issued = service.issueOutHeldForOrder(order, 1L);
 
         assertThat(issued).isEqualTo(5);
         assertThat(order.getAllocationStatus()).isEqualTo(AllocationStatus.FULL);
+        assertThat(order.getLines().get(0).getUnitCost()).isEqualByComparingTo("12000.00");
         verify(stockService).issueHeldOut(any());
+    }
+
+    @Test
+    void issueOutHeldForOrder_weightedAverageUnitCostAcrossLots() {
+        Lot lotB = new Lot();
+        setId(lotB, 11L);
+        lotB.setLotCode("LOT-B");
+        lotB.setVariant(variant);
+        lotB.setUnitCost(new BigDecimal("8000.00"));
+        lot.setUnitCost(new BigDecimal("12000.00"));
+
+        when(stockLedgerRepository.findByRefTypeAndRefIdForAllocation("sales_order", 7L))
+                .thenReturn(List.of(
+                        ledger(LedgerEntryType.HOLD, -2),
+                        ledger(lotB, location, LedgerEntryType.HOLD, -2)));
+        when(salesOrderLineRepository.sumOutstandingByOrderId(7L)).thenReturn(0);
+        when(lotRepository.findById(10L)).thenReturn(Optional.of(lot));
+        when(lotRepository.findById(11L)).thenReturn(Optional.of(lotB));
+
+        SalesOrder order = order(7L, SaleChannel.COUNTER, PaymentStatus.PAID, 4);
+        when(salesOrderRepository.findWithDetailsById(7L)).thenReturn(Optional.of(order));
+
+        int issued = service.issueOutHeldForOrder(order, 1L);
+
+        assertThat(issued).isEqualTo(4);
+        // (2*12000 + 2*8000) / 4 = 10000
+        assertThat(order.getLines().get(0).getUnitCost()).isEqualByComparingTo("10000.00");
+        verify(stockService, times(2)).issueHeldOut(any());
     }
 
     @Test
@@ -346,12 +382,16 @@ class OrderAllocationServiceTest {
     }
 
     private StockLedger ledger(LedgerEntryType type, int qtyDelta) {
+        return ledger(lot, location, type, qtyDelta);
+    }
+
+    private StockLedger ledger(Lot lotRow, Location loc, LedgerEntryType type, int qtyDelta) {
         StockLedger entry = new StockLedger();
         entry.setEntryType(type);
         entry.setQtyDelta(qtyDelta);
         entry.setVariant(variant);
-        entry.setLot(lot);
-        entry.setLocation(location);
+        entry.setLot(lotRow);
+        entry.setLocation(loc);
         return entry;
     }
 

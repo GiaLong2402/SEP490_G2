@@ -2,6 +2,8 @@ package com.hbsisms.feature.sales;
 
 import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.feature.inventory.LedgerEntryType;
+import com.hbsisms.feature.inventory.Lot;
+import com.hbsisms.feature.inventory.LotRepository;
 import com.hbsisms.feature.inventory.Stock;
 import com.hbsisms.feature.inventory.StockLedger;
 import com.hbsisms.feature.inventory.StockLedgerRepository;
@@ -10,9 +12,12 @@ import com.hbsisms.feature.inventory.StockRepository;
 import com.hbsisms.feature.inventory.StockService;
 import com.hbsisms.feature.payment.PaymentStatus;
 import com.hbsisms.feature.system.AppConfigService;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +36,7 @@ public class OrderAllocationService {
     private final StockRepository stockRepository;
     private final StockLedgerRepository stockLedgerRepository;
     private final StockService stockService;
+    private final LotRepository lotRepository;
     private final SalesOrderRepository salesOrderRepository;
     private final SalesOrderLineRepository salesOrderLineRepository;
     private final AppConfigService appConfigService;
@@ -40,6 +46,7 @@ public class OrderAllocationService {
             StockRepository stockRepository,
             StockLedgerRepository stockLedgerRepository,
             StockService stockService,
+            LotRepository lotRepository,
             SalesOrderRepository salesOrderRepository,
             SalesOrderLineRepository salesOrderLineRepository,
             AppConfigService appConfigService,
@@ -47,6 +54,7 @@ public class OrderAllocationService {
         this.stockRepository = stockRepository;
         this.stockLedgerRepository = stockLedgerRepository;
         this.stockService = stockService;
+        this.lotRepository = lotRepository;
         this.salesOrderRepository = salesOrderRepository;
         this.salesOrderLineRepository = salesOrderLineRepository;
         this.appConfigService = appConfigService;
@@ -274,6 +282,8 @@ public class OrderAllocationService {
         Objects.requireNonNull(order.getId(), "order id");
         Map<HoldKey, Integer> net = netHeldByLot(order.getId());
         int issued = 0;
+        // variantId → [costSum, qtySum] for weighted-average unitCost snapshot.
+        Map<Long, BigDecimal[]> costByVariant = new HashMap<>();
         for (Map.Entry<HoldKey, Integer> entry : net.entrySet()) {
             int qty = entry.getValue();
             if (qty <= 0) {
@@ -290,6 +300,18 @@ public class OrderAllocationService {
                     "Xuất kho đơn quầy " + order.getCode(),
                     actorId));
             issued += qty;
+            BigDecimal unitCost = lotRepository
+                    .findById(key.lotId())
+                    .map(Lot::getUnitCost)
+                    .filter(c -> c != null && c.signum() >= 0)
+                    .orElse(BigDecimal.ZERO);
+            BigDecimal[] agg = costByVariant.computeIfAbsent(
+                    key.variantId(), id -> new BigDecimal[] {BigDecimal.ZERO, BigDecimal.ZERO});
+            agg[0] = agg[0].add(unitCost.multiply(BigDecimal.valueOf(qty)));
+            agg[1] = agg[1].add(BigDecimal.valueOf(qty));
+        }
+        if (issued > 0) {
+            snapshotLineUnitCosts(order, costByVariant);
         }
         if (issued > 0 || net.isEmpty()) {
             // Đã bàn giao: clear outstanding phần đã hold; FULL nếu không còn outstanding.
@@ -300,6 +322,19 @@ public class OrderAllocationService {
             salesOrderRepository.save(order);
         }
         return issued;
+    }
+
+    /** Ghi giá vốn / khay (weighted avg theo lô vừa OUT) lên từng dòng đơn cùng variant. */
+    private void snapshotLineUnitCosts(SalesOrder order, Map<Long, BigDecimal[]> costByVariant) {
+        SalesOrder detailed = salesOrderRepository.findWithDetailsById(order.getId()).orElse(order);
+        for (SalesOrderLine line : detailed.getLines()) {
+            BigDecimal[] agg = costByVariant.get(line.getVariant().getId());
+            if (agg == null || agg[1].signum() <= 0) {
+                continue;
+            }
+            line.setUnitCost(agg[0].divide(agg[1], 2, RoundingMode.HALF_UP));
+        }
+        salesOrderRepository.save(detailed);
     }
 
     /** Job / check: giải phóng hold đơn quá {@code hold_expires_at}. */

@@ -21,7 +21,10 @@ import lombok.Setter;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 
-/** Order line; {@code unitPrice} is a snapshot taken when the order was placed. */
+/**
+ * Order line; {@code unitPrice} is a sell-price snapshot at place time;
+ * {@code unitCost} is a COGS snapshot at stock OUT (weighted avg by lot).
+ */
 @Entity
 @Table(name = "sales_order_line", indexes = @Index(name = "idx_orderline_order", columnList = "order_id"))
 @Getter
@@ -56,6 +59,12 @@ public class SalesOrderLine {
 
     @Column(nullable = false, precision = 14, scale = 2)
     private BigDecimal unitPrice;
+
+    /**
+     * Giá vốn / khay — snapshot lúc xuất kho (weighted avg theo lô FEFO). Null đến khi OUT.
+     */
+    @Column(name = "unit_cost", precision = 14, scale = 2)
+    private BigDecimal unitCost;
 
     @Column(nullable = false, precision = 5, scale = 2)
     private BigDecimal discountPct = BigDecimal.ZERO;
