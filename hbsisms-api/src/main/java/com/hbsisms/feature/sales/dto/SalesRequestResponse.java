@@ -5,6 +5,7 @@ import com.hbsisms.feature.sales.SaleChannel;
 import com.hbsisms.feature.sales.SalesRequest;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 
 /** Matches FE {@code RequestListItem} / detail. */
 public record SalesRequestResponse(
@@ -18,7 +19,6 @@ public record SalesRequestResponse(
         String summary,
         RequestStatus status,
         Instant receivedAt,
-        /** Ngày khách muốn nhận hàng (portal / form bulk). */
         LocalDate neededDate,
         Long handledBy,
         String handlerName,
@@ -27,9 +27,17 @@ public record SalesRequestResponse(
         Integer fulfillableQty,
         Integer shortageQty,
         LocalDate expectedDate,
-        String rejectReason) {
+        String rejectReason,
+        Integer requestedQty,
+        Integer availableQty,
+        String orderCode,
+        List<SalesRequestLineResponse> lines) {
 
     public static SalesRequestResponse from(SalesRequest request) {
+        return from(request, request.getLines().stream().map(SalesRequestLineResponse::from).toList());
+    }
+
+    public static SalesRequestResponse from(SalesRequest request, List<SalesRequestLineResponse> lines) {
         var customer = request.getCustomer();
         var handler = request.getHandledBy();
         String name = request.getCustomerName();
@@ -59,6 +67,10 @@ public record SalesRequestResponse(
                 request.getFulfillableQty(),
                 request.getShortageQty(),
                 request.getExpectedDate(),
-                request.getRejectReason());
+                request.getRejectReason(),
+                request.getRequestedQty(),
+                request.getAvailableQty(),
+                request.getOrderCode(),
+                lines == null ? List.of() : lines);
     }
 }

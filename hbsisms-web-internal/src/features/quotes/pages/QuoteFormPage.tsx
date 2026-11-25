@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCustomerOptions } from '@/features/customers';
 import { LineItemsEditor, isCompleteLine, newLine, toPricingLines, usePricing, type EditableLine } from '@/features/pricing';
 import { useVariantOptions } from '@/features/products';
 import { useRequest } from '@/features/requests';
 import { useAction } from '@/shared/api/useAction';
-import { requestStatusMeta, saleChannelLabels } from '@/shared/domain/enums';
+import { requestStatusMeta, saleChannelLabels, sellUnitLabels } from '@/shared/domain/enums';
 import { date, dateTime, money, num, todayISO } from '@/shared/lib/format';
 import { Alert, Button, Card, Chip, Field, Input, PageHeader, Select, StatusChip, Textarea } from '@/shared/ui';
 import { quotesApi } from '../api';
@@ -21,9 +21,24 @@ export default function QuoteFormPage() {
   const [note, setNote] = useState('');
   const [lines, setLines] = useState<EditableLine[]>([newLine()]);
   const [touched, setTouched] = useState(false);
+  const prefilledRef = useRef(false);
 
   const requestQuery = useRequest(requestId);
   const request = requestQuery.data;
+
+  useEffect(() => {
+    if (!request || prefilledRef.current) return;
+    const reqLines = request.lines ?? [];
+    if (reqLines.length === 0) return;
+    prefilledRef.current = true;
+    setLines(
+      reqLines.map((l) => {
+        const row = newLine(l.variantId, String(l.fulfillableQty ?? l.qty));
+        row.unit = l.unit;
+        return row;
+      }),
+    );
+  }, [request]);
 
   const pricingLines = useMemo(() => toPricingLines(lines), [lines]);
   const pricing = usePricing({ customerId, lines: toPricingLines(lines.filter(isCompleteLine)) });
@@ -54,6 +69,17 @@ export default function QuoteFormPage() {
                   <Chip tone="neutral">{saleChannelLabels[request.channel]}</Chip>
                 </div>
                 <p className="whitespace-pre-wrap text-body text-ink">{request.summary?.trim() || '—'}</p>
+                {(request.lines?.length ?? 0) > 0 && (
+                  <ul className="space-y-1 text-small text-ink-muted">
+                    {request.lines!.map((l) => (
+                      <li key={l.id}>
+                        {l.productName ?? l.sku}
+                        {l.packLabel ? ` · ${l.packLabel}` : ''} × {num(l.qty)} {sellUnitLabels[l.unit] ?? l.unit}
+                        {l.fulfillableQty != null ? ` (đáp ứng ${num(l.fulfillableQty)})` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <dl className="grid gap-2 text-small text-ink-muted sm:grid-cols-2">
                   <div>
                     <dt className="text-ink-faint">Khách</dt>

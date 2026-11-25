@@ -31,6 +31,7 @@ const STEPS = ['Đã gửi', 'Cửa hàng xem xét', 'Chốt đơn']
 const STEP_INDEX = { NEW: 1, QUOTING: 1, ORDERED: 2, REJECTED: 1, CLOSED: 1 }
 
 const qty = (n) => (n == null ? '—' : `${n} khay`)
+const unitLabel = (u) => (u === 'case' ? 'thùng' : 'khay')
 
 export default function RequestDetailPage() {
   const { code } = useParams()
@@ -113,6 +114,22 @@ function RequestDetail({ req }) {
             <PackageIcon size={22} /> Nội dung yêu cầu
           </h3>
           <p className="rq-summary">{req.summary || '—'}</p>
+          {Array.isArray(req.lines) && req.lines.length > 0 ? (
+            <ul className="rq-lines">
+              {req.lines.map((l) => (
+                <li key={l.id}>
+                  <strong>{l.productName || l.sku}</strong>
+                  {l.packLabel ? ` · ${l.packLabel}` : ''} × {l.qty} {unitLabel(l.unit)}
+                  {l.fulfillableQty != null || l.shortageQty != null ? (
+                    <span className="rq-lines__feas">
+                      {l.fulfillableQty != null ? ` · đáp ứng ${l.fulfillableQty}` : ''}
+                      {l.shortageQty != null && l.shortageQty > 0 ? ` · thiếu ${l.shortageQty}` : ''}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <dl className="rq-facts">
             <div>
               <dt>Số lượng cần</dt>

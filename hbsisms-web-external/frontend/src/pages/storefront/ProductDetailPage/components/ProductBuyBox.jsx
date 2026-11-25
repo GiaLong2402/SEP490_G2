@@ -170,6 +170,7 @@ export default function ProductBuyBox({ product, variant, onVariantChange, onAdd
       <BulkOrderForm
         productName={product.name}
         variantLabel={formatTrayLabel(variant.weightGrams)}
+        variantId={variant.id}
         availableQty={availableTrays}
       />
 

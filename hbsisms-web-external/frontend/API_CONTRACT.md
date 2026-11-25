@@ -128,12 +128,12 @@ Hủy đơn (#30+#38): chỉ khi `canCancel` (đơn chờ thanh toán) → giả
 
 File FE: `src/api/salesRequests.js`, mapper `mappers/salesRequest.js`. Dùng ở tab Yêu cầu, Chi tiết yêu cầu, hộp thoại thiếu hàng.
 
-**Đã nối:** `GET/POST /me/sales-requests`, `GET /me/sales-requests/{code}` (JWT + `MeCustomerResolver`). Status trên `/me` là **UPPERCASE** (`NEW`…); staff `/sales-requests` vẫn lowercase. `items` trong body bị bỏ qua (chỉ lưu summary + qty tổng). Seed demo: `YCM-DEMO-001` cho KH-001.
+**Đã nối:** `GET/POST /me/sales-requests`, `GET /me/sales-requests/{code}` (JWT + `MeCustomerResolver`). Status trên `/me` là **UPPERCASE** (`NEW`…); staff `/sales-requests` vẫn lowercase. Dòng hàng qua `lines` (persist `sales_request_line`). Seed demo: `YCM-DEMO-001` cho KH-001.
 
 | Method | URL | Body / Trả về |
 |---|---|---|
-| GET | `/me/sales-requests?page=1&pageSize=100` | `PageResponse<MeSalesRequestResponse>` |
-| GET | `/me/sales-requests/{code}` | `MeSalesRequestResponse` |
+| GET | `/me/sales-requests?page=1&pageSize=100` | `PageResponse<MeSalesRequestResponse>` (list: `lines=[]`) |
+| GET | `/me/sales-requests/{code}` | `MeSalesRequestResponse` (có `lines`) |
 | POST | `/me/sales-requests` | body dưới → `MeSalesRequestResponse` (status `NEW`) |
 
 ```json
@@ -143,13 +143,14 @@ File FE: `src/api/salesRequests.js`, mapper `mappers/salesRequest.js`. Dùng ở
   "neededDate": "2026-11-13",
   "requestedQty": 3,
   "availableQty": 1,
-  "items": [{ "variantId": 12, "requestedQty": 3, "availableQty": 1 }]
+  "contactPhone": "0912345678",
+  "lines": [{ "variantId": 12, "unit": "pack", "qty": 3 }]
 }
 ```
 
-- Body lưu: `summary`, `neededDate`, `requestedQty`, `availableQty?`, `contactPhone?` (channel portal cố định `WEB`). `items` chưa persist.
-- Portal bulk (“Đặt số lượng lớn”): có thể chỉ gửi `requestedQty` (không bắt vượt tồn). Khi gửi cả `availableQty` (checkout thiếu hàng) vẫn yêu cầu `requestedQty > availableQty`.
-- Response: `code, summary, status, receivedAt, neededDate, requestedQty, availableQty, feasible, fulfillableQty, shortageQty, expectedDate, rejectReason, note, orderCode` (`orderCode` khi Sales chốt `ORDERED`).
+- Body lưu: `summary?`, `neededDate`, `requestedQty?`, `availableQty?`, `contactPhone?`, `lines?` (channel portal cố định `WEB`). Cần `summary` và/hoặc `lines`.
+- Portal bulk / thiếu hàng: gửi `lines` (unit `pack`|`case`). Khi gửi cả `availableQty` vẫn yêu cầu `requestedQty > availableQty`.
+- Response: thêm `lines[]` (`id, variantId, sku, productName, packLabel, packPerCase, unit, qty, qtyKhay, fulfillableQty, shortageQty`).
 - Nhãn: `NEW` Đang xem xét · `QUOTING` Đang báo giá · `ORDERED` Đã chốt · `REJECTED` Không đáp ứng được · `CLOSED` Đã đóng.
 
 ## 4. Checkout — task "Checkout" (Duy)

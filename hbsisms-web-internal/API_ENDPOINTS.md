@@ -231,11 +231,11 @@ Contract FE: `features/requests/api.ts` → `/sales-requests` (path const `API_P
 
 | Phương thức | Đường dẫn |
 |---|---|
-| GET | `/sales-requests` |
-| GET | `/sales-requests/:id` |
-| POST | `/sales-requests` |
-| POST | `/sales-requests/:id/feasibility` |
-| POST | `/sales-requests/:id/reject` |
+| GET | `/sales-requests` | list: `lines=[]` |
+| GET | `/sales-requests/:id` | detail có `lines` |
+| POST | `/sales-requests` | body: `summary?` và/hoặc `lines: [{ variantId, unit, qty }]` |
+| POST | `/sales-requests/:id/feasibility` | `feasible=true` → `quoting` (+ ngày/ghi chú); SP + giá chọn ở báo giá; `feasible=false` + `note` → **`rejected`** |
+| POST | `/sales-requests/:id/reject` | body `{ rejectReason }` — UI nội bộ gộp vào modal Khả năng đáp ứng |
 | PATCH | `/sales-requests/:id` |
 
 ## returns

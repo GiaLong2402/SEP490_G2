@@ -93,7 +93,7 @@ public class PricingService {
                 shortfall);
     }
 
-    static int toQtyKhay(SellUnit unit, int qty, short packPerCase) {
+    public static int toQtyKhay(SellUnit unit, int qty, short packPerCase) {
         if (qty <= 0) {
             throw ApiException.badRequest("Số lượng phải là số nguyên dương");
         }
