@@ -4,7 +4,7 @@ export function homePathForRole(roleCode: string | null | undefined): string {
     case 'warehouse':
       return '/inventory'
     case 'sales':
-      return '/pos'
+      return '/orders'
     case 'admin':
       return '/admin/users'
     case 'owner':
