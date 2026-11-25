@@ -27,7 +27,9 @@ const NAV_ITEMS = [
 
 export default function Header() {
   const { user, isLoggedIn, logout } = useAuth()
-  const { totalItems } = useCart()
+  const { items } = useCart()
+  /** Badge giỏ = số mặt hàng (dòng), không phải tổng số khay. */
+  const productCount = items.length
   const [navCategories, setNavCategories] = useState([])
   const catsRef = useRef(null)
 
@@ -93,11 +95,11 @@ export default function Header() {
           <Link
             to={ROUTES.CART}
             className="site-cart"
-            aria-label={`Giỏ hàng, ${totalItems} sản phẩm`}
+            aria-label={`Giỏ hàng, ${productCount} mặt hàng`}
           >
             <CartIcon size={22} />
-            {totalItems > 0 && (
-              <span className="site-cart__badge">{totalItems}</span>
+            {productCount > 0 && (
+              <span className="site-cart__badge">{productCount}</span>
             )}
           </Link>
 

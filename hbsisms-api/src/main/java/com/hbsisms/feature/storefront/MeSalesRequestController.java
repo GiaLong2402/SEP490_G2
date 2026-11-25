@@ -4,6 +4,7 @@ import com.hbsisms.common.web.PageResponse;
 import com.hbsisms.feature.customer.Customer;
 import com.hbsisms.feature.customer.MeCustomerResolver;
 import com.hbsisms.feature.sales.dto.SalesRequestInputRequest;
+import com.hbsisms.feature.storefront.dto.MeSalesRequestRejectRequest;
 import com.hbsisms.feature.storefront.dto.MeSalesRequestResponse;
 import com.hbsisms.security.AuthUser;
 import jakarta.validation.Valid;
@@ -51,6 +52,22 @@ public class MeSalesRequestController {
     public MeSalesRequestResponse create(
             @AuthenticationPrincipal AuthUser user, @Valid @RequestBody SalesRequestInputRequest request) {
         return meSalesRequestService.create(customer(user), request);
+    }
+
+    /** Khách đồng ý báo giá → tạo đơn. */
+    @PostMapping("/{code}/accept")
+    public MeSalesRequestResponse accept(
+            @AuthenticationPrincipal AuthUser user, @PathVariable String code) {
+        return meSalesRequestService.accept(customer(user), code, user == null ? null : user.id());
+    }
+
+    /** Khách từ chối báo giá — body bắt buộc lý do (cửa hàng xem được). */
+    @PostMapping("/{code}/reject")
+    public MeSalesRequestResponse reject(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable String code,
+            @Valid @RequestBody MeSalesRequestRejectRequest request) {
+        return meSalesRequestService.reject(customer(user), code, request);
     }
 
     private Customer customer(AuthUser user) {

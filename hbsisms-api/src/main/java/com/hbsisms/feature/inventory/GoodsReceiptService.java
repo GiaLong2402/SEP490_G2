@@ -539,6 +539,8 @@ public class GoodsReceiptService {
                 request.locationId(),
                 request.qty());
         Lot lot = resolveLot(variant, stockLine);
+        lot.setUnitCost(unitCost);
+        lotRepository.save(lot);
         stockService.receiveIn(StockMutation.of(
                 variant.getId(),
                 lot.getId(),
