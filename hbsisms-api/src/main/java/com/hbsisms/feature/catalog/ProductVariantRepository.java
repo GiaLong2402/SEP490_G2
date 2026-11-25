@@ -1,15 +1,21 @@
 package com.hbsisms.feature.catalog;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface ProductVariantRepository extends JpaRepository<ProductVariant, Long> {
 
     @EntityGraph(attributePaths = "product")
     Optional<ProductVariant> findWithProductById(Long id);
+
+    @Query("select v from ProductVariant v join fetch v.product where v.id in :ids")
+    List<ProductVariant> findWithProductByIdIn(@Param("ids") Collection<Long> ids);
 
     @Override
     @EntityGraph(attributePaths = "product")

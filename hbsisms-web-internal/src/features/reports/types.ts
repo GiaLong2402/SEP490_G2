@@ -2,6 +2,7 @@ export interface DailyPoint {
   date: string;
   revenue: number;
   orders: number;
+  profit?: number;
 }
 
 export interface RankRow {
@@ -11,13 +12,19 @@ export interface RankRow {
 
 export interface SalesReport {
   days: number;
+  fromDate: string;
+  toDate: string;
   revenue: number;
+  cogs: number;
+  profit: number;
   orderCount: number;
   avgOrder: number;
-  cancelledCount: number;
+  revenueGrowthPct: number | null;
+  profitGrowthPct: number | null;
+  orderCountGrowthPct: number | null;
   daily: DailyPoint[];
-  byChannel: RankRow[];
-  byOrderType: RankRow[];
   topProducts: RankRow[];
   topCustomers: RankRow[];
+  byChannel: RankRow[];
+  byOrderType: RankRow[];
 }

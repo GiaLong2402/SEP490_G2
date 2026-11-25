@@ -27,6 +27,7 @@ import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
@@ -182,6 +183,70 @@ public class QuoteService {
         audit.put("total", quote.getTotal());
         audit.put("requestId", request.requestId());
         auditLogService.record(actorId, "create", "quote", quote.getId(), audit);
+
+        return get(quote.getId());
+    }
+
+    /** Chỉ sửa báo giá {@code DRAFT}: khách, hiệu lực, ghi chú, dòng hàng + giá. */
+    @Transactional
+    public QuoteDetailResponse update(Long id, QuoteInputRequest request, Long actorId) {
+        Quote quote = quoteRepository
+                .findWithDetailsById(id)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy báo giá"));
+        if (quote.getStatus() != QuoteStatus.DRAFT) {
+            throw ApiException.conflict("Chỉ sửa được báo giá đang nháp");
+        }
+        if (request.lines() == null || request.lines().isEmpty()) {
+            throw ApiException.badRequest("Báo giá phải có ít nhất một dòng hàng");
+        }
+
+        Customer customer = customerRepository
+                .findById(request.customerId())
+                .orElseThrow(() -> ApiException.badRequest("Vui lòng chọn khách hàng"));
+        if (!customer.isActive()) {
+            throw ApiException.conflict("Khách hàng đã bị khóa, không thể lập báo giá");
+        }
+
+        SalesRequest linked = quote.getRequest();
+        if (linked != null
+                && linked.getCustomer() != null
+                && !linked.getCustomer().getId().equals(customer.getId())) {
+            throw ApiException.badRequest("Khách hàng không khớp với yêu cầu");
+        }
+
+        PricingResultResponse priced = pricingService.resolve(new PricingRequest(
+                customer.getId(),
+                null,
+                ZERO,
+                ZERO,
+                request.lines()));
+
+        quote.setCustomer(customer);
+        quote.setValidUntil(request.validUntil());
+        quote.setNote(Strings.trimToNull(request.note()));
+        quote.setSubtotal(priced.subtotal());
+        quote.setTotal(priced.total());
+
+        List<QuoteLine> nextLines = new ArrayList<>();
+        for (PricedLineResponse line : priced.lines()) {
+            ProductVariant variant = productVariantRepository
+                    .findById(line.variantId())
+                    .orElseThrow(() -> ApiException.badRequest("Quy cách không tồn tại"));
+            QuoteLine row = new QuoteLine();
+            row.setVariant(variant);
+            row.setUnit(line.unit());
+            row.setQty(line.qty());
+            row.setQtyKhay(line.qtyKhay());
+            row.setUnitPrice(line.unitPrice());
+            row.setLineTotal(line.lineTotal());
+            row.setPriceBasis(line.priceBasis());
+            nextLines.add(row);
+        }
+        quote.replaceLines(nextLines);
+
+        Map<String, Object> audit = new HashMap<>();
+        audit.put("total", quote.getTotal());
+        auditLogService.record(actorId, "update", "quote", quote.getId(), audit);
 
         return get(quote.getId());
     }

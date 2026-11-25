@@ -52,6 +52,27 @@ mock('POST', '/quotes', ({ body, userId }) => {
   return toDetail(id);
 });
 
+mock('PUT', '/quotes/:id', ({ params, body, userId }) => {
+  const quote = db.quotes.find((q) => q.id === Number(params.id));
+  if (!quote) fail(404, 'Không tìm thấy báo giá');
+  if (quote.status !== 'draft') fail(409, 'Chỉ sửa được báo giá đang nháp');
+  if (!db.customers.some((c) => c.id === body.customerId)) fail(400, 'Vui lòng chọn khách hàng');
+  const priced = priceLines(body.customerId, body.lines);
+  const subtotal = priced.reduce((sum, l) => sum + l.lineTotal, 0);
+  quote.customerId = body.customerId;
+  quote.validUntil = body.validUntil;
+  quote.note = body.note;
+  quote.subtotal = subtotal;
+  quote.total = subtotal;
+  quote.updatedAt = new Date().toISOString();
+  db.quoteLines = db.quoteLines.filter((l) => l.quoteId !== quote.id);
+  priced.forEach(({ available: _a, shortfall: _s, discountPct: _d, ...line }) =>
+    db.quoteLines.push({ ...line, id: nextId(db.quoteLines), quoteId: quote.id }),
+  );
+  audit(userId, 'update', 'quote', quote.id);
+  return toDetail(quote.id);
+});
+
 mock('PATCH', '/quotes/:id/status', ({ params, body, userId }) => {
   const quote = db.quotes.find((q) => q.id === Number(params.id));
   if (!quote) fail(404, 'Không tìm thấy báo giá');

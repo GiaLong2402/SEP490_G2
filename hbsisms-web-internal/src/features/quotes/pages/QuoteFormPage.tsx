@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useCustomerOptions } from '@/features/customers';
 import { LineItemsEditor, isCompleteLine, newLine, toPricingLines, usePricing, type EditableLine } from '@/features/pricing';
 import { useVariantOptions } from '@/features/products';
@@ -7,27 +7,60 @@ import { useRequest } from '@/features/requests';
 import { useAction } from '@/shared/api/useAction';
 import { requestStatusMeta, saleChannelLabels, sellUnitLabels } from '@/shared/domain/enums';
 import { date, dateTime, money, num, todayISO } from '@/shared/lib/format';
-import { Alert, Button, Card, Chip, Field, Input, PageHeader, Select, StatusChip, Textarea } from '@/shared/ui';
+import { Alert, Button, Card, Chip, Field, Input, PageHeader, PageLoading, Select, StatusChip, Textarea } from '@/shared/ui';
 import { quotesApi } from '../api';
+import { useQuote } from '../hooks';
 
 export default function QuoteFormPage() {
   const navigate = useNavigate();
+  const { id: routeId } = useParams();
+  const editId = routeId ? Number(routeId) : null;
+  const isEdit = editId != null && Number.isFinite(editId);
   const [params] = useSearchParams();
   const customers = useCustomerOptions();
   const variants = useVariantOptions();
-  const requestId = params.get('requestId') ? Number(params.get('requestId')) : null;
+
+  const quoteQuery = useQuote(isEdit ? editId : null);
+  const existing = isEdit ? quoteQuery.data : undefined;
+
+  const requestIdFromQuery = params.get('requestId') ? Number(params.get('requestId')) : null;
+  const requestId = existing?.requestId ?? requestIdFromQuery;
   const [customerId, setCustomerId] = useState<number | null>(params.get('customerId') ? Number(params.get('customerId')) : null);
   const [validUntil, setValidUntil] = useState(() => todayISO(7));
   const [note, setNote] = useState('');
   const [lines, setLines] = useState<EditableLine[]>([newLine()]);
   const [touched, setTouched] = useState(false);
   const prefilledRef = useRef(false);
+  const editLoadedRef = useRef(false);
 
   const requestQuery = useRequest(requestId);
   const request = requestQuery.data;
 
   useEffect(() => {
-    if (!request || prefilledRef.current) return;
+    if (!isEdit || !existing || editLoadedRef.current) return;
+    if (existing.status !== 'draft') {
+      navigate(`/quotes/${existing.id}`, { replace: true });
+      return;
+    }
+    editLoadedRef.current = true;
+    prefilledRef.current = true;
+    setCustomerId(existing.customerId);
+    setValidUntil(existing.validUntil ?? todayISO(7));
+    setNote(existing.note ?? '');
+    setLines(
+      existing.lines.length > 0
+        ? existing.lines.map((l) => {
+            const row = newLine(l.variantId, String(l.qty));
+            row.unit = l.unit;
+            row.manualPrice = String(l.unitPrice);
+            return row;
+          })
+        : [newLine()],
+    );
+  }, [isEdit, existing, navigate]);
+
+  useEffect(() => {
+    if (isEdit || !request || prefilledRef.current) return;
     const reqLines = request.lines ?? [];
     if (reqLines.length === 0) return;
     prefilledRef.current = true;
@@ -38,20 +71,46 @@ export default function QuoteFormPage() {
         return row;
       }),
     );
-  }, [request]);
+  }, [isEdit, request]);
 
   const pricingLines = useMemo(() => toPricingLines(lines), [lines]);
   const pricing = usePricing({ customerId, lines: toPricingLines(lines.filter(isCompleteLine)) });
   const linesValid = lines.every(isCompleteLine);
 
-  const create = useAction(() => quotesApi.create({ customerId: customerId!, requestId, validUntil: validUntil || null, note: note.trim() || null, lines: pricingLines }), {
-    success: (q) => `Đã lập báo giá ${q.code}`,
-    onDone: (q) => navigate(`/quotes/${q.id}`),
-  });
+  const save = useAction(
+    () => {
+      const body = {
+        customerId: customerId!,
+        requestId: requestId ?? null,
+        validUntil: validUntil || null,
+        note: note.trim() || null,
+        lines: pricingLines,
+      };
+      return isEdit ? quotesApi.update(editId!, body) : quotesApi.create(body);
+    },
+    {
+      success: (q) => (isEdit ? `Đã cập nhật báo giá ${q.code}` : `Đã lập báo giá ${q.code}`),
+      onDone: (q) => navigate(`/quotes/${q.id}`),
+    },
+  );
+
+  if (isEdit && quoteQuery.isLoading) return <PageLoading />;
 
   return (
     <>
-      <PageHeader breadcrumb={<><Link to="/quotes" className="hover:underline">Báo giá</Link> / Lập báo giá</>} title="Lập báo giá" />
+      <PageHeader
+        breadcrumb={
+          <>
+            <Link to="/quotes" className="hover:underline">Báo giá</Link>
+            {isEdit && existing ? (
+              <> / <Link to={`/quotes/${existing.id}`} className="hover:underline font-mono">{existing.code}</Link> / Sửa</>
+            ) : (
+              <> / Lập báo giá</>
+            )}
+          </>
+        }
+        title={isEdit ? `Sửa báo giá${existing ? ` ${existing.code}` : ''}` : 'Lập báo giá'}
+      />
       <div className="space-y-4">
         {requestId != null && (
           <Card title="Nội dung yêu cầu khách hàng">
@@ -105,13 +164,6 @@ export default function QuoteFormPage() {
                   </div>
                 </dl>
                 {request.note && <p className="border-t border-line pt-3 text-small text-ink-muted">{request.note}</p>}
-                <p className="text-small text-ink-faint">
-                  Báo giá sẽ gắn với yêu cầu này. Quay lại{' '}
-                  <Link to="/requests" className="text-primary hover:underline">
-                    danh sách yêu cầu
-                  </Link>
-                  .
-                </p>
               </div>
             )}
           </Card>
@@ -120,7 +172,11 @@ export default function QuoteFormPage() {
         <Card title="Thông tin chung">
           <div className="grid gap-3 md:grid-cols-3">
             <Field label="Khách hàng" required error={touched && !customerId ? 'Vui lòng chọn khách' : undefined}>
-              <Select value={customerId ?? ''} onChange={(e) => setCustomerId(e.target.value ? Number(e.target.value) : null)}>
+              <Select
+                value={customerId ?? ''}
+                disabled={isEdit && !!existing?.requestId}
+                onChange={(e) => setCustomerId(e.target.value ? Number(e.target.value) : null)}
+              >
                 <option value="">Chọn khách hàng...</option>
                 {customers.data?.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
               </Select>
@@ -137,13 +193,13 @@ export default function QuoteFormPage() {
           <span className="text-h2">Tổng cộng: <span className="tabular-nums">{money(pricing.data?.total ?? 0)}</span></span>
           <Button
             variant="primary"
-            loading={create.isPending}
+            loading={save.isPending}
             onClick={() => {
               setTouched(true);
-              if (customerId && linesValid) create.mutate();
+              if (customerId && linesValid) save.mutate();
             }}
           >
-            Lưu báo giá
+            {isEdit ? 'Lưu thay đổi' : 'Lưu báo giá'}
           </Button>
         </div>
       </div>

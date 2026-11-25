@@ -50,6 +50,11 @@ export const API_PATHS = {
   sales: {
     holdExpire: '/sales/hold-expire',
   },
+  analytics: {
+    revenue: '/analytics/revenue',
+    topProducts: '/analytics/top-products',
+    topCustomers: '/analytics/top-customers',
+  },
 } as const;
 
 /** Prefix gắn HTTP khi hybrid (orders / requests / payments / pricing + auth/customers hỗ trợ form). Không gồm /pos. */
@@ -60,6 +65,7 @@ export const SALES_READY_HTTP_PATH_PREFIXES = [
   '/payments',
   '/pricing',
   '/customers',
+  '/analytics',
 ] as const;
 
 /** Giá trị gợi ý cho `.env` khi gắn Sales (không gồm /pos — vẫn mock). */

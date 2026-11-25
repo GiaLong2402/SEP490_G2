@@ -200,6 +200,7 @@ Quyền `inventory`. **Role (sơ đồ Inter):** `warehouse` tạo/sửa lệnh 
 | GET | `/quotes` |
 | GET | `/quotes/:id` |
 | POST | `/quotes` |
+| PUT | `/quotes/:id` | sửa nháp (`draft`) — body giống POST |
 | PATCH | `/quotes/:id/status` |
 | POST | `/quotes/:id/convert` |
 

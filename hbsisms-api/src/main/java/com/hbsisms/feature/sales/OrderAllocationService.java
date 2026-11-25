@@ -442,7 +442,8 @@ public class OrderAllocationService {
         }
     }
 
-    Map<HoldKey, Integer> netHeldByLot(long orderId) {
+    /** Net HOLD còn hiệu lực theo lô/vị trí (hold − release/out/damage). */
+    public Map<HoldKey, Integer> netHeldByLot(long orderId) {
         List<StockLedger> entries =
                 stockLedgerRepository.findByRefTypeAndRefIdForAllocation(REF_TYPE, orderId);
         Map<HoldKey, Integer> net = new LinkedHashMap<>();

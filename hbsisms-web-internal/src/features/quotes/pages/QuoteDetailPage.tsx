@@ -1,10 +1,10 @@
-import { ArrowRightCircle, Send } from 'lucide-react';
+import { ArrowRightCircle, Pencil, Send } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useRequest } from '@/features/requests';
 import { useAction } from '@/shared/api/useAction';
 import { priceBasisMeta, quoteStatusMeta, saleChannelLabels, sellUnitLabels } from '@/shared/domain/enums';
 import { date, money, num } from '@/shared/lib/format';
-import { Button, Card, DataTable, ErrorState, InfoList, PageHeader, PageLoading, StatusChip, type Column } from '@/shared/ui';
+import { Button, Card, DataTable, ErrorState, InfoList, LinkButton, PageHeader, PageLoading, StatusChip, type Column } from '@/shared/ui';
 import { quotesApi } from '../api';
 import { useQuote } from '../hooks';
 import type { QuoteLineView, QuoteStatus } from '../types';
@@ -45,7 +45,12 @@ export default function QuoteDetailPage() {
         title={<span className="flex items-center gap-2"><span className="font-mono">{quote.code}</span><StatusChip meta={quoteStatusMeta} value={quote.status} /></span>}
         actions={
           <>
-            {quote.status === 'draft' && <Button variant="primary" icon={<Send size={14} />} loading={setStatus.isPending} onClick={() => setStatus.mutate('sent')}>Gửi báo giá cho khách</Button>}
+            {quote.status === 'draft' && (
+              <>
+                <LinkButton to={`/quotes/${quote.id}/edit`} icon={<Pencil size={14} />}>Sửa nháp</LinkButton>
+                <Button variant="primary" icon={<Send size={14} />} loading={setStatus.isPending} onClick={() => setStatus.mutate('sent')}>Gửi báo giá cho khách</Button>
+              </>
+            )}
             {quote.status === 'sent' && (
               <>
                 <Button variant="danger" loading={setStatus.isPending} onClick={() => setStatus.mutate('rejected')}>Khách từ chối</Button>

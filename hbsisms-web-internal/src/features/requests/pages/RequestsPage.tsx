@@ -244,7 +244,11 @@ export default function RequestsPage() {
             </Select>
           </Field>
           <Field label="Nội dung yêu cầu" required error={touched && !summaryOk ? 'Vui lòng nhập nội dung' : undefined}>
-            <Textarea value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} />
+            <Textarea
+              value={form.summary}
+              onChange={(e) => setForm({ ...form, summary: e.target.value })}
+              placeholder="Ví dụ: số lượng, sản phẩm, ngày nhận…"
+            />
           </Field>
         </div>
       </Modal>

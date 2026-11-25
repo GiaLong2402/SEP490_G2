@@ -2,6 +2,7 @@ package com.hbsisms.feature.sales;
 
 import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
+import com.hbsisms.feature.sales.dto.DailyPickingSlipResponse;
 import com.hbsisms.feature.sales.dto.OrderCancelRequest;
 import com.hbsisms.feature.sales.dto.OrderCountsResponse;
 import com.hbsisms.feature.sales.dto.OrderDetailResponse;
@@ -10,10 +11,13 @@ import com.hbsisms.feature.sales.dto.OrderListItemResponse;
 import com.hbsisms.feature.sales.dto.OrderReceiptResponse;
 import com.hbsisms.feature.sales.dto.OrderTransitionRequest;
 import com.hbsisms.feature.sales.dto.OwnerInboxResponse;
+import com.hbsisms.feature.sales.dto.PickingSlipResponse;
 import com.hbsisms.security.AuthUser;
 import jakarta.validation.Valid;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -48,16 +52,19 @@ public class OrderController {
     private final CounterFulfillmentService counterFulfillmentService;
     private final OrderExportService orderExportService;
     private final OrderOwnerInboxService orderOwnerInboxService;
+    private final PickingSlipService pickingSlipService;
 
     public OrderController(
             SalesOrderService salesOrderService,
             CounterFulfillmentService counterFulfillmentService,
             OrderExportService orderExportService,
-            OrderOwnerInboxService orderOwnerInboxService) {
+            OrderOwnerInboxService orderOwnerInboxService,
+            PickingSlipService pickingSlipService) {
         this.salesOrderService = salesOrderService;
         this.counterFulfillmentService = counterFulfillmentService;
         this.orderExportService = orderExportService;
         this.orderOwnerInboxService = orderOwnerInboxService;
+        this.pickingSlipService = pickingSlipService;
     }
 
     @GetMapping
@@ -138,6 +145,16 @@ public class OrderController {
         return orderOwnerInboxService.list();
     }
 
+    /**
+     * Bản gộp soạn hàng theo ngày — phải khai báo trước /{id} để không bị parse
+     * {@code picking-slip-daily} thành id.
+     */
+    @GetMapping("/picking-slip-daily")
+    public DailyPickingSlipResponse pickingSlipDaily(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return pickingSlipService.daily(date);
+    }
+
     /** Xuất Excel — phải khai báo trước /{id} (Inter 3 dòng 12). */
     @GetMapping("/export")
     public ResponseEntity<byte[]> export(
@@ -197,6 +214,11 @@ public class OrderController {
             @Valid @RequestBody OrderInputRequest request,
             @AuthenticationPrincipal AuthUser actor) {
         return salesOrderService.update(id, request, actor == null ? null : actor.id());
+    }
+
+    @GetMapping("/{id}/picking-slip")
+    public PickingSlipResponse pickingSlip(@PathVariable Long id) {
+        return pickingSlipService.forOrder(id);
     }
 
     @GetMapping("/{id}/receipt")
