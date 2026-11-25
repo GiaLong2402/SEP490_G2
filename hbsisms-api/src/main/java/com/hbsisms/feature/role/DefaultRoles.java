@@ -16,8 +16,9 @@ public final class DefaultRoles {
     public static final List<Definition> ALL = List.of(
             new Definition(ADMIN, "Quản trị viên", EnumSet.allOf(Permission.class)),
             new Definition(OWNER, "Chủ cửa hàng", EnumSet.complementOf(EnumSet.of(Permission.ADMIN))),
+            // Sales: bán hàng / thu tiền qua quyền orders — không xem sổ công nợ (debt = Chủ/Admin).
             new Definition(SALES, "Nhân viên bán hàng",
-                    EnumSet.of(Permission.ORDERS, Permission.CUSTOMERS, Permission.PRODUCTS, Permission.DEBT)),
+                    EnumSet.of(Permission.ORDERS, Permission.CUSTOMERS, Permission.PRODUCTS)),
             new Definition(WAREHOUSE, "Nhân viên kho", EnumSet.of(Permission.INVENTORY, Permission.PRODUCTS)),
             new Definition(CUSTOMER, "Khách hàng (B2C)", EnumSet.noneOf(Permission.class)));
 

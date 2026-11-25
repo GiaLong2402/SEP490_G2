@@ -31,17 +31,21 @@ function variantRows() {
   });
 }
 
-// Khác view v_near_expiry: bỏ lô đã hết hàng để không cảnh báo sai (spec mục 5 #3).
+// Task 9: còn khả dụng + chạm ngưỡng HSD (FEFO). Khác view cũ — không gộp held/expired vào cảnh báo sắp hết.
 function nearExpiryRows() {
   const days = configInt('expiry_warning_days', 5);
-  return lotRows().filter((l) => l.daysLeft !== null && l.daysLeft <= days && l.available + l.held + l.quarantine + l.expired > 0).sort(byFefo);
+  return lotRows().filter((l) => l.available > 0 && l.daysLeft !== null && l.daysLeft <= days).sort(byFefo);
+}
+
+function expiredRows() {
+  return lotRows().filter((l) => l.expired > 0).sort(byFefo);
 }
 
 mock('GET', '/inventory/summary', () => {
   const rows = variantRows();
   return {
     available: rows.reduce((s, r) => s + r.available, 0), held: rows.reduce((s, r) => s + r.held, 0), quarantine: rows.reduce((s, r) => s + r.quarantine, 0),
-    nearExpiryLots: nearExpiryRows().length, lowStockVariants: rows.filter((r) => r.isLow).length, lowStockThreshold: configInt('low_stock_threshold', 15), expiryWarningDays: configInt('expiry_warning_days', 5),
+    nearExpiryLots: nearExpiryRows().length, expiredLots: expiredRows().length, lowStockVariants: rows.filter((r) => r.isLow).length, lowStockThreshold: configInt('low_stock_threshold', 15), expiryWarningDays: configInt('expiry_warning_days', 5),
   };
 });
 
@@ -56,7 +60,7 @@ mock('GET', '/inventory/alerts', () => {
       lotCode: l.lotCode,
       productName: l.productName,
       daysLeft: l.daysLeft ?? 0,
-      qty: l.available + l.held + l.quarantine + l.expired,
+      qty: l.available,
     })),
   };
 });
@@ -80,6 +84,14 @@ mock('GET', '/inventory/lots', ({ query }) => {
 });
 
 mock('GET', '/inventory/near-expiry', ({ query }) => paginate(nearExpiryRows().filter((r) => matches(query.q, r.lotCode, r.sku, r.productName)), query));
+
+mock('GET', '/inventory/expired', ({ query }) => paginate(expiredRows().filter((r) => matches(query.q, r.lotCode, r.sku, r.productName)), query));
+
+mock('GET', '/inventory/expiry-warnings', () => ({
+  expiryWarningDays: configInt('expiry_warning_days', 5),
+  nearExpiry: nearExpiryRows(),
+  expired: expiredRows(),
+}));
 
 mock('GET', '/inventory/ledger', ({ query }) => {
   const rows = db.ledger

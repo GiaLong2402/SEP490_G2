@@ -1,8 +1,17 @@
 package com.hbsisms.feature.system;
 
+import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.common.text.Strings;
+import com.hbsisms.feature.system.dto.AppConfigResponse;
+import com.hbsisms.feature.user.AppUser;
+import com.hbsisms.feature.user.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,9 +41,91 @@ public class AppConfigService {
     public static final int DEFAULT_SELL_PRICE_MARKUP_PERCENT = 30;
 
     private final AppConfigRepository appConfigRepository;
+    private final UserRepository userRepository;
+    private final AuditLogService auditLogService;
+    private final ObjectMapper objectMapper;
 
-    public AppConfigService(AppConfigRepository appConfigRepository) {
+    public AppConfigService(
+            AppConfigRepository appConfigRepository,
+            UserRepository userRepository,
+            AuditLogService auditLogService,
+            ObjectMapper objectMapper) {
         this.appConfigRepository = appConfigRepository;
+        this.userRepository = userRepository;
+        this.auditLogService = auditLogService;
+        this.objectMapper = objectMapper;
+    }
+
+    /** Danh sách cấu hình cho màn Admin. */
+    public List<AppConfigResponse> listAll() {
+        return appConfigRepository.findAllByOrderByKeyAsc().stream().map(this::toResponse).toList();
+    }
+
+    /** Cập nhật giá trị khóa đã có — không tạo khóa mới. */
+    @Transactional
+    public void update(String key, String rawValue, Long actorId) {
+        String configKey = Strings.trimToNull(key);
+        if (configKey == null) {
+            throw ApiException.badRequest("Thiếu khóa cấu hình");
+        }
+        AppConfig row = appConfigRepository
+                .findById(configKey)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy cấu hình"));
+        String normalized = normalizeValue(row.getValueType(), rawValue);
+        row.setValue(normalized);
+        if (actorId != null) {
+            AppUser actor = userRepository.findById(actorId).orElse(null);
+            row.setUpdatedBy(actor);
+        }
+        appConfigRepository.save(row);
+
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("key", row.getKey());
+        detail.put("value", row.getValue());
+        auditLogService.record(actorId, "update", "app_config", null, detail);
+    }
+
+    private String normalizeValue(String valueType, String rawValue) {
+        if (rawValue == null) {
+            throw ApiException.badRequest("Giá trị là bắt buộc");
+        }
+        String type = valueType == null ? "string" : valueType.toLowerCase(Locale.ROOT);
+        String trimmed = rawValue.trim();
+        return switch (type) {
+            case "int" -> {
+                if (!trimmed.matches("\\d+")) {
+                    throw ApiException.badRequest("Giá trị phải là số nguyên không âm");
+                }
+                yield trimmed;
+            }
+            case "bool" -> {
+                String lower = trimmed.toLowerCase(Locale.ROOT);
+                if (!lower.equals("true") && !lower.equals("false") && !lower.equals("1") && !lower.equals("0")) {
+                    throw ApiException.badRequest("Giá trị phải là true/false");
+                }
+                yield lower.equals("1") || lower.equals("true") ? "true" : "false";
+            }
+            case "json" -> {
+                try {
+                    objectMapper.readTree(trimmed.isEmpty() ? "null" : trimmed);
+                } catch (Exception ex) {
+                    throw ApiException.badRequest("Giá trị JSON không hợp lệ");
+                }
+                yield trimmed;
+            }
+            default -> trimmed;
+        };
+    }
+
+    private AppConfigResponse toResponse(AppConfig row) {
+        Long updatedById = row.getUpdatedBy() == null ? null : row.getUpdatedBy().getId();
+        return new AppConfigResponse(
+                row.getKey(),
+                row.getValue(),
+                row.getValueType(),
+                row.getDescription(),
+                updatedById,
+                row.getUpdatedAt());
     }
 
     public int lowStockThreshold() {

@@ -6,6 +6,8 @@ public record InventorySummaryResponse(
         int held,
         int quarantine,
         int nearExpiryLots,
+        /** Task 9 — số dòng tồn còn qtyExpired &gt; 0 (chưa tiêu hủy). */
+        int expiredLots,
         int lowStockVariants,
         int lowStockThreshold,
         int expiryWarningDays) {

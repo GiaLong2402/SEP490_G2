@@ -40,7 +40,7 @@ export const navigation: NavGroup[] = [
   {
     label: 'Tài chính',
     items: [
-      { to: '/payments', label: 'Thanh toán', icon: CreditCard, permission: 'debt' },
+      { to: '/payments', label: 'Thanh toán', icon: CreditCard, permission: ['orders', 'debt'] },
       { to: '/debt', label: 'Công nợ', icon: HandCoins, permission: 'debt' },
     ],
   },

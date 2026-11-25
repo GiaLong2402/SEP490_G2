@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { useLots } from '@/features/inventory';
 import type { LotStockRow } from '@/features/inventory';
 import { useAction } from '@/shared/api/useAction';
@@ -15,6 +16,7 @@ function damageableQty(l: LotStockRow) {
 }
 
 export default function DamagePage() {
+  const [params, setParams] = useSearchParams();
   const list = useListParams(['status'] as const);
   const query = { q: list.q, page: list.page, status: list.filters.status };
   const { data, isLoading, error, refetch } = useQuery({ queryKey: ['damage', query], queryFn: ({ signal }) => damageApi.list(query, signal), placeholderData: keepPreviousData });
@@ -26,6 +28,27 @@ export default function DamagePage() {
   const [qty, setQty] = useState('');
   const [reason, setReason] = useState('');
   const [touched, setTouched] = useState(false);
+
+  /** Deep-link từ Tồn kho (task 9): /damage?new=1&variantId=&lotId=&stockId= */
+  useEffect(() => {
+    if (params.get('new') !== '1') return;
+    setVariantId(params.get('variantId') ?? '');
+    setLotId(params.get('lotId') ?? '');
+    setStockId(params.get('stockId') ?? '');
+    setQty('');
+    setReason(params.get('expired') === '1' || params.get('reason') === 'expired' ? 'Hàng hết hạn sử dụng' : '');
+    setTouched(false);
+    setOpen(true);
+    const next = new URLSearchParams(params);
+    next.delete('new');
+    next.delete('variantId');
+    next.delete('lotId');
+    next.delete('locationId');
+    next.delete('stockId');
+    next.delete('expired');
+    next.delete('reason');
+    setParams(next, { replace: true });
+  }, [params, setParams]);
 
   const rows = useMemo(
     () => (lots.data?.items ?? []).filter((l) => damageableQty(l) > 0),

@@ -14,6 +14,12 @@ export interface DashboardSummary {
   approvals: { pending: number; items: { id: ID; title: string; link: string | null }[] } | null;
   inventory: {
     available: number;
+    /** Tổng SL khả dụng × giá vốn lô (Chủ/Admin); null với role khác. */
+    inventoryValue: number | null;
+    /** Số lô sắp hết hạn (đủ count; list nearExpiry chỉ preview). */
+    nearExpiryLots: number;
+    /** Số lô còn qtyExpired > 0 chưa tiêu hủy (task 8). */
+    expiredLots: number;
     nearExpiry: { lotCode: string; productName: string; daysLeft: number; qty: number }[];
     lowStock: { sku: string; productName: string; available: number }[];
   } | null;

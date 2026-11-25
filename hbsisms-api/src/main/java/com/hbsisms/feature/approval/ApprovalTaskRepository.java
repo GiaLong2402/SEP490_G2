@@ -25,6 +25,8 @@ public interface ApprovalTaskRepository extends JpaRepository<ApprovalTask, Long
     /** Inbox Chủ — chờ duyệt gắn đơn (hạn mức / giảm giá…). */
     List<ApprovalTask> findByStatusAndRefTypeOrderByCreatedAtDesc(ApprovalStatus status, String refType);
 
+    List<ApprovalTask> findByStatusOrderByCreatedAtDesc(ApprovalStatus status);
+
     @EntityGraph(attributePaths = {"requestedBy", "decidedBy"})
     Optional<ApprovalTask> findWithActorsById(Long id);
 

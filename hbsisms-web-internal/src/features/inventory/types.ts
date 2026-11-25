@@ -37,9 +37,18 @@ export interface InventorySummary {
   held: number;
   quarantine: number;
   nearExpiryLots: number;
+  /** Task 9 — dòng còn qtyExpired > 0. */
+  expiredLots: number;
   lowStockVariants: number;
   lowStockThreshold: number;
   expiryWarningDays: number;
+}
+
+/** GET /inventory/expiry-warnings — task 9. */
+export interface ExpiryWarnings {
+  expiryWarningDays: number;
+  nearExpiry: LotStockRow[];
+  expired: LotStockRow[];
 }
 
 /** GET /inventory/alerts — tồn thấp + sắp hết hạn (task 32). */

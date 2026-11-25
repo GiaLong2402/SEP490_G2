@@ -1,15 +1,27 @@
 import { useState } from 'react';
-import { ArrowRightLeft, PackagePlus, SlidersHorizontal, TimerReset } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { ArrowRightLeft, PackagePlus, PackageX, SlidersHorizontal, TimerReset } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAction } from '@/shared/api/useAction';
 import { ledgerEntryMeta } from '@/shared/domain/enums';
 import { date, dateTime, num } from '@/shared/lib/format';
 import { Button, Card, Chip, DataTable, Field, FilterBar, FilterSelect, IconButton, Input, LinkButton, Modal, PageHeader, Pagination, SearchBox, Select, StatCard, StatGrid, StatusChip, Tabs, Textarea, enumOptions, useListParams, type Column } from '@/shared/ui';
 import { inventoryApi } from '../api';
-import { useInventorySummary, useLedger, useLocations, useLots, useNearExpiry, useVariantStock } from '../hooks';
+import { useExpiredLots, useInventorySummary, useLedger, useLocations, useLots, useNearExpiry, useVariantStock } from '../hooks';
 import type { LedgerRow, LotStockRow, VariantStockRow } from '../types';
 
-type Tab = 'variants' | 'lots' | 'expiry' | 'ledger';
+type Tab = 'variants' | 'lots' | 'expiry' | 'expired' | 'ledger';
+
+function damageHref(l: LotStockRow) {
+  const q = new URLSearchParams({
+    new: '1',
+    variantId: String(l.variantId),
+    lotId: String(l.lotId),
+    locationId: String(l.locationId),
+    stockId: String(l.stockId),
+    reason: 'expired',
+  });
+  return `/damage?${q}`;
+}
 
 function ExpiryChip({ daysLeft }: { daysLeft: number | null }) {
   if (daysLeft === null) return <Chip>Không có HSD</Chip>;
@@ -27,6 +39,7 @@ function isAdjustQtyValid(qtyDelta: string, available: number) {
 }
 
 export default function InventoryPage() {
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = (params.get('tab') as Tab) ?? 'variants';
   const lowOnly = params.get('lowOnly') === '1' || params.get('lowOnly') === 'true';
@@ -37,6 +50,7 @@ export default function InventoryPage() {
   const variants = useVariantStock({ ...query, lowOnly: lowOnly || undefined }, tab === 'variants');
   const lots = useLots(query, tab === 'lots');
   const expiry = useNearExpiry({ q: list.q, page: list.page }, tab === 'expiry');
+  const expired = useExpiredLots({ q: list.q, page: list.page }, tab === 'expired');
   const ledger = useLedger(
     { q: list.q, page: list.page, entryType: list.filters.entryType, from: list.filters.from, to: list.filters.to },
     tab === 'ledger',
@@ -82,8 +96,11 @@ export default function InventoryPage() {
     setParams(nextParams);
   };
 
-  const lotActions = (l: LotStockRow) => (
+  const lotActions = (l: LotStockRow, opts?: { preferDamage?: boolean }) => (
     <span className="inline-flex items-center gap-1">
+      {(opts?.preferDamage || l.expired > 0) && (
+        <IconButton label={`Báo hỏng lô ${l.lotCode}`} onClick={() => navigate(damageHref(l))}><PackageX size={14} /></IconButton>
+      )}
       <IconButton label={`Điều chỉnh tồn lô ${l.lotCode}`} onClick={() => openAdjust(l)}><SlidersHorizontal size={14} /></IconButton>
       {l.available > 0 && <IconButton label={`Chuyển vị trí lô ${l.lotCode}`} onClick={() => openMove(l)}><ArrowRightLeft size={14} /></IconButton>}
     </span>
@@ -99,6 +116,34 @@ export default function InventoryPage() {
     { key: 'held', header: 'Đang giữ', align: 'right', cell: (l) => <span className="num">{num(l.held)}</span> },
     { key: 'expQty', header: 'Hết hạn', align: 'right', hideOnMobile: true, cell: (l) => <span className="num">{num(l.expired)}</span> },
     { key: 'actions', header: '', align: 'right', cell: (l) => lotActions(l) },
+  ];
+
+  /** Chỉ còn khả dụng mới hiện ở tab này (API mới + lọc FE đề phòng bản API cũ). */
+  const nearExpiryRows = (expiry.data?.items ?? []).filter((l) => l.available > 0);
+  const firstNearExpiryId = nearExpiryRows[0]?.stockId;
+  /** Chip cạnh mã lô — mọi dòng tab này đều còn xuất được. */
+  const nearExpiryColumns: Column<LotStockRow>[] = [
+    {
+      key: 'lot',
+      header: 'Mã lô',
+      cell: (l) => (
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <span className="num">{l.lotCode}</span>
+          <Chip tone="blue">{l.stockId === firstNearExpiryId ? 'Xuất trước (FEFO)' : 'Ưu tiên xuất'}</Chip>
+        </span>
+      ),
+    },
+    ...lotColumns.filter((c) => c.key !== 'lot'),
+  ];
+
+  const expiredColumns: Column<LotStockRow>[] = [
+    { key: 'lot', header: 'Mã lô', cell: (l) => <span className="num">{l.lotCode}</span> },
+    { key: 'product', header: 'Sản phẩm', cell: (l) => <div><div className="font-medium">{l.productName}</div><div className="num text-ink-faint">{l.sku}</div></div> },
+    { key: 'loc', header: 'Vị trí', cell: (l) => <span className="num">{l.locationCode}</span> },
+    { key: 'exp', header: 'HSD', cell: (l) => date(l.expDate) },
+    { key: 'left', header: 'Thời hạn', cell: (l) => <ExpiryChip daysLeft={l.daysLeft} /> },
+    { key: 'expQty', header: 'SL hết hạn', align: 'right', cell: (l) => <span className="num font-medium">{num(l.expired)}</span> },
+    { key: 'actions', header: '', align: 'right', cell: (l) => lotActions(l, { preferDamage: true }) },
   ];
   const variantColumns: Column<VariantStockRow>[] = [
     { key: 'sku', header: 'SKU', cell: (v) => <span className="num">{v.sku}</span> },
@@ -120,7 +165,7 @@ export default function InventoryPage() {
     { key: 'by', header: 'Người ghi', hideOnMobile: true, cell: (e) => e.creatorName ?? '—' },
   ];
 
-  const active = { variants, lots, expiry, ledger }[tab];
+  const active = { variants, lots, expiry, expired, ledger }[tab];
 
   return (
     <>
@@ -153,13 +198,31 @@ export default function InventoryPage() {
         <StatCard
           label="Lô sắp hết hạn"
           value={num(summary?.nearExpiryLots)}
-          hint={summary ? `Trong ${summary.expiryWarningDays} ngày tới · bấm để xem` : undefined}
+          hint={summary ? `Trong ${summary.expiryWarningDays} ngày · ưu tiên xuất FEFO` : undefined}
           tone={summary?.nearExpiryLots ? 'warning' : undefined}
           to="/inventory?tab=expiry"
         />
+        <StatCard
+          label="Lô hết hạn (chưa hủy)"
+          value={num(summary?.expiredLots ?? 0)}
+          hint="Còn qty hết hạn · lập phiếu báo hỏng"
+          tone={(summary?.expiredLots ?? 0) > 0 ? 'danger' : undefined}
+          to="/inventory?tab=expired"
+        />
       </StatGrid>
       <Card flush>
-        <Tabs label="Góc nhìn tồn kho" value={tab} onChange={setTab} tabs={[{ key: 'variants', label: 'Theo quy cách' }, { key: 'lots', label: 'Theo lô' }, { key: 'expiry', label: `Sắp hết hạn${summary ? ` (${summary.nearExpiryLots})` : ''}` }, { key: 'ledger', label: 'Sổ kho' }]} />
+        <Tabs
+          label="Góc nhìn tồn kho"
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { key: 'variants', label: 'Theo quy cách' },
+            { key: 'lots', label: 'Theo lô' },
+            { key: 'expiry', label: `Sắp hết hạn${summary ? ` (${summary.nearExpiryLots})` : ''}` },
+            { key: 'expired', label: `Đã hết hạn${summary ? ` (${summary.expiredLots ?? expired.data?.total ?? 0})` : ''}` },
+            { key: 'ledger', label: 'Sổ kho' },
+          ]}
+        />
         <FilterBar>
           <SearchBox value={list.q} onChange={list.setQ} placeholder={tab === 'variants' ? 'Tìm SKU, sản phẩm...' : 'Tìm mã lô, SKU, sản phẩm...'} />
           {(tab === 'variants' || tab === 'lots') && (
@@ -240,7 +303,18 @@ export default function InventoryPage() {
           />
         )}
         {tab === 'lots' && <DataTable columns={lotColumns} rows={lots.data?.items} rowKey={(l) => l.stockId} loading={lots.isLoading} error={lots.error} onRetry={lots.refetch} emptyText="Không có lô phù hợp" />}
-        {tab === 'expiry' && <DataTable columns={lotColumns} rows={expiry.data?.items} rowKey={(l) => l.stockId} loading={expiry.isLoading} error={expiry.error} onRetry={expiry.refetch} emptyText="Không có lô nào sắp hết hạn" />}
+        {tab === 'expiry' && (
+          <DataTable
+            columns={nearExpiryColumns}
+            rows={nearExpiryRows}
+            rowKey={(l) => l.stockId}
+            loading={expiry.isLoading}
+            error={expiry.error}
+            onRetry={expiry.refetch}
+            emptyText="Không có lô còn khả dụng sắp/đã chạm HSD — thử tab Đã hết hạn hoặc chạy job hết hạn"
+          />
+        )}
+        {tab === 'expired' && <DataTable columns={expiredColumns} rows={expired.data?.items} rowKey={(l) => l.stockId} loading={expired.isLoading} error={expired.error} onRetry={expired.refetch} emptyText="Không còn lô hết hạn chưa xử lý" />}
         {tab === 'ledger' && <DataTable columns={ledgerColumns} rows={ledger.data?.items} rowKey={(e) => e.id} loading={ledger.isLoading} error={ledger.error} onRetry={ledger.refetch} emptyText="Chưa có biến động" />}
         {active.data && <Pagination page={active.data.page} pageSize={active.data.pageSize} total={active.data.total} onChange={list.setPage} />}
       </Card>

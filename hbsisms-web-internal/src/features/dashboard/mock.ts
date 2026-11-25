@@ -28,7 +28,7 @@ mock('GET', '/dashboard/summary', ({ userId }) => {
     .map((s) => {
       const lot = db.lots.find((l) => l.id === s.lotId);
       const daysLeft = lot?.expDate ? Math.round((new Date(`${lot.expDate}T00:00:00`).getTime() - new Date(`${dateOffset(0)}T00:00:00`).getTime()) / 86_400_000) : 999;
-      return { lotCode: lot?.lotCode ?? '—', productName: variantLabel(s.variantId).productName, daysLeft, qty: s.qtyAvailable + s.qtyHeld };
+      return { lotCode: lot?.lotCode ?? '—', productName: variantLabel(s.variantId).productName, daysLeft, qty: s.qtyAvailable };
     })
     .filter((r) => r.daysLeft <= expiryDays && r.qty > 0)
     .sort((a, b) => a.daysLeft - b.daysLeft);
@@ -53,7 +53,28 @@ mock('GET', '/dashboard/summary', ({ userId }) => {
       ? { pending: pendingApprovals.length, items: pendingApprovals.slice(0, 4).map((a) => ({ id: a.id, title: a.title, link: a.refType === 'sales_order' ? `/orders/${a.refId}` : '/approvals' })) }
       : null,
     inventory: can('inventory')
-      ? { available: stockRows.reduce((s, r) => s + r.available, 0), nearExpiry: nearExpiry.slice(0, 5), lowStock: stockRows.filter((r) => r.available < configInt('low_stock_threshold', 15)).map((r) => ({ sku: r.sku, productName: r.productName, available: r.available })) }
+      ? (() => {
+          const available = stockRows.reduce((s, r) => s + r.available, 0);
+          const inventoryValue = db.stock.reduce((sum, s) => {
+            const variant = db.variants.find((v) => v.id === s.variantId);
+            // Mock: dùng listPrice làm proxy giá vốn; API thật lấy unitPrice phiếu nhập theo lotCode.
+            const unitCost = variant?.listPrice ?? 0;
+            return sum + s.qtyAvailable * unitCost;
+          }, 0);
+          const expiredLots = new Set(
+            db.stock.filter((s) => s.qtyExpired > 0).map((s) => s.lotId),
+          ).size;
+          return {
+            available,
+            inventoryValue,
+            nearExpiryLots: nearExpiry.length,
+            expiredLots,
+            nearExpiry: nearExpiry.slice(0, 5),
+            lowStock: stockRows
+              .filter((r) => r.available < configInt('low_stock_threshold', 15))
+              .map((r) => ({ sku: r.sku, productName: r.productName, available: r.available })),
+          };
+        })()
       : null,
     deliveries: can('orders') || can('inventory')
       ? { today: todayDeliveries.length, items: todayDeliveries.filter((d) => d.state === 'ready' || d.state === 'going').slice(0, 5).map((d) => ({ id: d.id, code: d.code, customerName: customerName(db.orders.find((o) => o.id === d.orderId)?.customerId) ?? 'Khách lẻ', timeWindow: d.timeWindow, state: d.state })) }

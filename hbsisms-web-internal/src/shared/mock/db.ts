@@ -71,7 +71,7 @@ function seed(): MockDb {
   const roles: T.AppRole[] = [
     { id: 1, code: 'admin', name: 'Quản trị viên', permissions: ['orders', 'inventory', 'customers', 'products', 'debt', 'reports', 'approve', 'admin'] },
     { id: 2, code: 'owner', name: 'Chủ cửa hàng', permissions: ['orders', 'inventory', 'customers', 'products', 'debt', 'reports', 'approve'] },
-    { id: 3, code: 'sales', name: 'Nhân viên bán hàng', permissions: ['orders', 'customers', 'products', 'debt'] },
+    { id: 3, code: 'sales', name: 'Nhân viên bán hàng', permissions: ['orders', 'customers', 'products'] },
     { id: 4, code: 'warehouse', name: 'Nhân viên kho', permissions: ['inventory', 'products'] },
     { id: 5, code: 'customer', name: 'Khách hàng (B2C)', permissions: [] },
   ];
@@ -441,8 +441,8 @@ function seed(): MockDb {
 
   const cfg = (key: string, value: string, valueType: T.AppConfig['valueType'], description: string): T.AppConfig => ({ key, value, valueType, description, updatedBy: null, updatedAt: isoTime(-30) });
   const config = [
-    cfg('net_default', '15', 'int', 'Số ngày công nợ NET mặc định'), cfg('low_stock_threshold', '15', 'int', 'Ngưỡng cảnh báo tồn thấp (khay)'),
-    cfg('expiry_warning_days', '5', 'int', 'Số ngày cảnh báo sắp hết hạn'), cfg('delivery_radius_km', '8', 'int', 'Bán kính shop tự giao (km)'),
+    cfg('net_default', '15', 'int', 'Công nợ NET mặc định'), cfg('low_stock_threshold', '15', 'int', 'Cảnh báo tồn thấp'),
+    cfg('expiry_warning_days', '5', 'int', 'Cảnh báo sắp hết hạn'), cfg('delivery_radius_km', '8', 'int', 'Bán kính shop tự giao'),
     cfg('currency', 'VND', 'string', 'Đơn vị tiền tệ'), cfg('integration.payos', '{"status":"connected","name":"PayOS — QR/chuyển khoản"}', 'json', 'Cổng thanh toán PayOS'),
     cfg('integration.einvoice', '{"status":"coming","name":"Kế toán / Hóa đơn điện tử"}', 'json', 'Hóa đơn điện tử'),
   ];

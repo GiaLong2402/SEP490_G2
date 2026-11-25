@@ -32,4 +32,7 @@ public interface CustomerRepository extends JpaRepository<Customer, Long>, JpaSp
     /** Codes matching a generated-prefix pattern (e.g. {@code KH-%} / {@code KH-B%}) for next-code. */
     @Query("select c.code from Customer c where c.code like concat(:prefix, '%')")
     List<String> findCodesByPrefix(@Param("prefix") String prefix);
+
+    /** Dashboard / công nợ — chỉ B2B có hạn mức & sổ nợ. */
+    List<Customer> findByCustomerType(CustomerType customerType);
 }

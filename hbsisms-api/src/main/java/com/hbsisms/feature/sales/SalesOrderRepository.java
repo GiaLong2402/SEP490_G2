@@ -251,4 +251,26 @@ public interface SalesOrderRepository
             """)
     List<SalesOrder> findHoldsNeedingWarn(
             @Param("now") Instant now, @Param("warnBefore") Instant warnBefore);
+
+    long countByStateIn(Collection<OrderState> states);
+
+    @Query("""
+            select coalesce(sum(o.total), 0) from SalesOrder o
+            where o.state not in (
+                    com.hbsisms.feature.sales.OrderState.CANCELLED,
+                    com.hbsisms.feature.sales.OrderState.EXPIRED)
+              and o.placedAt >= :from
+              and o.placedAt < :to
+            """)
+    java.math.BigDecimal sumRevenueBetween(@Param("from") Instant from, @Param("to") Instant to);
+
+    @EntityGraph(attributePaths = {"customer"})
+    @Query("""
+            select o from SalesOrder o
+            where o.state not in :excluded
+            order by o.placedAt desc, o.id desc
+            """)
+    List<SalesOrder> findRecentExcluding(
+            @Param("excluded") Collection<OrderState> excluded,
+            org.springframework.data.domain.Pageable pageable);
 }

@@ -24,7 +24,15 @@ export default function ApprovalsPage() {
 
   const rows = tab === 'history' ? data?.items.filter((a) => a.status !== 'pending') : data?.items;
   const columns: Column<ApprovalListItem>[] = [
-    { key: 'type', header: 'Loại', cell: (a) => <Chip tone={a.approvalType === 'over_limit_order' ? 'red' : 'neutral'}>{approvalTypeLabels[a.approvalType]}</Chip> },
+    {
+      key: 'type',
+      header: 'Loại',
+      cell: (a) => (
+        <Chip tone={a.approvalType === 'over_limit_order' || a.approvalType === 'order_price_override' ? 'amber' : 'neutral'}>
+          {approvalTypeLabels[a.approvalType] ?? a.approvalType}
+        </Chip>
+      ),
+    },
     { key: 'title', header: 'Nội dung', cell: (a) => <div className="min-w-[240px]">{a.refLink ? <Link to={a.refLink} className="font-medium text-primary hover:underline">{a.title}</Link> : <span className="font-medium">{a.title}</span>}{a.note && <div className="text-ink-muted">Ghi chú: {a.note}</div>}</div> },
     { key: 'by', header: 'Người gửi', hideOnMobile: true, cell: (a) => a.requesterName ?? '—' },
     { key: 'at', header: 'Gửi lúc', hideOnMobile: true, cell: (a) => <span className="whitespace-nowrap">{dateTime(a.createdAt)}</span> },
