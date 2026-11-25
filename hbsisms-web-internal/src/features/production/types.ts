@@ -67,6 +67,16 @@ export interface ProductionOrder {
   suggestedSellPrice?: number | null;
   /** Giá niêm yết hiện tại của quy cách thành phẩm. */
   currentListPrice?: number | null;
+  /** Lô / HSD / vị trí thành phẩm đã nhập kho (null nếu chưa nhập). */
+  finishedPutAway?: FinishedPutAway | null;
+}
+
+export interface FinishedPutAway {
+  lotCode: string | null;
+  expDate: ISODate | null;
+  locationCode: string | null;
+  locationZone: string | null;
+  warehouseName: string | null;
 }
 
 export interface ProductionLeftover {

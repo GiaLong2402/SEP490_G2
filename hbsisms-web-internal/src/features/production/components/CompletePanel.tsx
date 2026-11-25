@@ -71,8 +71,10 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
   }
   const returned = rows.filter((r) => Number(leftOf(r).qty) > 0);
   const issuedCost = order.actualMaterialCost ?? order.estimatedMaterialCost ?? 0;
-  const valid = okValid && badValid && leftErrors.size === 0 && !!doneDate;
-  const defectReason = bad > 0 ? (reason === 'Khác' ? otherReason.trim() || null : reason || null) : null;
+  const hasDefect = badValid && bad > 0;
+  const defectReason = hasDefect ? (reason === 'Khác' ? otherReason.trim() || null : reason || null) : null;
+  const reasonError = hasDefect && !defectReason ? (reason === 'Khác' ? 'Ghi lý do khác' : 'Chọn lý do hỏng') : undefined;
+  const valid = okValid && badValid && !reasonError && leftErrors.size === 0 && !!doneDate;
   const made = (okValid ? ok : 0) + (badValid ? bad : 0);
   const okPct = made > 0 ? Math.round(((okValid ? ok : 0) / Math.max(made, order.plannedQty)) * 100) : 0;
   const badPct = made > 0 ? Math.round(((badValid ? bad : 0) / Math.max(made, order.plannedQty)) * 100) : 0;
@@ -127,8 +129,9 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
           <Field label="Ngày làm xong" required>
             <DateInput max={todayISO()} value={doneDate} onChange={setDoneDate} />
           </Field>
+          {hasDefect && (
           <div className="sm:col-span-3">
-            <div className="mb-1.5 text-small font-medium text-ink-muted">Lý do hỏng <span className="font-normal text-ink-faint">(chọn nhanh hoặc tự ghi)</span></div>
+            <div className="mb-1.5 text-small font-medium text-ink-muted">Lý do hỏng <span className="text-red-fg">*</span> <span className="font-normal text-ink-faint">(chọn nhanh hoặc tự ghi)</span></div>
             <div role="radiogroup" aria-label="Lý do hỏng" className="flex flex-wrap items-center gap-2">
               {[...DEFECT_REASONS, 'Khác'].map((r) => (
                 <button
@@ -144,7 +147,9 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
               ))}
               {reason === 'Khác' && <Input aria-label="Lý do khác" className="!w-64" placeholder="Ghi lý do" value={otherReason} onChange={(e) => setOtherReason(e.target.value)} />}
             </div>
+            {touched && reasonError && <p className="mt-1 text-small text-red-fg">{reasonError}</p>}
           </div>
+          )}
           <div className="sm:col-span-3">
             <div className="flex justify-between text-small text-ink-muted">
               <span>So với kế hoạch</span>

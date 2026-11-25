@@ -41,6 +41,7 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
   const bomProducts = useBomProducts();
   const [productId, setProductId] = useState(order ? String(order.productId) : '');
   const [qty, setQty] = useState(order ? String(order.plannedQty) : '');
+  const [qtyBadInput, setQtyBadInput] = useState(false);
   const [due, setDue] = useState(order?.plannedDueDate ?? todayISO(3));
   const [cost, setCost] = useState(order?.estimatedProductionCost ? String(order.estimatedProductionCost) : '');
   const [note, setNote] = useState(order?.note ?? '');
@@ -56,7 +57,14 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
     setNote(order.note ?? '');
   }, [order]);
 
-  const n = Number(qty);
+  /**
+   * Chỉ số tự nhiên 1, 2, 3… — "1,5" / "1.5" / "0" báo sai ngay khi gõ.
+   * Ô kiểu number trả value rỗng khi gõ "1,5" → đọc thêm validity.badInput để vẫn báo lỗi.
+   */
+  const qtyText = qty.trim();
+  const qtyWhole = !qtyBadInput && /^[1-9]\d*$/.test(qtyText);
+  const showQtyError = touched || qtyText !== '' || qtyBadInput;
+  const n = qtyWhole ? Number(qtyText) : 0;
   const production = Number(parseThousands(cost)) || 0;
   const dirty =
     !order ||
@@ -106,7 +114,7 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
 
   const errors = {
     product: !(pid > 0) ? 'Chọn thành phẩm' : noBom ? 'Sản phẩm chưa có định mức nguyên liệu (BOM)' : undefined,
-    qty: !(n > 0) ? 'Số lượng phải lớn hơn 0' : undefined,
+    qty: qtyWhole ? undefined : qtyText === '' && !qtyBadInput ? 'Nhập số khay' : 'Chỉ nhập số khay nguyên: 1, 2, 3…',
   };
   const valid = !errors.product && !errors.qty;
   const body = {
@@ -218,13 +226,16 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
             />
             {touched && errors.product && <p className="mt-1 text-small text-red-fg">{errors.product}</p>}
           </div>
-          <Field label="Số lượng kế hoạch" required error={touched ? errors.qty : undefined}>
+          <Field label="Số lượng kế hoạch" required error={showQtyError ? errors.qty : undefined}>
             <SuffixInput
               suffix="khay"
               type="number"
               min={1}
+              step={1}
+              aria-invalid={showQtyError && !!errors.qty ? true : undefined}
               className="text-right"
               value={qty}
+              onInput={(e) => setQtyBadInput(e.currentTarget.validity.badInput)}
               onChange={(e) => setQty(e.target.value)}
             />
           </Field>

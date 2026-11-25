@@ -184,12 +184,12 @@ Quyền `inventory`. **Role (sơ đồ Inter):** `warehouse` tạo/sửa lệnh 
 | Phương thức | Đường dẫn | Ghi chú |
 |---|---|---|
 | GET | `/production-orders` | Lọc `q`, `status` (`draft`/`approved`/`in_progress`/`awaiting_receipt`/`completed`/`cancelled`) |
-| POST | `/production-orders` | **201** — bản nháp + explode BOM |
-| GET | `/production-orders/:id` | Chi tiết + `materials[]`; sau complete có `actualQty`, `actualMaterialCost`, `finishedDate`, `defectQty`/`defectReason`, `leftovers[]`, `finishedReceiptId/code`. Khi `completed`: thêm `unitCost`, `markupPercent` (app_config `sell_price_markup_percent`, mặc định 30), `suggestedSellPrice` = round_1000(unitCost × (1 + markup/100)) cho **khay 1 kg**. **Nhập TP xong** ghi `listPrice`: khay 1 kg = giá đó; khay 0,5 kg = round_1000(nửa); SP chỉ có 0,5 kg thì gán nguyên giá tính được |
+| POST | `/production-orders` | **201** — bản nháp + explode BOM; `plannedQty` phải là số khay nguyên > 0 (400 nếu lẻ, cả khi sửa) |
+| GET | `/production-orders/:id` | Chi tiết + `materials[]`; sau complete có `actualQty`, `actualMaterialCost`, `finishedDate`, `defectQty`/`defectReason`, `leftovers[]`, `finishedReceiptId/code`. Khi `completed`: thêm `unitCost`, `markupPercent` (app_config `sell_price_markup_percent`, mặc định 30), `suggestedSellPrice` = round_1000(unitCost × (1 + markup/100)) cho **khay 1 kg**. **Nhập TP xong** ghi `listPrice`: khay 1 kg = giá đó; khay 0,5 kg = round_1000(nửa); SP chỉ có 0,5 kg thì gán nguyên giá tính được. Khi `completed` còn có `finishedPutAway` = `{ lotCode, expDate, locationCode, locationZone, warehouseName }` (lô / HSD từ dòng phiếu TP, vị trí từ dòng sổ kho IN của phiếu) |
 | PUT | `/production-orders/:id` | Chỉ `draft` |
 | POST | `/production-orders/:id/approve` | Duy — đủ NVL → `approved` + phiếu xuất `pending` |
 | POST | `/production-orders/:id/cancel` | `draft` / `approved` (chưa xuất) |
-| POST | `/production-orders/:id/complete` | **Cường** — body `{ actualQty, actualProductionCost?, variantId?, finishedDate?, defectQty?, defectReason?, leftovers: [{ rawMaterialId, qty, expDate }] }`; chỉ `in_progress`; leftover → lô `<lô gốc>-TL` + trừ `actualMaterialCost`; tạo PN FINISHED **pending** kèm dòng variant+qty; PO → `awaiting_receipt` (idempotent nếu đã có PN). Vượt KH chỉ cảnh báo FE. |
+| POST | `/production-orders/:id/complete` | **Cường** — body `{ actualQty, actualProductionCost?, variantId?, finishedDate?, defectQty?, defectReason?, leftovers: [{ rawMaterialId, qty, expDate }] }`; chỉ `in_progress`; leftover → lô `<lô gốc>-TL` (đã có thì `-TL2`, `-TL3`…; lô xuất ra là lô -TL thì vẫn lấy mã gốc) + trừ `actualMaterialCost`; tạo PN FINISHED **pending** kèm dòng variant+qty; PO → `awaiting_receipt` (idempotent nếu đã có PN). Vượt KH chỉ cảnh báo FE. |
 | GET | `/material-issues/:id` | Phiếu xuất NVL |
 | POST | `/material-issues/:id/confirm` | **Cường** — body `{ note? }`; luôn FEFO (bỏ lô hết hạn, chỉ tồn dùng được); lưu `note`; trừ tồn lô + ledger `OUT` `refType=material_issue`; PO → `in_progress`; idempotent nếu đã `completed` |
 
