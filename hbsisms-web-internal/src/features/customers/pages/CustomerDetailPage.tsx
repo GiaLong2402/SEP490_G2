@@ -131,10 +131,25 @@ export default function CustomerDetailPage() {
             <InfoList items={[['Mã', <span className="num">{customer.code}</span>], ['Điện thoại', customer.phone], ['Email', customer.email], ...(isB2b ? ([['MST', customer.taxCode], ['Người liên hệ', customer.contactName], ['SĐT liên hệ', customer.contactPhone]] as [string, string | null][]) : []), ['Trạng thái', customer.isActive ? 'Hoạt động' : 'Ngừng']]} />
             {customer.note && <p className="mt-3 border-t border-line pt-3 text-ink-muted">{customer.note}</p>}
           </Card>
-          {isB2b && (
+          {(isB2b || customer.creditEnabled || customer.creditChangePending) && (
             <Card title="Công nợ" actions={<Link to="/debt" className="text-small text-primary hover:underline">Xem sổ nợ</Link>}>
-              <InfoList items={[['Nợ hiện tại', <span className="num font-semibold">{money(customer.currentDebt)}</span>], ['Hạn mức', <span className="num">{money(customer.creditLimit)}</span>], ['Kỳ hạn', `NET ${customer.netDays} ngày`]]} />
-              <div className="mt-3"><Meter value={customer.currentDebt} max={customer.creditLimit} label="Tỷ lệ sử dụng hạn mức" /></div>
+              <InfoList
+                items={[
+                  ['Được mua nợ', customer.creditEnabled ? 'Có' : 'Không'],
+                  ['Nợ hiện tại', <span className="num font-semibold">{money(customer.currentDebt)}</span>],
+                  ['Hạn mức', <span className="num">{money(customer.creditLimit)}</span>],
+                  ['Kỳ hạn', `NET ${customer.netDays} ngày`],
+                ]}
+              />
+              {customer.creditChangePending && (
+                <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-small text-amber-900">
+                  Chờ duyệt:{' '}
+                  {customer.pendingCreditEnabled === false
+                    ? 'tắt mua nợ'
+                    : `hạn mức ${money(customer.pendingCreditLimit ?? 0)} · NET ${customer.pendingNetDays ?? 0} ngày`}
+                </p>
+              )}
+              <div className="mt-3"><Meter value={customer.currentDebt} max={customer.creditLimit || 1} label="Tỷ lệ sử dụng hạn mức" /></div>
             </Card>
           )}
         </div>

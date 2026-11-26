@@ -62,10 +62,30 @@ mock('PUT', '/admin/config/:key', ({ params, body, userId }) => {
 });
 
 mock('GET', '/admin/audit-log', ({ query }) => {
+  const day = (iso: string) => iso.slice(0, 10);
+  const codeOf = (type: string | null, id: number | null, detail: unknown) => {
+    const fromDetail =
+      detail && typeof detail === 'object'
+        ? String((detail as { code?: string; orderCode?: string }).code ?? (detail as { orderCode?: string }).orderCode ?? '').trim()
+        : '';
+    if (fromDetail) return fromDetail;
+    if (id == null || !type) return null;
+    if (type === 'goods_receipt') return db.receipts.find((r) => r.id === id)?.code ?? null;
+    if (type === 'sales_order') return db.orders.find((o) => o.id === id)?.code ?? null;
+    if (type === 'quote') return db.quotes.find((q) => q.id === id)?.code ?? null;
+    return null;
+  };
   const rows = db.auditLog
-    .map((a) => ({ ...a, userName: userName(a.userId) }))
-    .filter((a) => matches(query.q, a.userName, a.entityType, a.action))
+    .map((a) => ({
+      ...a,
+      userName: userName(a.userId),
+      entityCode: codeOf(a.entityType, a.entityId, a.detail),
+    }))
+    .filter((a) => matches(query.q, a.userName, a.entityType, a.action, a.entityCode))
     .filter((a) => !query.action || a.action === query.action)
+    .filter((a) => !query.entityType || a.entityType === query.entityType)
+    .filter((a) => !query.dateFrom || day(a.createdAt) >= String(query.dateFrom))
+    .filter((a) => !query.dateTo || day(a.createdAt) <= String(query.dateTo))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id - a.id);
   return paginate(rows, query);
 });

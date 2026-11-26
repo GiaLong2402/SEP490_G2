@@ -69,8 +69,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class DashboardService {
 
     private static final ZoneId ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
-    private static final Set<OrderState> PROCESS_STATES =
-            EnumSet.of(OrderState.PENDING, OrderState.CONFIRMED, OrderState.PREPARING, OrderState.TO_SHIP);
+    private static final Set<OrderState> PROCESS_STATES = EnumSet.of(
+            OrderState.PENDING,
+            OrderState.CONFIRMED,
+            OrderState.AWAITING_DEPOSIT,
+            OrderState.IN_PRODUCTION,
+            OrderState.AWAITING_SETTLEMENT,
+            OrderState.PREPARING,
+            OrderState.TO_SHIP);
     private static final Set<OrderState> EXCLUDED_RECENT =
             EnumSet.of(OrderState.CANCELLED, OrderState.EXPIRED);
 

@@ -60,6 +60,8 @@ export default function ReceiptsPage() {
   const [completingFinished, setCompletingFinished] = useState<ReceiptListItem | null>(null);
   const [cancelling, setCancelling] = useState<ReceiptListItem | null>(null);
   const [lotsOf, setLotsOf] = useState<RawMaterial | null>(null);
+  /** Highlight phiếu khi nhảy từ Nhật ký (?id= / ?q= mã PN). */
+  const [focusCode, setFocusCode] = useState<string | null>(params.get('q') || null);
 
   const openForm = () => {
     setReturnTo(null);
@@ -91,7 +93,44 @@ export default function ReceiptsPage() {
         setReturnTo(back && back.startsWith('/') ? back : null);
       }
       setParams({}, { replace: true });
+      return;
     }
+
+    // Từ Nhật ký: /receipts?id=62 → resolve mã PN-… rồi lọc đúng phiếu.
+    const focusId = Number(params.get('id'));
+    if (!Number.isFinite(focusId) || focusId <= 0) return;
+    let cancelled = false;
+    receiptsApi
+      .get(focusId)
+      .then((r) => {
+        if (cancelled) return;
+        setFocusCode(r.code);
+        setTab('receipts');
+        list.setQ(r.code);
+        setParams(
+          (prev) => {
+            const next = new URLSearchParams(prev);
+            next.delete('id');
+            next.set('q', r.code);
+            return next;
+          },
+          { replace: true },
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setParams(
+          (prev) => {
+            const next = new URLSearchParams(prev);
+            next.delete('id');
+            return next;
+          },
+          { replace: true },
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [params]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rawValid = rawRows.every((r) => Number(r.rawMaterialId) > 0 && Number(r.qty) > 0) && new Set(rawRows.map((r) => r.rawMaterialId)).size === rawRows.length;
@@ -152,7 +191,15 @@ export default function ReceiptsPage() {
         </button>
       ),
       // Không in đậm; nổi bằng màu chủ đạo + phông số.
-      cell: (r) => <span className="num text-body text-primary">{r.code}</span>,
+      cell: (r) => (
+        <span
+          className={`num text-body text-primary ${
+            focusCode && r.code === focusCode ? 'rounded bg-primary-soft px-1.5 py-0.5 ring-1 ring-primary/30' : ''
+          }`}
+        >
+          {r.code}
+        </span>
+      ),
     },
     { key: 'type', header: 'Loại', cell: (r) => <Chip tone={r.receiptType === 'raw' ? 'amber' : 'blue'}>{receiptTypeLabels[r.receiptType]}</Chip> },
     { key: 'source', header: 'Nguồn', cell: (r) => <div className="min-w-[120px] max-w-[200px] text-ink">{r.source?.trim() || r.supplierName || '-'}</div> },

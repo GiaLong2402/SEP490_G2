@@ -53,6 +53,7 @@ export const staffOrderTypeLabels: Record<string, string> = Object.fromEntries(
 export type OrderState =
   | 'pending'
   | 'confirmed'
+  | 'awaiting_deposit'
   | 'in_production'
   | 'awaiting_settlement'
   | 'preparing'
@@ -65,6 +66,7 @@ export type OrderState =
 export const orderStateMeta: Meta<OrderState> = {
   pending: { label: 'Chờ xác nhận', tone: 'amber' },
   confirmed: { label: 'Đã xác nhận', tone: 'blue' },
+  awaiting_deposit: { label: 'Chờ cọc', tone: 'amber' },
   in_production: { label: 'Đang sản xuất', tone: 'amber' },
   awaiting_settlement: { label: 'Chờ tất toán', tone: 'amber' },
   preparing: { label: 'Đang chuẩn bị', tone: 'blue' },
@@ -122,6 +124,7 @@ export const orderListPaymentStatusMeta: Record<string, { label: string; tone: T
 export const orderListOrderStates: OrderState[] = [
   'pending',
   'confirmed',
+  'awaiting_deposit',
   'in_production',
   'awaiting_settlement',
   'preparing',
@@ -243,12 +246,13 @@ export const stocktakeStatusMeta: Meta<StocktakeStatus> = {
 export type ReviewStatus = 'approved' | 'pending' | 'rejected';
 export const reviewStatusMeta: Meta<ReviewStatus> = { approved: { label: 'Đã duyệt', tone: 'green' }, pending: { label: 'Chờ duyệt', tone: 'amber' }, rejected: { label: 'Đã ẩn', tone: 'neutral' } };
 
-export type ApprovalType = 'over_limit_order' | 'order_price_override' | 'damage_report' | 'price_list' | 'stocktake' | 'other';
+export type ApprovalType = 'over_limit_order' | 'order_price_override' | 'damage_report' | 'price_list' | 'credit_terms' | 'stocktake' | 'other';
 export const approvalTypeLabels: Record<ApprovalType, string> = {
   over_limit_order: 'Đơn vượt hạn mức',
   order_price_override: 'Giảm giá / giá tay',
   damage_report: 'Báo hỏng',
   price_list: 'Giá riêng',
+  credit_terms: 'Hạn mức / mua nợ',
   stocktake: 'Kiểm kê',
   other: 'Khác',
 };

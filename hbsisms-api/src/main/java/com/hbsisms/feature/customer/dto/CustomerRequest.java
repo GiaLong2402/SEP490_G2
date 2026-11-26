@@ -34,6 +34,9 @@ public record CustomerRequest(
 
         Short netDays,
 
+        /** Bật mua nợ cho B2C; B2B luôn được. Null → B2B true / B2C false. */
+        Boolean creditEnabled,
+
         @NotNull(message = "Trạng thái hoạt động là bắt buộc")
         Boolean isActive,
 

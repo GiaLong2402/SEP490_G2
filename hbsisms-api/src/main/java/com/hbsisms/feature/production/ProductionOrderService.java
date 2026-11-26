@@ -23,6 +23,7 @@ import com.hbsisms.feature.production.dto.ProductionOrderMaterialLineResponse;
 import com.hbsisms.feature.production.dto.ProductionOrderResponse;
 import com.hbsisms.feature.production.dto.ProductionOrderUpdateRequest;
 import com.hbsisms.feature.system.AppConfigService;
+import com.hbsisms.feature.system.AuditLogService;
 import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
@@ -45,6 +46,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class ProductionOrderService {
 
+    public static final String REF_TYPE = "production_order";
     private static final ZoneId VN = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private final ProductionOrderRepository productionOrderRepository;
@@ -59,6 +61,7 @@ public class ProductionOrderService {
     private final RawMaterialStockService rawMaterialStockService;
     private final BusinessCodeService businessCodeService;
     private final AppConfigService appConfigService;
+    private final AuditLogService auditLogService;
     private final UserRepository userRepository;
     private final Clock clock;
 
@@ -75,6 +78,7 @@ public class ProductionOrderService {
             RawMaterialStockService rawMaterialStockService,
             BusinessCodeService businessCodeService,
             AppConfigService appConfigService,
+            AuditLogService auditLogService,
             UserRepository userRepository,
             Clock clock) {
         this.productionOrderRepository = productionOrderRepository;
@@ -89,6 +93,7 @@ public class ProductionOrderService {
         this.rawMaterialStockService = rawMaterialStockService;
         this.businessCodeService = businessCodeService;
         this.appConfigService = appConfigService;
+        this.auditLogService = auditLogService;
         this.userRepository = userRepository;
         this.clock = clock;
     }
@@ -139,6 +144,12 @@ public class ProductionOrderService {
         order.replaceMaterialLines(explosion.lines());
 
         ProductionOrder saved = productionOrderRepository.save(order);
+        Map<String, Object> detail = new HashMap<>();
+        detail.put("code", saved.getCode());
+        detail.put("status", ProductionOrderStatus.DRAFT.code());
+        detail.put("plannedQty", saved.getPlannedQty());
+        detail.put("productId", product.getId());
+        auditLogService.record(actorId, "create", REF_TYPE, saved.getId(), detail);
         return toResponse(saved);
     }
 
@@ -158,6 +169,11 @@ public class ProductionOrderService {
         order.setEstimatedProductionCost(request.estimatedProductionCost());
         order.setEstimatedMaterialCost(explosion.estimatedMaterialCost());
         order.replaceMaterialLines(explosion.lines());
+        Map<String, Object> detail = new HashMap<>();
+        detail.put("code", order.getCode());
+        detail.put("status", order.getStatus().code());
+        detail.put("plannedQty", order.getPlannedQty());
+        auditLogService.record(null, "update", REF_TYPE, order.getId(), detail);
         return toResponse(order);
     }
 
@@ -182,11 +198,16 @@ public class ProductionOrderService {
         order.setApprovedAt(Instant.now());
         order.setApprovedBy(actor);
         materialIssueService.createPendingFromOrder(order, actorId);
+        Map<String, Object> detail = new HashMap<>();
+        detail.put("code", order.getCode());
+        detail.put("status", ProductionOrderStatus.APPROVED.code());
+        detail.put("plannedQty", order.getPlannedQty());
+        auditLogService.record(actorId, "approve", REF_TYPE, order.getId(), detail);
         return toResponse(order);
     }
 
     @Transactional
-    public ProductionOrderResponse cancel(Long id) {
+    public ProductionOrderResponse cancel(Long id, Long actorId) {
         ProductionOrder order = requireOrder(id);
         if (order.getStatus() == ProductionOrderStatus.CANCELLED) {
             return toResponse(order);
@@ -201,6 +222,10 @@ public class ProductionOrderService {
         }
         materialIssueService.cancelIfPending(issue);
         order.setStatus(ProductionOrderStatus.CANCELLED);
+        Map<String, Object> detail = new HashMap<>();
+        detail.put("code", order.getCode());
+        detail.put("status", ProductionOrderStatus.CANCELLED.code());
+        auditLogService.record(actorId, "cancel", REF_TYPE, order.getId(), detail);
         return toResponse(order);
     }
 
@@ -247,6 +272,12 @@ public class ProductionOrderService {
         order.setFinishedReceipt(receipt);
         order.setStatus(ProductionOrderStatus.AWAITING_RECEIPT);
         productionOrderRepository.save(order);
+        Map<String, Object> detail = new HashMap<>();
+        detail.put("code", order.getCode());
+        detail.put("status", ProductionOrderStatus.AWAITING_RECEIPT.code());
+        detail.put("qty", request.actualQty());
+        detail.put("receiptCode", receipt.getCode());
+        auditLogService.record(actorId, "complete", REF_TYPE, order.getId(), detail);
         return toResponse(requireOrder(id));
     }
 

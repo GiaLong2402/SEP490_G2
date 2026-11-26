@@ -46,10 +46,18 @@ function assertAndNormalizeCustomerBody(body: any) {
   const netDays = body.netDays == null ? 0 : Number(body.netDays);
   const taxRaw = body.taxCode?.trim?.() || body.taxCode || null;
 
+  const creditEnabled =
+    body.customerType === 'b2b'
+      ? body.creditEnabled !== false
+      : Boolean(body.creditEnabled);
+
   if (body.customerType === 'b2c') {
-    if (taxRaw || creditLimit !== 0 || netDays !== 0) {
-      fail(400, 'Khách B2C không được có MST / hạn mức / kỳ hạn nợ');
+    if (taxRaw) fail(400, 'Khách B2C không được có mã số thuế');
+    if (!creditEnabled && (creditLimit !== 0 || netDays !== 0)) {
+      fail(400, 'Khách B2C chưa bật mua nợ — không được có hạn mức / kỳ hạn');
     }
+    if (creditEnabled && creditLimit < 0) fail(400, 'Hạn mức không được âm');
+    if (creditEnabled && (netDays < 0 || !Number.isInteger(netDays))) fail(400, 'Số ngày nợ không hợp lệ');
     return {
       ...body,
       name: String(body.name).trim(),
@@ -58,8 +66,9 @@ function assertAndNormalizeCustomerBody(body: any) {
       taxCode: null,
       contactName: null,
       contactPhone: null,
-      creditLimit: 0,
-      netDays: 0,
+      creditLimit: creditEnabled ? creditLimit : 0,
+      netDays: creditEnabled ? netDays : 0,
+      creditEnabled,
       note: body.note?.trim?.() || body.note || null,
     };
   }
@@ -79,6 +88,7 @@ function assertAndNormalizeCustomerBody(body: any) {
     contactPhone: normalizeVnPhone(body.contactPhone),
     creditLimit,
     netDays,
+    creditEnabled: true,
     note: body.note?.trim?.() || body.note || null,
   };
 }
@@ -112,13 +122,72 @@ mock('POST', '/customers', ({ body, userId }) => {
   return toDetail(customer.id);
 });
 
+function applyOrProposeCredit(
+  customer: (typeof db.customers)[number],
+  creditEnabled: boolean,
+  creditLimit: number,
+  netDays: number,
+  userId: number | null,
+) {
+  const same =
+    customer.creditEnabled === creditEnabled &&
+    customer.creditLimit === creditLimit &&
+    customer.netDays === netDays;
+  if (same) return;
+  if (customer.creditChangePending) fail(409, 'Đang có đề xuất hạn mức chờ Chủ duyệt');
+  const enabling = !customer.creditEnabled && creditEnabled;
+  const increasing = creditLimit > customer.creditLimit;
+  if (enabling || increasing) {
+    customer.pendingCreditEnabled = creditEnabled;
+    customer.pendingCreditLimit = creditLimit;
+    customer.pendingNetDays = netDays;
+    customer.creditChangePending = true;
+    createApproval(
+      'credit_terms',
+      'customer',
+      customer.id,
+      `${customer.name}: ${creditEnabled ? 'bật mua nợ / hạn mức' : 'đổi hạn mức'} ${creditLimit.toLocaleString('vi-VN')} ₫ · NET ${netDays}`,
+      userId,
+    );
+    return;
+  }
+  customer.creditEnabled = creditEnabled;
+  customer.creditLimit = creditLimit;
+  customer.netDays = netDays;
+}
+
 mock('PUT', '/customers/:id', ({ params, body, userId }) => {
   const customer = db.customers.find((c) => c.id === Number(params.id));
   if (!customer) fail(404, 'Không tìm thấy khách hàng');
   if (body.customerType === 'b2c' && customer.currentDebt > 0) fail(409, 'Khách đang có công nợ, không thể chuyển sang B2C');
   const normalized = assertAndNormalizeCustomerBody(body);
-  Object.assign(customer, normalized, { updatedAt: new Date().toISOString() });
+  const { creditEnabled, creditLimit, netDays, ...profile } = normalized;
+  Object.assign(customer, profile, { updatedAt: new Date().toISOString() });
+  applyOrProposeCredit(customer, Boolean(creditEnabled), Number(creditLimit), Number(netDays), userId);
   audit(userId, 'update', 'customer', customer.id);
+  return toDetail(customer.id);
+});
+
+mock('PATCH', '/customers/:id/credit', ({ params, body, userId }) => {
+  const customer = db.customers.find((c) => c.id === Number(params.id));
+  if (!customer) fail(404, 'Không tìm thấy khách hàng');
+  const creditEnabled =
+    body.creditEnabled == null
+      ? customer.creditEnabled
+      : customer.customerType === 'b2b'
+        ? true
+        : Boolean(body.creditEnabled);
+  let creditLimit = body.creditLimit == null ? customer.creditLimit : Number(body.creditLimit);
+  let netDays = body.netDays == null ? customer.netDays : Number(body.netDays);
+  if (!creditEnabled) {
+    creditLimit = 0;
+    netDays = 0;
+  }
+  if (creditLimit < 0) fail(400, 'Hạn mức không được âm');
+  if (netDays < 0 || !Number.isInteger(netDays)) fail(400, 'Số ngày nợ không hợp lệ');
+  applyOrProposeCredit(customer, creditEnabled, creditLimit, netDays, userId);
+  customer.updatedAt = new Date().toISOString();
+  audit(userId, 'update_credit', 'customer', customer.id);
   return toDetail(customer.id);
 });
 

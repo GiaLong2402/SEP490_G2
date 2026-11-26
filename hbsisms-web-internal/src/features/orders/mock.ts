@@ -317,6 +317,7 @@ function resolveCustomerForOrder(body: Record<string, unknown>) {
     accountUserId: null,
     creditLimit: 0,
     netDays: 0,
+    creditEnabled: false,
     currentDebt: 0,
     isActive: true,
     note: null,

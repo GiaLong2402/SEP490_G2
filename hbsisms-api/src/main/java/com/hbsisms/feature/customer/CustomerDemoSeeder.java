@@ -117,6 +117,7 @@ public class CustomerDemoSeeder implements ApplicationRunner {
         c.setPhone(phone);
         c.setCreditLimit(BigDecimal.ZERO);
         c.setNetDays((short) 0);
+        c.setCreditEnabled(false);
         c.setCurrentDebt(BigDecimal.ZERO);
         c.setActive(active);
         c.setNote(note);
@@ -144,6 +145,7 @@ public class CustomerDemoSeeder implements ApplicationRunner {
         c.setContactPhone(contactPhone);
         c.setCreditLimit(creditLimit);
         c.setNetDays(netDays);
+        c.setCreditEnabled(true);
         c.setCurrentDebt(currentDebt);
         c.setActive(true);
         c.setNote(note);

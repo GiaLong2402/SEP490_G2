@@ -43,6 +43,8 @@ export interface CustomerInput {
   contactPhone: string | null;
   creditLimit: number;
   netDays: number;
+  /** Bật mua nợ cho B2C; B2B luôn true phía API. */
+  creditEnabled?: boolean;
   isActive: boolean;
   note: string | null;
 }

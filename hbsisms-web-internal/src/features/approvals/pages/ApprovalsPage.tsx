@@ -28,7 +28,15 @@ export default function ApprovalsPage() {
       key: 'type',
       header: 'Loại',
       cell: (a) => (
-        <Chip tone={a.approvalType === 'over_limit_order' || a.approvalType === 'order_price_override' ? 'amber' : 'neutral'}>
+        <Chip
+          tone={
+            a.approvalType === 'over_limit_order' ||
+            a.approvalType === 'order_price_override' ||
+            a.approvalType === 'credit_terms'
+              ? 'amber'
+              : 'neutral'
+          }
+        >
           {approvalTypeLabels[a.approvalType] ?? a.approvalType}
         </Chip>
       ),

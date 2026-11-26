@@ -90,8 +90,9 @@ public class ProductionOrderController {
     }
 
     @PostMapping("/{id}/cancel")
-    public ProductionOrderResponse cancel(@PathVariable Long id) {
-        return productionOrderService.cancel(id);
+    public ProductionOrderResponse cancel(
+            @PathVariable Long id, @AuthenticationPrincipal AuthUser actor) {
+        return productionOrderService.cancel(id, actor == null ? null : actor.id());
     }
 
     /** Sơ đồ Inter: báo hoàn thành — nhân viên kho (owner/admin cũng được). */
