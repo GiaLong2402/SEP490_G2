@@ -55,7 +55,7 @@ export interface ProductionOrder {
   defectReason?: string | null;
   /** Số khay thật nhập kho (bước 4, có thể khác actualQty). */
   receivedQty?: number | null;
-  /** Nguyên liệu dư đã trả lại kho thành lô -TL. */
+  /** Nguyên liệu dư đã trả lại kho: đồ khu lạnh → lô -TL mới, đồ khu khô → cộng lại lô gốc. */
   leftovers?: ProductionLeftover[] | null;
   completedAt?: ISODateTime | null;
   finishedDate?: ISODate | null;
@@ -85,7 +85,8 @@ export interface ProductionLeftover {
   unit: string;
   qty: number;
   lotCode: string;
-  expDate: ISODate;
+  /** HSD lô nhận phần dư (lô gốc đồ khô có thể không có HSD). */
+  expDate: ISODate | null;
   amount: number;
 }
 
@@ -134,8 +135,8 @@ export type ProductionOrderUpdateInput = Omit<ProductionOrderInput, 'productId'>
 export interface LeftoverInput {
   rawMaterialId: ID;
   qty: number;
-  /** Hạn lô trả lại: mặc định hôm nay + 1 ngày, không muộn hơn hạn lô gốc. */
-  expDate: ISODate;
+  /** Đồ khu lạnh (lô -TL): mặc định hôm nay + 1 ngày, không muộn hơn hạn lô gốc. Đồ khu khô trả về lô gốc → null. */
+  expDate: ISODate | null;
 }
 
 /** POST /production-orders/{id}/complete. `defectQty`, `defectReason`, `leftovers` đã chốt nhưng backend chưa nhận. */

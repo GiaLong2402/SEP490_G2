@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/features/auth';
 import { useAction } from '@/shared/api/useAction';
-import { dateTimeFull, num } from '@/shared/lib/format';
+import { dateTimeFull, num, todayISO } from '@/shared/lib/format';
 import { Button, Field, Input, Modal, Select } from '@/shared/ui';
 import { receiptsApi } from '../api';
 import type { DiscardReason, RawMaterialLot } from '../types';
@@ -14,7 +14,8 @@ const reasonLabels: Record<DiscardReason, string> = { expired: 'Hết hạn', da
  */
 export function DiscardLotDialog({ lot, materialName, unit, qtyOnHand, onClose }: { lot: RawMaterialLot | null; materialName: string; unit: string; qtyOnHand?: number; onClose: () => void }) {
   const { user } = useAuth();
-  const expired = !!lot?.expDate && lot.expDate < new Date().toISOString().slice(0, 10);
+  // Ngày theo giờ máy (VN), không theo UTC — khớp backend tính "hết hạn" theo giờ cửa hàng.
+  const expired = !!lot?.expDate && lot.expDate < todayISO();
   const [reason, setReason] = useState<DiscardReason>('expired');
   const [note, setNote] = useState('');
   const [touched, setTouched] = useState(false);
@@ -54,9 +55,13 @@ export function DiscardLotDialog({ lot, materialName, unit, qtyOnHand, onClose }
             Tồn {materialName} giảm {num(lot.qtyRemaining)} {unit}
             {qtyOnHand !== undefined && <> ({num(qtyOnHand)} → {num(Math.max(0, Math.round((qtyOnHand - lot.qtyRemaining) * 1000) / 1000))} {unit})</>}. Không hoàn tác được.
           </p>
-          <Field label="Lý do" required hint="Hết hạn · Hư hỏng · Khác (ghi rõ)">
+          <Field label="Lý do" required hint={expired ? 'Hết hạn · Hư hỏng · Khác (ghi rõ)' : 'Lô còn hạn: chọn Hư hỏng hoặc Khác (ghi rõ)'}>
             <Select value={reason} onChange={(e) => setReason(e.target.value as DiscardReason)}>
-              {(Object.keys(reasonLabels) as DiscardReason[]).map((k) => <option key={k} value={k}>{reasonLabels[k]}</option>)}
+              {(Object.keys(reasonLabels) as DiscardReason[]).map((k) => (
+                <option key={k} value={k} disabled={k === 'expired' && !expired}>
+                  {reasonLabels[k]}{k === 'expired' && !expired ? ' (lô chưa hết hạn)' : ''}
+                </option>
+              ))}
             </Select>
           </Field>
           <Field label="Ghi chú" required={reason === 'other'} error={touched && noteMissing ? 'Ghi rõ lý do khi chọn "Khác"' : undefined}>

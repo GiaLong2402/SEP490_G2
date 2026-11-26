@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, MapPin, Pencil, Plus, Snowflake, Trash2, Warehouse } from 'lucide-react';
+import { ChevronDown, MapPin, Pencil, Plus, Trash2, Warehouse } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAction } from '@/shared/api/useAction';
 import { num } from '@/shared/lib/format';
@@ -84,12 +84,7 @@ export default function WarehousesPage() {
     { key: 'code', header: 'Mã khu', cell: (l) => <span className="num font-medium">{l.code}</span> },
     {
       key: 'zone', header: 'Khu',
-      cell: (l) => (
-        <span className="inline-flex items-center gap-1.5 font-medium">
-          {l.code.toUpperCase() === 'LANH' && <Snowflake size={14} className="text-primary" aria-hidden />}
-          {l.zone ?? '—'}
-        </span>
-      ),
+      cell: (l) => <span className="font-medium">{l.zone ?? '—'}</span>,
     },
     { key: 'materials', header: 'Nguyên liệu', align: 'right', cell: (l) => <span className="num">{num(l.materialCount ?? 0)}</span> },
     { key: 'note', header: 'Ghi chú', hideOnMobile: true, cell: (l) => l.note ?? '—' },
