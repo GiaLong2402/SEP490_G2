@@ -5,6 +5,9 @@ import com.hbsisms.feature.payment.PaymentRepository;
 import com.hbsisms.feature.payment.PaymentStatus;
 import com.hbsisms.feature.payment.payos.dto.PayosWebhookEnvelope;
 import com.hbsisms.feature.sales.AllocationStatus;
+import com.hbsisms.feature.sales.Delivery;
+import com.hbsisms.feature.sales.DeliveryRepository;
+import com.hbsisms.feature.sales.DeliveryState;
 import com.hbsisms.feature.sales.OrderAllocationService;
 import com.hbsisms.feature.sales.OrderEvent;
 import com.hbsisms.feature.sales.OrderEventRepository;
@@ -44,6 +47,7 @@ public class PayosLatePaymentHandler {
     private final OrderEventRepository orderEventRepository;
     private final PaymentRepository paymentRepository;
     private final OwnerNotifier ownerNotifier;
+    private final DeliveryRepository deliveryRepository;
 
     public PayosLatePaymentHandler(
             PayosPaymentCompleter paymentCompleter,
@@ -51,13 +55,15 @@ public class PayosLatePaymentHandler {
             SalesOrderRepository salesOrderRepository,
             OrderEventRepository orderEventRepository,
             PaymentRepository paymentRepository,
-            OwnerNotifier ownerNotifier) {
+            OwnerNotifier ownerNotifier,
+            DeliveryRepository deliveryRepository) {
         this.paymentCompleter = paymentCompleter;
         this.orderAllocationService = orderAllocationService;
         this.salesOrderRepository = salesOrderRepository;
         this.orderEventRepository = orderEventRepository;
         this.paymentRepository = paymentRepository;
         this.ownerNotifier = ownerNotifier;
+        this.deliveryRepository = deliveryRepository;
     }
 
     /** Caller already verified signature, success codes, and amount match. */
@@ -73,6 +79,7 @@ public class PayosLatePaymentHandler {
             return;
         }
 
+        boolean reopened = false;
         if (order.getState() == OrderState.CANCELLED) {
             boolean expired = orderEventRepository.existsByOrder_IdAndEventType(
                     order.getId(), PayosReturnService.EVENT_EXPIRED);
@@ -82,6 +89,7 @@ public class PayosLatePaymentHandler {
             }
             order.setState(OrderState.PENDING);
             salesOrderRepository.save(order);
+            reopened = true;
         }
 
         SalesOrder detailed = salesOrderRepository.findWithDetailsById(order.getId()).orElse(order);
@@ -89,6 +97,9 @@ public class PayosLatePaymentHandler {
         orderAllocationService.holdForOrder(detailed, null, true);
 
         if (detailed.getAllocationStatus() == AllocationStatus.FULL) {
+            if (reopened) {
+                reopenDeliveries(detailed);
+            }
             addEvent(detailed, "late_paid_reheld", "Tiền PayOS về muộn — đã thu tiền và giữ lại đủ hàng");
             return;
         }
@@ -100,6 +111,19 @@ public class PayosLatePaymentHandler {
         }
         detailed.setState(OrderState.CANCELLED);
         markNeedsRefund(payment, detailed, "không còn đủ hàng");
+    }
+
+    /**
+     * Đơn mở lại sau khi job hết hạn đã đóng đợt giao ({@link PayosOrderExpireHandler}): đợt đó chưa từng đi giao
+     * (đơn chưa trả tiền) nên "Giao thất bại" chỉ là do hết hạn — trả về "Sẵn sàng" để đơn chạy tiếp.
+     */
+    private void reopenDeliveries(SalesOrder order) {
+        for (Delivery delivery : deliveryRepository.findByOrder_IdOrderByIdAsc(order.getId())) {
+            if (delivery.getState() == DeliveryState.FAILED) {
+                delivery.setState(DeliveryState.READY);
+                deliveryRepository.save(delivery);
+            }
+        }
     }
 
     private void markNeedsRefund(Payment payment, SalesOrder order, String why) {

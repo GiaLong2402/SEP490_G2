@@ -16,7 +16,7 @@ import java.util.Set;
 import org.springframework.data.jpa.domain.Specification;
 
 /** Bộ lọc màn Giao hàng ({@code GET /deliveries}). */
-final class DeliverySpecifications {
+public final class DeliverySpecifications {
 
     private static final char LIKE_ESCAPE = '\\';
 
@@ -29,6 +29,14 @@ final class DeliverySpecifications {
             EnumSet.of(OrderState.CONFIRMED, OrderState.PREPARING, OrderState.TO_SHIP);
 
     private DeliverySpecifications() {}
+
+    /**
+     * Các đợt giao của một ngày đúng như màn Giao hàng hiển thị (ẩn đơn đã hủy / hết hạn / chưa xác nhận).
+     * Trang Tổng quan dùng để đếm "Giao hàng hôm nay" khớp với màn Giao hàng.
+     */
+    public static Specification<Delivery> onDeliveryBoard(LocalDate date) {
+        return search(null, null, date, null, null);
+    }
 
     static Specification<Delivery> search(
             String keyword,
