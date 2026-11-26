@@ -194,6 +194,17 @@ public interface SalesOrderRepository
 
     Optional<SalesOrder> findFirstBySourceQuote_Id(Long quoteId);
 
+    /** Đơn đặt trước chờ cọc đã quá hạn. */
+    @Query("""
+            select o from SalesOrder o
+            where o.preorder = true
+              and o.state = com.hbsisms.feature.sales.OrderState.PENDING
+              and o.paymentStatus = com.hbsisms.feature.payment.PaymentStatus.UNPAID
+              and o.depositDueAt is not null
+              and o.depositDueAt < :now
+            """)
+    List<SalesOrder> findOverduePreorderDeposits(@Param("now") Instant now);
+
     @EntityGraph(attributePaths = {"customer", "shipAddress", "placedBy", "approvedBy", "sourceQuote"})
     Optional<SalesOrder> findByCodeAndCustomer_Id(String code, Long customerId);
 
@@ -273,4 +284,5 @@ public interface SalesOrderRepository
     List<SalesOrder> findRecentExcluding(
             @Param("excluded") Collection<OrderState> excluded,
             org.springframework.data.domain.Pageable pageable);
+
 }

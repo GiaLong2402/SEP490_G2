@@ -50,8 +50,17 @@ function PaymentQr({ value }) {
   )
 }
 
+/** ≥ 1 giờ → giờ:phút; dưới 1 giờ → phút:giây. */
 function formatClock(sec) {
-  return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`
+  const s = Math.max(0, Math.floor(Number(sec) || 0))
+  if (s >= 3600) {
+    const h = Math.floor(s / 3600)
+    const m = Math.floor((s % 3600) / 60)
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  }
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`
 }
 
 /**
@@ -64,6 +73,8 @@ export default function PaymentStep({ order, payment }) {
   const [now, setNow] = useState(() => Date.now())
   const [cancelOpen, setCancelOpen] = useState(false)
   const [tipOpen, setTipOpen] = useState(false)
+  const [simulating, setSimulating] = useState(false)
+  const [simulateError, setSimulateError] = useState('')
   const holdAt = payment.expiresAt ? new Date(payment.expiresAt).getTime() : now + HOLD_SECONDS * 1000
   const left = Math.max(0, Math.round((holdAt - now) / 1000))
   // open → closing (còn ≤ 1 phút) → checking (còn 10 giây: che QR, chờ tiền về ~2 phút) → lapsed
@@ -73,6 +84,20 @@ export default function PaymentStep({ order, payment }) {
   // Đếm hết 2 phút ân hạn (khớp "khoảng 2 phút" trong thông báo)
   const checkLeft = Math.max(0, Math.round((holdAt + PAYMENT_GRACE_SECONDS * 1000 - now) / 1000))
   const resultUrl = `${ROUTES.PAYMENT_RESULT}?orderCode=${payment.payosOrderCode}`
+  const showSimulate = import.meta.env.DEV && !lapsed
+
+  async function handleSimulatePaid() {
+    if (simulating) return
+    setSimulateError('')
+    setSimulating(true)
+    try {
+      await paymentsApi.simulatePaid(payment.payosOrderCode)
+      navigate(resultUrl)
+    } catch (err) {
+      setSimulateError(err?.message || 'Giả lập thanh toán thất bại')
+      setSimulating(false)
+    }
+  }
 
   // Đồng hồ chạy tới hết thời gian kiểm tra
   useEffect(() => {
@@ -193,6 +218,20 @@ export default function PaymentStep({ order, payment }) {
               <ClockIcon size={18} />
               Còn dưới 1 phút. Nếu chưa kịp chuyển khoản, bạn có thể đặt lại đơn sau.
             </p>
+          )}
+
+          {showSimulate && (
+            <div className="pay-simulate">
+              <button
+                type="button"
+                className="btn btn--ghost btn--pill pay-simulate__btn"
+                disabled={simulating}
+                onClick={handleSimulatePaid}
+              >
+                {simulating ? 'Đang giả lập…' : 'Giả lập thanh toán thành công'}
+              </button>
+              {simulateError ? <p className="pay-simulate__err">{simulateError}</p> : null}
+            </div>
           )}
 
         </section>

@@ -66,6 +66,7 @@ class PayosWebhookServiceTest {
                 paymentRepository,
                 salesOrderRepository,
                 orderEventRepository,
+                org.mockito.Mockito.mock(com.hbsisms.feature.sales.PreorderFulfillmentService.class),
                 Clock.fixed(NOW, ZoneOffset.UTC));
         service = new PayosWebhookService(
                 props,

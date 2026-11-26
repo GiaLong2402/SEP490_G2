@@ -3,6 +3,7 @@ package com.hbsisms.feature.sales.dto;
 import com.hbsisms.feature.payment.PayDirection;
 import com.hbsisms.feature.payment.Payment;
 import com.hbsisms.feature.payment.PaymentMethod;
+import com.hbsisms.feature.payment.PaymentPurpose;
 import com.hbsisms.feature.payment.PayTxnStatus;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -15,6 +16,7 @@ public record PaymentViewResponse(
         Long customerId,
         PaymentMethod method,
         PayDirection direction,
+        PaymentPurpose purpose,
         BigDecimal amount,
         PayTxnStatus status,
         String reference,
@@ -33,6 +35,7 @@ public record PaymentViewResponse(
                 payment.getCustomer() == null ? null : payment.getCustomer().getId(),
                 payment.getMethod(),
                 payment.getDirection(),
+                payment.getPurpose() == null ? PaymentPurpose.ORDER : payment.getPurpose(),
                 payment.getAmount(),
                 payment.getStatus(),
                 payment.getReference(),

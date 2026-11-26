@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Layers, PackageCheck, Pencil, Plus, Trash2, XCircle } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useVariantOptions } from '@/features/products';
-import { useFinishedWarehouses, useRawZones } from '@/features/warehouses';
+import { useRawZones } from '@/features/warehouses';
 import { useAction } from '@/shared/api/useAction';
-import { receiptStatusMeta, receiptTypeLabels, type ReceiptType } from '@/shared/domain/enums';
+import { receiptStatusMeta, receiptTypeLabels } from '@/shared/domain/enums';
 import { date, dateTimeFull, money, num, todayISO } from '@/shared/lib/format';
 import { Button, Card, Chip, ConfirmDialog, DataTable, DateInput, Field, FilterBar, FilterSelect, IconButton, InfoTip, Input, Modal, PageHeader, Pagination, SearchBox, Select, StatusChip, Tabs, enumOptions, useListParams, type Column } from '@/shared/ui';
 import { receiptsApi } from '../api';
-import { LocationPicker } from '../components/LocationPicker';
 import { RawMaterialFormModal } from '../components/RawMaterialFormModal';
 import { RawMaterialLotsModal } from '../components/RawMaterialLotsModal';
 import { FinishedReceiptCompleteModal } from '../components/FinishedReceiptCompleteModal';
@@ -16,10 +14,8 @@ import { RawReceiptCompleteModal } from '../components/RawReceiptCompleteModal';
 import { useRawMaterials, useReceipts, useUnitLabel } from '../hooks';
 import type { RawMaterial, ReceiptListItem } from '../types';
 
-interface FinishedRow { key: number; variantId: string; lotCode: string; mfgDate: string; expDate: string; locationId: string; qty: string }
 interface RawRow { key: number; rawMaterialId: string; qty: string }
 let rowKey = 1;
-const finishedRow = (): FinishedRow => ({ key: rowKey++, variantId: '', lotCode: '', mfgDate: todayISO(), expDate: todayISO(14), locationId: '', qty: '' });
 const rawRow = (): RawRow => ({ key: rowKey++, rawMaterialId: '', qty: '' });
 /** Hàng thành phẩm có dạng "SKU · mã lô" → tách để hiện mã lô ở dòng dưới, thẳng với SKU. */
 const splitItem = (name: string) => {
@@ -52,22 +48,11 @@ export default function ReceiptsPage() {
   );
   /** Full active catalog for receipt lines (not affected by raw-tab filters). */
   const rawCatalog = useRawMaterials({ activeOnly: true });
-  const variants = useVariantOptions().data ?? [];
   const unitLabel = useUnitLabel();
-  const warehouses = useFinishedWarehouses().data ?? [];
-  /** Số khay còn để được ở mỗi vị trí = min(chỗ trống của vị trí, chỗ trống của cả kho) — giống kiểm tra ở backend. */
-  const roomOf = new Map<number, number>();
-  for (const w of warehouses) {
-    const whRoom = w.capacity - w.totalQty;
-    for (const l of w.locations) roomOf.set(Number(l.id), Math.max(0, Math.min(l.capacity - l.usedQty, whRoom)));
-  }
-  const locationLabel = new Map(warehouses.flatMap((w) => w.locations.map((l) => [Number(l.id), `${l.code} (${w.code})`] as const)));
 
   const [open, setOpen] = useState(false);
-  const [type, setType] = useState<ReceiptType>('finished');
   const [source, setSource] = useState('');
   const [expectedDate, setExpectedDate] = useState('');
-  const [finished, setFinished] = useState<FinishedRow[]>([finishedRow()]);
   const [rawRows, setRawRows] = useState<RawRow[]>([rawRow()]);
   const [touched, setTouched] = useState(false);
   const [materialForm, setMaterialForm] = useState<{ material?: RawMaterial; fromReceipt?: boolean } | null>(null);
@@ -78,10 +63,8 @@ export default function ReceiptsPage() {
 
   const openForm = () => {
     setReturnTo(null);
-    setType('finished');
     setSource('');
     setExpectedDate('');
-    setFinished([finishedRow()]);
     setRawRows([rawRow()]);
     setTouched(false);
     setOpen(true);
@@ -97,7 +80,6 @@ export default function ReceiptsPage() {
       openForm();
       // Điền sẵn từ lệnh sản xuất thiếu nguyên liệu: ?new=raw&lines=<rawMaterialId>:<qty>,...&source=...&returnTo=...
       if (params.get('new') === 'raw') {
-        setType('raw');
         setSource(params.get('source') ?? '');
         const lines = (params.get('lines') ?? '')
           .split(',')
@@ -112,24 +94,8 @@ export default function ReceiptsPage() {
     }
   }, [params]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** Tổng khay định nhập vào từng vị trí (nhiều dòng có thể chung 1 vị trí). */
-  const plannedByLocation = new Map<number, number>();
-  for (const r of finished) if (Number(r.locationId) > 0) plannedByLocation.set(Number(r.locationId), (plannedByLocation.get(Number(r.locationId)) ?? 0) + (Number(r.qty) || 0));
-  const overCapacity = [...plannedByLocation].filter(([id, qty]) => qty > (roomOf.get(id) ?? Infinity));
-  const finishedValid = overCapacity.length === 0 && finished.every((r) => Number(r.variantId) > 0 && Number(r.locationId) > 0 && r.expDate && Number.isInteger(Number(r.qty)) && Number(r.qty) > 0 && (!r.mfgDate || r.expDate >= r.mfgDate));
   const rawValid = rawRows.every((r) => Number(r.rawMaterialId) > 0 && Number(r.qty) > 0) && new Set(rawRows.map((r) => r.rawMaterialId)).size === rawRows.length;
-  const linesValid = type === 'finished' ? finishedValid : rawValid;
-  /** Lỗi từng ô của một dòng (cùng điều kiện với finishedValid / rawValid) — để đánh dấu đỏ và tự cuộn tới khi Lưu. */
-  const finishedRowErrors = (r: FinishedRow) => {
-    const qtyNum = Number(r.qty);
-    const over = overCapacity.find(([id]) => id === Number(r.locationId));
-    return {
-      variant: Number(r.variantId) > 0 ? undefined : 'Chọn quy cách',
-      expDate: !r.expDate ? 'Chọn hạn sử dụng' : r.mfgDate && r.expDate < r.mfgDate ? 'HSD trước ngày sản xuất' : undefined,
-      qty: Number.isInteger(qtyNum) && qtyNum > 0 ? undefined : 'Số khay nguyên > 0',
-      location: !(Number(r.locationId) > 0) ? 'Chọn vị trí' : over ? `Chỉ còn ${num(roomOf.get(over[0]) ?? 0)} khay` : undefined,
-    };
-  };
+  const linesValid = rawValid;
   const rawRowErrors = (r: RawRow, duplicate: boolean) => ({
     material: !(Number(r.rawMaterialId) > 0) ? 'Chọn nguyên liệu' : duplicate ? 'Nguyên liệu này đã chọn ở trên - gộp số lượng vào một dòng.' : undefined,
     qty: Number(r.qty) > 0 ? undefined : 'Số lượng lớn hơn 0',
@@ -139,12 +105,12 @@ export default function ReceiptsPage() {
   const create = useAction(
     () =>
       receiptsApi.create({
-        receiptType: type,
+        receiptType: 'raw',
         source: source.trim(),
         note: null,
-        finishedLines: type === 'finished' ? finished.map((r) => ({ variantId: Number(r.variantId), lotCode: r.lotCode.trim() || null, mfgDate: r.mfgDate || null, expDate: r.expDate, locationId: Number(r.locationId), qty: Number(r.qty) })) : undefined,
-        rawLines: type === 'raw' ? rawRows.map((r) => ({ rawMaterialId: Number(r.rawMaterialId), qty: Number(r.qty) })) : undefined,
-        expectedDate: type === 'raw' ? expectedDate || null : null,
+        finishedLines: undefined,
+        rawLines: rawRows.map((r) => ({ rawMaterialId: Number(r.rawMaterialId), qty: Number(r.qty) })),
+        expectedDate: expectedDate || null,
       }),
     {
       success: (r) => (r.status === 'pending' ? `Đã tạo phiếu ${r.code} - chờ nhập kho (chưa cộng tồn)` : `Đã tạo phiếu nhập ${r.code}`),
@@ -308,11 +274,11 @@ export default function ReceiptsPage() {
     <>
       <PageHeader
         title="Nhập kho"
-        subtitle="Phiếu nhập thành phẩm, nguyên liệu và tồn nguyên liệu"
+        subtitle="Nhập nguyên liệu từ ngoài; thành phẩm chỉ nhập qua lệnh sản xuất"
         actions={
           <>
             {tab === 'raw' && <Button icon={<Plus size={15} />} onClick={() => setMaterialForm({})}>Thêm nguyên liệu</Button>}
-            <Button variant="primary" icon={<Plus size={15} />} onClick={openForm}>Tạo phiếu nhập</Button>
+            <Button variant="primary" icon={<Plus size={15} />} onClick={openForm}>Tạo phiếu nhập nguyên liệu</Button>
           </>
         }
       />
@@ -348,145 +314,81 @@ export default function ReceiptsPage() {
 
       <Modal
         open={open}
-        title="Tạo phiếu nhập kho"
+        title="Tạo phiếu nhập nguyên liệu"
         width="xl"
         onClose={() => setOpen(false)}
         onSubmit={() => {
           setTouched(true);
           if (sourceValid && linesValid) create.mutate();
         }}
-        footer={<><Button onClick={() => setOpen(false)}>Hủy bỏ</Button><Button type="submit" variant="primary" loading={create.isPending}>{type === 'raw' ? 'Lưu phiếu chờ nhập' : 'Lưu phiếu'}</Button></>}
+        footer={<><Button onClick={() => setOpen(false)}>Hủy bỏ</Button><Button type="submit" variant="primary" loading={create.isPending}>Lưu phiếu chờ nhập</Button></>}
       >
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Loại phiếu" required><Select value={type} onChange={(e) => setType(e.target.value as ReceiptType)}>{enumOptions(receiptTypeLabels)}</Select></Field>
           <Field
             label="Nguồn hàng"
             required
             error={touched && !sourceValid ? 'Vui lòng nhập nguồn hàng' : undefined}
-            tip="Ghi nơi giao hàng cho cửa hàng, ví dụ tên tàu, tên xưởng hoặc người bán."
+            tip="Ghi nơi cung cấp nguyên liệu, ví dụ tên tàu, nhà cung cấp hoặc người bán."
           >
-            <Input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Ví dụ: Xưởng chế biến Hòa Bình" />
+            <Input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Ví dụ: Chợ đầu mối / Nhà cung cấp đá" />
           </Field>
-          {type === 'raw' && (
-            <Field label="Ngày dự kiến về" tip="Phiếu này chỉ là phiếu hẹn, chưa cộng vào kho. Khi hàng về, bấm nút “Nhập kho” ở phiếu để ghi số hàng thật và giá mua." className="sm:col-span-2">
-              <DateInput min={todayISO()} className="sm:w-[200px]" value={expectedDate} onChange={setExpectedDate} />
-            </Field>
-          )}
+          <Field label="Ngày dự kiến về" tip="Phiếu này chỉ là phiếu hẹn, chưa cộng vào kho. Khi hàng về, bấm nút “Nhập kho” ở phiếu để ghi số hàng thật và giá mua.">
+            <DateInput min={todayISO()} className="sm:w-[200px]" value={expectedDate} onChange={setExpectedDate} />
+          </Field>
         </div>
         <div className="mt-4 overflow-x-auto overflow-y-hidden">
-          {type === 'finished' ? (
-            <ul className="space-y-2.5">
-              {finished.map((r, i) => {
-                const patch = (p: Partial<FinishedRow>) => setFinished(finished.map((x) => (x.key === r.key ? { ...x, ...p } : x)));
-                /** Chỗ còn ở vị trí cho dòng này = chỗ trống − số khay các dòng khác đã định để vào cùng vị trí. */
-                const roomFor = (locationId: number) =>
-                  (roomOf.get(locationId) ?? 0) - finished.filter((x) => x.key !== r.key && Number(x.locationId) === locationId).reduce((sum, x) => sum + (Number(x.qty) || 0), 0);
-                const err = touched ? finishedRowErrors(r) : null;
-                return (
-                  <li key={r.key} className="rounded-md border border-line">
-                    <div className="flex items-center gap-2 rounded-t-md border-b border-line bg-rowalt/60 px-3 py-1.5">
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-micro font-semibold text-card">{i + 1}</span>
-                      <span className="text-small font-medium text-ink-muted">Mặt hàng {i + 1}</span>
-                      <span className="ml-auto">
-                        <IconButton label={`Xóa mặt hàng ${i + 1}`} disabled={finished.length === 1} onClick={() => setFinished(finished.filter((x) => x.key !== r.key))}><Trash2 size={14} /></IconButton>
-                      </span>
-                    </div>
-                    <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-12">
-                      <Field label="Quy cách" required className="lg:col-span-7" error={err?.variant}>
-                        <Select value={r.variantId} onChange={(e) => patch({ variantId: e.target.value })}>
-                          <option value="">Chọn...</option>
-                          {variants.map((v) => <option key={v.id} value={v.id}>{v.productName} · {v.packLabel}</option>)}
-                        </Select>
-                      </Field>
-                      <Field
-                        label="Mã lô"
-                        className="lg:col-span-5"
-                        tip={<><span className="block">Không có mã lô thì để trống, máy tự đặt.</span><span className="block">Ví dụ: <b>LOT-261123-01</b> = lô thứ 1 của ngày 23/11/2026.</span></>}
-                      >
-                        <Input placeholder="Tự sinh" value={r.lotCode} onChange={(e) => patch({ lotCode: e.target.value })} />
-                      </Field>
-                      <Field label="Ngày sản xuất" className="lg:col-span-3">
-                        <DateInput max={todayISO()} value={r.mfgDate} onChange={(v) => patch({ mfgDate: v })} />
-                      </Field>
-                      <Field label="Hạn sử dụng" required className="lg:col-span-3" error={err?.expDate}>
-                        <DateInput value={r.expDate} onChange={(v) => patch({ expDate: v })} />
-                      </Field>
-                      <Field label="Số khay" required className="lg:col-span-2" error={err?.qty}>
-                        <Input type="number" min={1} className="text-right" value={r.qty} onChange={(e) => patch({ qty: e.target.value })} />
-                      </Field>
-                      <Field
-                        label="Vị trí"
-                        required
-                        className="lg:col-span-4"
-                        error={err?.location}
-                        tip={<><span className="block">Bấm để xem các kho còn chỗ, rê chuột vào kho để xem các chỗ trong kho.</span><span className="block">Chỉ hiện chỗ còn đủ cho số khay bạn đã nhập.</span></>}
-                      >
-                        <LocationPicker warehouses={warehouses} value={r.locationId} need={Number(r.qty) || 0} roomFor={roomFor} onChange={(id) => patch({ locationId: id })} />
-                      </Field>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <ul className="space-y-2.5">
-              {rawRows.map((r, i) => {
-                const patch = (p: Partial<RawRow>) => setRawRows(rawRows.map((x) => (x.key === r.key ? { ...x, ...p } : x)));
-                const material = rawCatalog.data?.find((m) => String(m.id) === r.rawMaterialId);
-                const unit = material ? unitLabel(material.unit) : '';
-                const duplicate = !!r.rawMaterialId && rawRows.some((x, j) => j < i && x.rawMaterialId === r.rawMaterialId);
-                const err = touched ? rawRowErrors(r, duplicate) : null;
-                return (
-                  <li key={r.key} className="rounded-md border border-line">
-                    <div className="flex items-center gap-2 rounded-t-md border-b border-line bg-rowalt/60 px-3 py-1.5">
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-micro font-semibold text-card">{i + 1}</span>
-                      <span className="text-small font-medium text-ink-muted">Nguyên liệu {i + 1}</span>
-                      <span className="ml-auto">
-                        <IconButton label={`Xóa nguyên liệu ${i + 1}`} disabled={rawRows.length === 1} onClick={() => setRawRows(rawRows.filter((x) => x.key !== r.key))}><Trash2 size={14} /></IconButton>
-                      </span>
-                    </div>
-                    <div className="grid gap-3 p-3 sm:grid-cols-12">
-                      <Field
-                        label="Nguyên liệu"
-                        required
-                        className="sm:col-span-8"
-                        error={err?.material}
-                        hint={material ? <>Đang tồn <span className="font-medium tabular-nums text-ink-muted">{num(material.qtyOnHand)} {unit}</span></> : undefined}
-                      >
-                        <Select value={r.rawMaterialId} onChange={(e) => patch({ rawMaterialId: e.target.value })}>
-                          <option value="">Chọn...</option>
-                          {rawCatalog.data?.filter((m) => m.isActive || String(m.id) === r.rawMaterialId).map((m) => <option key={m.id} value={m.id}>{m.name} ({unitLabel(m.unit)})</option>)}
-                        </Select>
-                      </Field>
-                      <Field
-                        label={unit ? `Số lượng dự kiến (${unit})` : 'Số lượng dự kiến'}
-                        required
-                        className="sm:col-span-4"
-                        error={err?.qty}
-                        tip="Số hàng bạn hẹn nhận. Khi hàng về sẽ ghi số thật, khác số này cũng được."
-                      >
-                        <Input type="number" min={0} step="0.1" className="text-right" placeholder="0" value={r.qty} onChange={(e) => patch({ qty: e.target.value })} />
-                      </Field>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          <ul className="space-y-2.5">
+            {rawRows.map((r, i) => {
+              const patch = (p: Partial<RawRow>) => setRawRows(rawRows.map((x) => (x.key === r.key ? { ...x, ...p } : x)));
+              const material = rawCatalog.data?.find((m) => String(m.id) === r.rawMaterialId);
+              const unit = material ? unitLabel(material.unit) : '';
+              const duplicate = !!r.rawMaterialId && rawRows.some((x, j) => j < i && x.rawMaterialId === r.rawMaterialId);
+              const err = touched ? rawRowErrors(r, duplicate) : null;
+              return (
+                <li key={r.key} className="rounded-md border border-line">
+                  <div className="flex items-center gap-2 rounded-t-md border-b border-line bg-rowalt/60 px-3 py-1.5">
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-micro font-semibold text-card">{i + 1}</span>
+                    <span className="text-small font-medium text-ink-muted">Nguyên liệu {i + 1}</span>
+                    <span className="ml-auto">
+                      <IconButton label={`Xóa nguyên liệu ${i + 1}`} disabled={rawRows.length === 1} onClick={() => setRawRows(rawRows.filter((x) => x.key !== r.key))}><Trash2 size={14} /></IconButton>
+                    </span>
+                  </div>
+                  <div className="grid gap-3 p-3 sm:grid-cols-12">
+                    <Field
+                      label="Nguyên liệu"
+                      required
+                      className="sm:col-span-8"
+                      error={err?.material}
+                      hint={material ? <>Đang tồn <span className="font-medium tabular-nums text-ink-muted">{num(material.qtyOnHand)} {unit}</span></> : undefined}
+                    >
+                      <Select value={r.rawMaterialId} onChange={(e) => patch({ rawMaterialId: e.target.value })}>
+                        <option value="">Chọn...</option>
+                        {rawCatalog.data?.filter((m) => m.isActive || String(m.id) === r.rawMaterialId).map((m) => <option key={m.id} value={m.id}>{m.name} ({unitLabel(m.unit)})</option>)}
+                      </Select>
+                    </Field>
+                    <Field
+                      label={unit ? `Số lượng dự kiến (${unit})` : 'Số lượng dự kiến'}
+                      required
+                      className="sm:col-span-4"
+                      error={err?.qty}
+                      tip="Số hàng bạn hẹn nhận. Khi hàng về sẽ ghi số thật, khác số này cũng được."
+                    >
+                      <Input type="number" min={0} step="0.1" className="text-right" placeholder="0" value={r.qty} onChange={(e) => patch({ qty: e.target.value })} />
+                    </Field>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          <Button icon={<Plus size={14} />} onClick={() => (type === 'finished' ? setFinished([...finished, finishedRow()]) : setRawRows([...rawRows, rawRow()]))}>{type === 'finished' ? 'Thêm mặt hàng' : 'Thêm nguyên liệu'}</Button>
-          {type === 'raw' && (
-            <span className="inline-flex items-center gap-1">
-              <Button variant="ghost" onClick={() => setMaterialForm({ fromReceipt: true })}>+ Tạo nguyên liệu mới</Button>
-              <InfoTip label="Ghi chú tạo nguyên liệu mới">Dùng khi nguyên liệu chưa có trong danh sách chọn. Tạo xong sẽ tự điền vào phiếu.</InfoTip>
-            </span>
-          )}
+          <Button icon={<Plus size={14} />} onClick={() => setRawRows([...rawRows, rawRow()])}>Thêm nguyên liệu</Button>
+          <span className="inline-flex items-center gap-1">
+            <Button variant="ghost" onClick={() => setMaterialForm({ fromReceipt: true })}>+ Tạo nguyên liệu mới</Button>
+            <InfoTip label="Ghi chú tạo nguyên liệu mới">Dùng khi nguyên liệu chưa có trong danh sách chọn. Tạo xong sẽ tự điền vào phiếu.</InfoTip>
+          </span>
         </div>
-        {type === 'finished' && overCapacity.map(([id, qty]) => (
-          <p key={id} className="mt-2 text-small text-red-fg">Vị trí {locationLabel.get(id) ?? id} chỉ còn {num(roomOf.get(id) ?? 0)} khay, đang định nhập {num(qty)} khay.</p>
-        ))}
-        {touched && !linesValid && overCapacity.length === 0 && <p className="mt-2 text-small text-red-fg">{type === 'raw' ? 'Mỗi nguyên liệu cần được chọn (không trùng nhau) và số lượng dự kiến lớn hơn 0.' : 'Mỗi mặt hàng cần đủ thông tin, số khay lớn hơn 0 và hạn sử dụng không trước ngày sản xuất.'}</p>}
+        {touched && !linesValid && <p className="mt-2 text-small text-red-fg">Mỗi nguyên liệu cần được chọn (không trùng nhau) và số lượng dự kiến lớn hơn 0.</p>}
       </Modal>
 
       <RawReceiptCompleteModal receipt={completing} onClose={() => setCompleting(null)} />

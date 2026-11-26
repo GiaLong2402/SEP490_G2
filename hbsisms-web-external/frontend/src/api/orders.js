@@ -18,4 +18,28 @@ export const ordersApi = {
   async cancel(code) {
     return fromOrderDto(await api.post(`/me/orders/${encodeURIComponent(code)}/cancel`))
   },
+
+  /** Tạo / lấy lại link PayOS đúng số tiền cọc (đơn đặt trước). */
+  async createDepositPayosLink(code) {
+    const data = await api.post(`/me/orders/${encodeURIComponent(code)}/deposit-payos-link`)
+    return {
+      payosOrderCode: data.payosOrderCode,
+      amount: data.amount != null ? Number(data.amount) : null,
+      checkoutUrl: data.checkoutUrl || null,
+      qrCode: data.qrCode || null,
+      expiresAt: data.expiresAt || null,
+    }
+  },
+
+  /** Tạo / lấy lại link PayOS tất toán phần còn lại (đơn đặt trước đã đủ hàng). */
+  async createBalancePayosLink(code) {
+    const data = await api.post(`/me/orders/${encodeURIComponent(code)}/balance-payos-link`)
+    return {
+      payosOrderCode: data.payosOrderCode,
+      amount: data.amount != null ? Number(data.amount) : null,
+      checkoutUrl: data.checkoutUrl || null,
+      qrCode: data.qrCode || null,
+      expiresAt: data.expiresAt || null,
+    }
+  },
 }

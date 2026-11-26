@@ -21,6 +21,7 @@ import com.hbsisms.feature.production.ProductionOrder;
 import com.hbsisms.feature.production.ProductionOrderRepository;
 import com.hbsisms.feature.production.ProductionOrderStatus;
 import com.hbsisms.feature.sales.OrderAllocationService;
+import com.hbsisms.feature.sales.PreorderFulfillmentService;
 import com.hbsisms.feature.system.AppConfigService;
 import com.hbsisms.feature.system.AuditLogService;
 import com.hbsisms.feature.user.AppUser;
@@ -98,6 +99,7 @@ public class GoodsReceiptService {
     private final ProductionOrderRepository productionOrderRepository;
     private final UserRepository userRepository;
     private final OrderAllocationService orderAllocationService;
+    private final PreorderFulfillmentService preorderFulfillmentService;
     private final AppConfigService appConfigService;
     private final AuditLogService auditLogService;
     private final Clock clock;
@@ -115,6 +117,7 @@ public class GoodsReceiptService {
             ProductionOrderRepository productionOrderRepository,
             UserRepository userRepository,
             OrderAllocationService orderAllocationService,
+            PreorderFulfillmentService preorderFulfillmentService,
             AppConfigService appConfigService,
             AuditLogService auditLogService,
             Clock clock) {
@@ -130,6 +133,7 @@ public class GoodsReceiptService {
         this.productionOrderRepository = productionOrderRepository;
         this.userRepository = userRepository;
         this.orderAllocationService = orderAllocationService;
+        this.preorderFulfillmentService = preorderFulfillmentService;
         this.appConfigService = appConfigService;
         this.auditLogService = auditLogService;
         this.clock = clock;
@@ -215,14 +219,9 @@ public class GoodsReceiptService {
         receipt.setReceivedAt(now);
 
         if (request.receiptType() == ReceiptType.FINISHED) {
-            receipt.setStatus(ReceiptStatus.COMPLETED);
-            receipt.setCompletedAt(now);
-            receipt.setCompletedBy(actor);
-            receipt = goodsReceiptRepository.saveAndFlush(receipt);
-            List<ReceiptItemResponse> items = receiveFinished(receipt, request.finishedLines(), actorId);
-            // Inter 2: sau nhập TP — phân bổ ưu tiên đơn Paid còn outstanding.
-            orderAllocationService.allocateOutstandingAfterReceipt(actorId);
-            return GoodsReceiptResponse.from(receipt, items);
+            // Thành phẩm chỉ nhập qua lệnh sản xuất — phiếu nhập kho cửa hàng chỉ nhận nguyên liệu.
+            throw ApiException.badRequest(
+                    "Không tạo phiếu nhập thành phẩm tại đây. Thành phẩm nhập qua lệnh sản xuất.");
         }
         if (request.receiptType() == ReceiptType.RAW) {
             // Inter 1 dòng 46: phiếu NVL chờ nhập — chưa cộng tồn.
@@ -512,6 +511,8 @@ public class GoodsReceiptService {
         if (order.getStatus() != ProductionOrderStatus.AWAITING_RECEIPT) {
             throw ApiException.conflict("Lệnh sản xuất không ở trạng thái chờ nhập kho");
         }
+        final Long linkedSalesOrderIdEarly =
+                order.getSalesOrder() == null ? null : order.getSalesOrder().getId();
 
         BigDecimal material = order.getActualMaterialCost() == null ? BigDecimal.ZERO : order.getActualMaterialCost();
         BigDecimal production =
@@ -577,6 +578,7 @@ public class GoodsReceiptService {
         // Phân bổ đơn outstanding sau commit — lỗi bước này không được rollback phiếu nhập TP.
         final Long allocateActorId = actorId;
         final String receiptCode = receipt.getCode();
+        final Long linkedSalesOrderId = linkedSalesOrderIdEarly;
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
@@ -588,6 +590,17 @@ public class GoodsReceiptService {
                                 "allocateOutstandingAfterReceipt after {} failed: {}",
                                 receiptCode,
                                 ex.getMessage());
+                    }
+                    if (linkedSalesOrderId != null) {
+                        try {
+                            preorderFulfillmentService.tryAdvanceToSettlement(linkedSalesOrderId);
+                        } catch (RuntimeException ex) {
+                            log.warn(
+                                    "tryAdvanceToSettlement order {} after {} failed: {}",
+                                    linkedSalesOrderId,
+                                    receiptCode,
+                                    ex.getMessage());
+                        }
                     }
                 }
             });

@@ -86,6 +86,8 @@ app:
       base-url: ${PAYOS_BASE_URL:https://api-merchant.payos.vn}
       return-url: ${PAYOS_RETURN_URL:http://localhost:5173/thanh-toan/ket-qua}
       cancel-url: ${PAYOS_CANCEL_URL:http://localhost:5173/thanh-toan/ket-qua}
+      # Dev: POST /payments/payos/{code}/simulate-paid — tắt trên prod
+      allow-simulate: ${PAYOS_ALLOW_SIMULATE:true}
   inventory:
     expire-job:
       # Daily move of past-HSD available trays → qty_expired (task 38).

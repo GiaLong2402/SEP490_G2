@@ -10,13 +10,18 @@ public interface SalesOrderLineRepository extends JpaRepository<SalesOrderLine, 
 
     List<SalesOrderLine> findByOrder_IdOrderByIdAsc(Long orderId);
 
-    /** Dòng còn thiếu phân bổ — dùng khi nhập thành phẩm ưu tiên đơn Paid. */
+    /**
+     * Dòng còn thiếu phân bổ — ưu tiên sau nhập thành phẩm.
+     * Gồm đơn đã trả đủ ({@code PAID}) và đơn đặt trước đã cọc ({@code DEPOSITED}).
+     */
     @Query("""
             select l from SalesOrderLine l
             join fetch l.order o
             join fetch l.variant
             where l.outstandingQty > 0
-              and o.paymentStatus = com.hbsisms.feature.payment.PaymentStatus.PAID
+              and o.paymentStatus in (
+                    com.hbsisms.feature.payment.PaymentStatus.PAID,
+                    com.hbsisms.feature.payment.PaymentStatus.DEPOSITED)
               and o.state <> com.hbsisms.feature.sales.OrderState.CANCELLED
             order by o.placedAt asc, l.id asc
             """)

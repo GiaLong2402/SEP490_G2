@@ -9,6 +9,8 @@ import java.util.Locale;
 public enum PaymentStatus {
     UNPAID,
     WAITING,
+    /** Đã thu đủ tiền cọc (đơn đặt trước số lượng lớn). */
+    DEPOSITED,
     PAID,
     PARTIAL,
     DEBT,

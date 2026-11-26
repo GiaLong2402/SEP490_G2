@@ -58,6 +58,30 @@ public class AppConfigInventorySeeder implements ApplicationRunner {
                 AppConfigService.SELL_PRICE_MARKUP_PERCENT,
                 String.valueOf(AppConfigService.DEFAULT_SELL_PRICE_MARKUP_PERCENT),
                 "% lời gợi ý giá bán");
+        ensure(
+                AppConfigService.LARGE_ORDER_QTY_THRESHOLD,
+                String.valueOf(AppConfigService.DEFAULT_LARGE_ORDER_QTY_THRESHOLD),
+                "Ngưỡng SL lớn (khay/dòng)");
+        ensure(
+                AppConfigService.LARGE_ORDER_VALUE_THRESHOLD,
+                String.valueOf(AppConfigService.DEFAULT_LARGE_ORDER_VALUE_THRESHOLD),
+                "Ngưỡng SL lớn (tổng VND)");
+        ensure(
+                AppConfigService.DEPOSIT_PERCENT,
+                String.valueOf(AppConfigService.DEFAULT_DEPOSIT_PERCENT),
+                "% cọc mặc định");
+        ensure(
+                AppConfigService.DEPOSIT_PERCENT_MIN,
+                String.valueOf(AppConfigService.DEFAULT_DEPOSIT_PERCENT_MIN),
+                "% cọc tối thiểu (Sales)");
+        ensure(
+                AppConfigService.DEPOSIT_PERCENT_MAX,
+                String.valueOf(AppConfigService.DEFAULT_DEPOSIT_PERCENT_MAX),
+                "% cọc tối đa (Sales)");
+        ensure(
+                AppConfigService.DEPOSIT_PAYMENT_HOURS,
+                String.valueOf(AppConfigService.DEFAULT_DEPOSIT_PAYMENT_HOURS),
+                "Hạn trả cọc (giờ)");
     }
 
     private void ensure(String key, String value, String description) {

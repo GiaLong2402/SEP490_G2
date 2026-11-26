@@ -83,6 +83,7 @@ public class SalesOrderService {
     static {
         MANUAL_NEXT.put(OrderState.PENDING, List.of(OrderState.CONFIRMED));
         MANUAL_NEXT.put(OrderState.CONFIRMED, List.of(OrderState.PREPARING));
+        MANUAL_NEXT.put(OrderState.AWAITING_SETTLEMENT, List.of(OrderState.PREPARING));
         MANUAL_NEXT.put(OrderState.PREPARING, List.of(OrderState.TO_SHIP));
         MANUAL_NEXT.put(OrderState.DELIVERED, List.of(OrderState.COMPLETED));
     }
@@ -105,6 +106,7 @@ public class SalesOrderService {
     private final PayosLinkCanceller payosLinkCanceller;
     private final BusinessCodeService businessCodeService;
     private final AppConfigService appConfigService;
+    private final DepositPolicy depositPolicy;
     private final OrderDetailAssembler orderDetailAssembler;
     private final Clock clock;
 
@@ -127,6 +129,7 @@ public class SalesOrderService {
             PayosLinkCanceller payosLinkCanceller,
             BusinessCodeService businessCodeService,
             AppConfigService appConfigService,
+            DepositPolicy depositPolicy,
             OrderDetailAssembler orderDetailAssembler,
             Clock clock) {
         this.salesOrderRepository = salesOrderRepository;
@@ -147,6 +150,7 @@ public class SalesOrderService {
         this.payosLinkCanceller = payosLinkCanceller;
         this.businessCodeService = businessCodeService;
         this.appConfigService = appConfigService;
+        this.depositPolicy = depositPolicy;
         this.orderDetailAssembler = orderDetailAssembler;
         this.clock = clock;
     }
@@ -685,7 +689,8 @@ public class SalesOrderService {
 
         boolean wasDebt = order.getPaymentStatus() == PaymentStatus.DEBT;
         boolean hadPaid = order.getPaymentStatus() == PaymentStatus.PAID
-                || order.getPaymentStatus() == PaymentStatus.PARTIAL;
+                || order.getPaymentStatus() == PaymentStatus.PARTIAL
+                || order.getPaymentStatus() == PaymentStatus.DEPOSITED;
 
         Long actorId = actor == null ? null : actor.getId();
         orderAllocationService.releaseForOrder(order, actorId, "Huỷ đơn — giải phóng hold");
@@ -748,6 +753,12 @@ public class SalesOrderService {
      */
     static List<OrderState> allowedNextStates(SalesOrder order) {
         if (order.isOverLimit() && order.getApprovedBy() == null) {
+            return List.of();
+        }
+        // Đơn đặt trước chờ cọc: không chuyển tay — chờ thu cọc.
+        if (order.isPreorder()
+                && order.getState() == OrderState.PENDING
+                && order.getPaymentStatus() == PaymentStatus.UNPAID) {
             return List.of();
         }
         List<OrderState> raw = MANUAL_NEXT.getOrDefault(order.getState(), List.of());
@@ -974,7 +985,12 @@ public class SalesOrderService {
                 .toList();
         PricingResultResponse priced = pricingService.resolve(new PricingRequest(
                 customer.getId(), paymentMethod.code(), ZERO, ZERO, pricingLines));
-        assertSufficientStock(priced);
+
+        int maxLineQtyKhay = quote.getLines().stream().mapToInt(QuoteLine::getQtyKhay).max().orElse(0);
+        boolean preorder = depositPolicy.isLargeOrder(maxLineQtyKhay, quote.getTotal());
+        if (!preorder) {
+            assertSufficientStock(priced);
+        }
 
         AppUser placedBy = actorId == null
                 ? null
@@ -1006,6 +1022,17 @@ public class SalesOrderService {
         order.setPlacedBy(placedBy);
         order.setPlacedAt(now);
         order.setNote("Từ báo giá " + quote.getCode());
+        order.setPaidAmount(ZERO);
+
+        if (preorder) {
+            BigDecimal depositPct = depositPolicy.resolveDepositPercent(null);
+            BigDecimal depositAmt = depositPolicy.calculateDepositAmount(quote.getTotal(), depositPct);
+            order.setPreorder(true);
+            order.setDepositPercent(depositPct);
+            order.setDepositAmount(depositAmt);
+            order.setDepositDueAt(depositPolicy.depositDueAt(now));
+            order.setNote("Đặt trước (cọc) từ báo giá " + quote.getCode());
+        }
 
         for (QuoteLine line : quote.getLines()) {
             SalesOrderLine row = new SalesOrderLine();
@@ -1022,7 +1049,14 @@ public class SalesOrderService {
         }
 
         salesOrderRepository.save(order);
-        addEvent(order, "created", "Tạo đơn từ báo giá " + quote.getCode(), placedBy);
+        addEvent(
+                order,
+                "created",
+                preorder
+                        ? "Tạo đơn đặt trước từ báo giá " + quote.getCode()
+                                + " — chờ cọc " + order.getDepositAmount().toPlainString() + " ₫"
+                        : "Tạo đơn từ báo giá " + quote.getCode(),
+                placedBy);
 
         SalesRequest linked = quote.getRequest();
         if (linked != null
@@ -1032,7 +1066,9 @@ public class SalesOrderService {
             linked.setOrderCode(order.getCode());
         }
 
-        if (order.isOverLimit()) {
+        if (preorder) {
+            // Chờ cọc — chưa giữ hàng / chưa xác nhận.
+        } else if (order.isOverLimit()) {
             createOverLimitApproval(order, customer, placedBy);
             addEvent(order, "approval", "Đơn vượt hạn mức, chờ Chủ cửa hàng duyệt", placedBy);
         } else {
@@ -1042,6 +1078,10 @@ public class SalesOrderService {
         Map<String, Object> auditDetail = new HashMap<>();
         auditDetail.put("total", order.getTotal());
         auditDetail.put("sourceQuoteId", quote.getId());
+        auditDetail.put("preorder", preorder);
+        if (preorder) {
+            auditDetail.put("depositAmount", order.getDepositAmount());
+        }
         auditLogService.record(actorId, "create", "sales_order", order.getId(), auditDetail);
 
         return getDetail(order.getId());

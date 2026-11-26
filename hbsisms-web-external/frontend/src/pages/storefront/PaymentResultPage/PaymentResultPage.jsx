@@ -153,7 +153,7 @@ export default function PaymentResultPage() {
       </ResultCard>
     )
   } else if (status === 'PAID') {
-    content = <PaymentSuccessCard order={order} />
+    content = <PaymentSuccessCard order={order} amount={result?.amount} />
   } else if (status === 'EXPIRED') {
     content = (
       <ResultCard tone="warning" icon={<ClockIcon size={34} />} title="Đơn đã hết hạn thanh toán">

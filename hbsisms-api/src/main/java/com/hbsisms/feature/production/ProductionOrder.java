@@ -4,6 +4,7 @@ import com.hbsisms.common.persistence.AuditableEntity;
 import com.hbsisms.feature.catalog.Product;
 import com.hbsisms.feature.catalog.ProductVariant;
 import com.hbsisms.feature.inventory.GoodsReceipt;
+import com.hbsisms.feature.sales.SalesOrder;
 import com.hbsisms.feature.user.AppUser;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -100,6 +101,11 @@ public class ProductionOrder extends AuditableEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private ProductionOrderStatus status = ProductionOrderStatus.DRAFT;
+
+    /** Đơn đặt trước (cọc) gắn với lệnh SX phần thiếu — null nếu SX độc lập. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sales_order_id")
+    private SalesOrder salesOrder;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")

@@ -146,6 +146,29 @@ public class SalesOrder extends AuditableEntity {
     @Column(name = "hold_expires_at")
     private Instant holdExpiresAt;
 
+    /** Đơn đặt trước số lượng lớn — phải cọc trước khi SX / giữ hàng. */
+    @Column(name = "is_preorder", nullable = false)
+    private boolean preorder;
+
+    /** Số tiền cọc yêu cầu (VND). 0 nếu không phải preorder. */
+    @Column(name = "deposit_amount", nullable = false, precision = 14, scale = 2)
+    private BigDecimal depositAmount = BigDecimal.ZERO;
+
+    /** % cọc đã áp dụng khi tạo đơn (snapshot). */
+    @Column(name = "deposit_percent", nullable = false, precision = 5, scale = 2)
+    private BigDecimal depositPercent = BigDecimal.ZERO;
+
+    /** Hạn trả cọc; quá hạn → hủy đơn đặt trước. */
+    @Column(name = "deposit_due_at")
+    private Instant depositDueAt;
+
+    /**
+     * Tổng đã thu SUCCESS (IN − REFUND). Đồng bộ khi ghi payment;
+     * FE vẫn có thể tính lại từ danh sách payment.
+     */
+    @Column(name = "paid_amount", nullable = false, precision = 14, scale = 2)
+    private BigDecimal paidAmount = BigDecimal.ZERO;
+
     @Column(columnDefinition = "text")
     private String note;
 

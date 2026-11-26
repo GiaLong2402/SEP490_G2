@@ -74,6 +74,7 @@ class PayosReturnServiceTest {
                 paymentRepository,
                 salesOrderRepository,
                 orderEventRepository,
+                org.mockito.Mockito.mock(com.hbsisms.feature.sales.PreorderFulfillmentService.class),
                 Clock.fixed(NOW, ZoneOffset.UTC));
         service = new PayosReturnService(
                 properties,
@@ -323,7 +324,11 @@ class PayosReturnServiceTest {
                 off,
                 payosClient,
                 new PayosPaymentCompleter(
-                        paymentRepository, salesOrderRepository, orderEventRepository, Clock.fixed(NOW, ZoneOffset.UTC)),
+                        paymentRepository,
+                        salesOrderRepository,
+                        orderEventRepository,
+                        org.mockito.Mockito.mock(com.hbsisms.feature.sales.PreorderFulfillmentService.class),
+                        Clock.fixed(NOW, ZoneOffset.UTC)),
                 paymentRepository,
                 salesOrderService,
                 orderEventRepository,

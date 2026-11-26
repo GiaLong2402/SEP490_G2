@@ -1,6 +1,7 @@
 package com.hbsisms.feature.production;
 
 import jakarta.persistence.LockModeType;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -53,4 +54,6 @@ public interface ProductionOrderRepository extends JpaRepository<ProductionOrder
             """)
     Page<ProductionOrder> search(
             @Param("q") String q, @Param("status") ProductionOrderStatus status, Pageable pageable);
+
+    List<ProductionOrder> findBySalesOrder_Id(Long salesOrderId);
 }

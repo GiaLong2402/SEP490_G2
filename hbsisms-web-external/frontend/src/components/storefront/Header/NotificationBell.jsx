@@ -19,6 +19,7 @@ const NOTIFICATION_ICONS = {
   'bulk-request': iconBulkRequest,
   'quote-sent': iconBulkRequest,
   'payment-success': iconPaymentSuccess,
+  'settlement-ready': iconPaymentSuccess,
   'order-completed': iconOrderCompleted,
   'review-request': iconReviewRequest,
 }

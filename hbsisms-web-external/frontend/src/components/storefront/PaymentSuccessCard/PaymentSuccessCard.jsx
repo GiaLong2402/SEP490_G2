@@ -8,17 +8,30 @@ import { formatSchedule } from '@/utils/date'
 /**
  * Thẻ "Thanh toán thành công" — dùng ở trang kết quả PayOS.
  * order: đơn đã qua mapper (api/mappers/order.js). Style: .checkout-done / .paid-info (styles/shared/result-card.css)
+ * amount: số tiền giao dịch vừa trả (cọc hoặc full) từ GET /payments/payos/return — ưu tiên hơn order.total.
  */
-export default function PaymentSuccessCard({ order }) {
+export default function PaymentSuccessCard({ order, amount }) {
+  const isDepositOnly = Boolean(order?.isDeposited && !order?.isPaid)
+  const displayAmount = amount ?? order?.paidAmount ?? (isDepositOnly ? order?.depositAmount : null) ?? order?.total
+
   return (
     <div className="checkout-done checkout-done--paid">
       <span className="checkout-done__icon" aria-hidden="true">
         <CheckIcon size={36} />
       </span>
-      <h2>Thanh toán thành công</h2>
+      <h2>{isDepositOnly ? 'Đã thanh toán tiền cọc' : 'Thanh toán thành công'}</h2>
       <p>
-        Cảm ơn bạn! Đơn <strong>{order.displayCode}</strong> đã được ghi nhận, Hòa Bình sẽ chuẩn bị hàng theo thời
-        gian bạn chọn.
+        {isDepositOnly ? (
+          <>
+            Cảm ơn bạn! Đơn <strong>{order.displayCode}</strong> đã nhận cọc. Hòa Bình sẽ giữ hàng / chuẩn bị sản xuất
+            theo lịch bạn chọn. Phần còn lại thanh toán khi tất toán.
+          </>
+        ) : (
+          <>
+            Cảm ơn bạn! Đơn <strong>{order.displayCode}</strong> đã được ghi nhận, Hòa Bình sẽ chuẩn bị hàng theo thời
+            gian bạn chọn.
+          </>
+        )}
       </p>
 
       <dl className="paid-info">
@@ -27,8 +40,8 @@ export default function PaymentSuccessCard({ order }) {
           <dd>{order.displayCode}</dd>
         </div>
         <div>
-          <dt>Số tiền</dt>
-          <dd className="paid-info__amount">{formatPrice(order.total)}</dd>
+          <dt>{isDepositOnly ? 'Tiền cọc' : 'Số tiền'}</dt>
+          <dd className="paid-info__amount">{formatPrice(displayAmount)}</dd>
         </div>
         <div>
           <dt>Phương thức</dt>

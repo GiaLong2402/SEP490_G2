@@ -50,14 +50,30 @@ export const staffOrderTypeLabels: Record<string, string> = Object.fromEntries(
   staffOrderTypes.map((t) => [t, orderTypeLabels[t]]),
 );
 
-export type OrderState = 'pending' | 'confirmed' | 'preparing' | 'to_ship' | 'partial' | 'delivered' | 'completed' | 'cancelled' | 'expired';
+export type OrderState =
+  | 'pending'
+  | 'confirmed'
+  | 'in_production'
+  | 'awaiting_settlement'
+  | 'preparing'
+  | 'to_ship'
+  | 'partial'
+  | 'delivered'
+  | 'completed'
+  | 'cancelled'
+  | 'expired';
 export const orderStateMeta: Meta<OrderState> = {
-  pending: { label: 'Chờ xác nhận', tone: 'amber' }, confirmed: { label: 'Đã xác nhận', tone: 'blue' }, preparing: { label: 'Đang chuẩn bị', tone: 'blue' },
+  pending: { label: 'Chờ xác nhận', tone: 'amber' },
+  confirmed: { label: 'Đã xác nhận', tone: 'blue' },
+  in_production: { label: 'Đang sản xuất', tone: 'amber' },
+  awaiting_settlement: { label: 'Chờ tất toán', tone: 'amber' },
+  preparing: { label: 'Đang chuẩn bị', tone: 'blue' },
   to_ship: { label: 'Chờ giao', tone: 'blue' },
   // Legacy: giao dở — UI không còn “giao một phần”, hiện gần Chờ giao.
   partial: { label: 'Chờ giao', tone: 'blue' },
   delivered: { label: 'Đã giao', tone: 'green' },
-  completed: { label: 'Hoàn tất', tone: 'green' }, cancelled: { label: 'Đã hủy', tone: 'neutral' },
+  completed: { label: 'Hoàn tất', tone: 'green' },
+  cancelled: { label: 'Đã hủy', tone: 'neutral' },
   expired: { label: 'Hết hạn giữ hàng', tone: 'neutral' },
 };
 
@@ -66,19 +82,34 @@ export const paymentMethodLabels: Record<PaymentMethod, string> = {
   cash: 'Tiền mặt', payos: 'PayOS', bank_transfer: 'Chuyển khoản', cod: 'COD', credit_net: 'Công nợ (NET)',
 };
 
-export type PaymentStatus = 'unpaid' | 'waiting' | 'paid' | 'partial' | 'debt' | 'diff' | 'refund_pending' | 'refunded';
+export type PaymentStatus =
+  | 'unpaid'
+  | 'waiting'
+  | 'deposited'
+  | 'paid'
+  | 'partial'
+  | 'debt'
+  | 'diff'
+  | 'refund_pending'
+  | 'refunded';
 export const paymentStatusMeta: Meta<PaymentStatus> = {
-  unpaid: { label: 'Chưa thu', tone: 'neutral' }, waiting: { label: 'Chờ thanh toán', tone: 'amber' }, paid: { label: 'Đã thu', tone: 'green' },
+  unpaid: { label: 'Chưa thu', tone: 'neutral' },
+  waiting: { label: 'Chờ thanh toán', tone: 'amber' },
+  deposited: { label: 'Đã cọc', tone: 'blue' },
+  paid: { label: 'Đã thu', tone: 'green' },
   // Legacy DB vẫn có partial; UI không còn “thu một phần” — hiện như chưa thu đủ.
-  partial: { label: 'Chưa thu', tone: 'neutral' }, debt: { label: 'Công nợ', tone: 'blue' }, diff: { label: 'Lệch tiền', tone: 'red' },
-  refund_pending: { label: 'Chờ hoàn tiền', tone: 'amber' }, refunded: { label: 'Đã hoàn', tone: 'neutral' },
+  partial: { label: 'Chưa thu', tone: 'neutral' },
+  debt: { label: 'Công nợ', tone: 'blue' },
+  diff: { label: 'Lệch tiền', tone: 'red' },
+  refund_pending: { label: 'Chờ hoàn tiền', tone: 'amber' },
+  refunded: { label: 'Đã hoàn', tone: 'neutral' },
 };
 /**
  * Filter danh sách đơn: bỏ `diff` (BE ít gán) và `partial` (không thu một phần nữa).
  * Giữ waiting/debt/refund_* vì vẫn phát sinh từ web, nợ cũ, hủy/hoàn.
  */
 export const orderListPaymentStatuses: PaymentStatus[] = [
-  'unpaid', 'waiting', 'paid', 'debt', 'refund_pending', 'refunded',
+  'unpaid', 'waiting', 'deposited', 'paid', 'debt', 'refund_pending', 'refunded',
 ];
 export const orderListPaymentStatusMeta: Record<string, { label: string; tone: Tone }> = Object.fromEntries(
   orderListPaymentStatuses.map((s) => [s, paymentStatusMeta[s]]),
@@ -89,7 +120,16 @@ export const orderListPaymentStatusMeta: Record<string, { label: string; tone: T
  * Enum gốc vẫn giữ để hiển thị dữ liệu cũ nếu có.
  */
 export const orderListOrderStates: OrderState[] = [
-  'pending', 'confirmed', 'preparing', 'to_ship', 'delivered', 'completed', 'cancelled', 'expired',
+  'pending',
+  'confirmed',
+  'in_production',
+  'awaiting_settlement',
+  'preparing',
+  'to_ship',
+  'delivered',
+  'completed',
+  'cancelled',
+  'expired',
 ];
 export const orderListOrderStateMeta: Record<string, { label: string; tone: Tone }> = Object.fromEntries(
   orderListOrderStates.map((s) => [s, orderStateMeta[s]]),

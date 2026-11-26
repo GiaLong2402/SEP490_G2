@@ -67,6 +67,11 @@ public class Payment {
     @Column(nullable = false, length = 10)
     private PayDirection direction = PayDirection.IN;
 
+    /** Cọc / tất toán / thu nợ / hoàn / thu đơn thường. */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private PaymentPurpose purpose = PaymentPurpose.ORDER;
+
     @Column(nullable = false, precision = 14, scale = 2)
     private BigDecimal amount;
 

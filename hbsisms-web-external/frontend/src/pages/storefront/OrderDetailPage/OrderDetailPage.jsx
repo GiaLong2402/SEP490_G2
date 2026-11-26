@@ -37,6 +37,7 @@ import { formatPrice } from '@/utils/formatPrice'
 /** Bước hiện tại trên hành trình theo trạng thái hiển thị */
 const JOURNEY_STEP = {
   awaiting_payment: 0,
+  awaiting_settlement: 1,
   preparing: 2,
   shipping: 3,
   completed: 4,
@@ -46,11 +47,19 @@ const JOURNEY_STEP = {
 
 const HEADLINE = {
   awaiting_payment: 'Đơn hàng đang chờ bạn thanh toán',
+  awaiting_settlement: 'Hàng đã sẵn sàng — vui lòng tất toán phần còn lại',
   preparing: 'Cửa hàng đang sơ chế và đóng khay',
   shipping: 'Đơn hàng đang trên đường đến bạn',
   completed: 'Đơn hàng đã hoàn tất',
   cancelled: 'Đơn hàng đã bị hủy',
   expired: 'Đơn đã hết hạn thanh toán',
+}
+
+function awaitingHeadline(order) {
+  if (order.isPreorder && order.paymentStatus === 'UNPAID') {
+    return 'Đơn đặt trước đang chờ bạn thanh toán tiền cọc'
+  }
+  return HEADLINE.awaiting_payment
 }
 
 function journeySteps(isDelivery) {
@@ -105,7 +114,18 @@ function OrderDetail({ order, onChanged }) {
   const stepTimes = [order.placedAt, order.payment?.paidAt]
   const schedule = formatSchedule(order.schedule)
   const awaitingPayment = uiStatus === 'awaiting_payment' && !checking
+  const awaitingSettlement = uiStatus === 'awaiting_settlement'
+  const awaitingDeposit = awaitingPayment && order.isPreorder && order.paymentStatus === 'UNPAID'
   const canCancel = order.canCancel && !checking
+  const depositDue = order.depositDueAt || order.holdExpiresAt
+  const remainingBalance = Math.max(0, order.total - (order.paidAmount || 0))
+  const payAmount = awaitingDeposit && order.depositAmount > 0 ? order.depositAmount : order.total
+  const remainingAfterDeposit =
+    awaitingDeposit && order.depositAmount > 0
+      ? Math.max(0, order.total - order.depositAmount)
+      : awaitingSettlement
+        ? remainingBalance
+        : 0
 
   const nextChange = uiStatus === 'awaiting_payment' ? nextPaymentPhaseAt(order.holdExpiresAt, now) : null
   useEffect(() => {
@@ -153,6 +173,14 @@ function OrderDetail({ order, onChanged }) {
             <span className="order-status order-status--warning">
               <ClockIcon size={16} /> {order.paymentStatus === 'REFUNDED' ? 'Đã hoàn tiền' : 'Chờ hoàn tiền'}
             </span>
+          ) : awaitingDeposit ? (
+            <span className="order-status order-status--warning">
+              <ClockIcon size={16} /> Chờ thanh toán cọc
+            </span>
+          ) : order.isDeposited ? (
+            <span className="order-status order-status--info">
+              <CheckIcon size={16} /> Đã cọc
+            </span>
           ) : uiStatus === 'awaiting_payment' ? (
             <span className="order-status order-status--warning">
               <ClockIcon size={16} /> Chưa thanh toán
@@ -176,7 +204,11 @@ function OrderDetail({ order, onChanged }) {
                 ? 'Đang kiểm tra thanh toán'
                 : refund
                   ? 'Đơn đã hủy, cửa hàng sẽ hoàn tiền cho bạn'
-                  : HEADLINE[uiStatus]}
+                  : uiStatus === 'awaiting_payment'
+                    ? awaitingHeadline(order)
+                    : order.isDeposited || order.state === 'IN_PRODUCTION'
+                      ? 'Đã nhận cọc — cửa hàng đang chuẩn bị / sản xuất'
+                      : HEADLINE[uiStatus]}
             </strong>
             {checking && <span>Nếu bạn đã chuyển khoản, vui lòng chờ. Đừng chuyển lại lần nữa.</span>}
             {schedule && !checking && uiStatus !== 'cancelled' && uiStatus !== 'expired' && (
@@ -184,7 +216,10 @@ function OrderDetail({ order, onChanged }) {
                 {order.isDelivery ? 'Dự kiến giao' : 'Hẹn lấy hàng'}: {schedule}
               </span>
             )}
-            {awaitingPayment && order.holdExpiresAt && (
+            {awaitingDeposit && depositDue && (
+              <span>Hạn thanh toán cọc tới {formatDateTime(depositDue)}</span>
+            )}
+            {!awaitingDeposit && awaitingPayment && order.holdExpiresAt && (
               <span>Hàng được giữ tới {formatDateTime(order.holdExpiresAt)}</span>
             )}
           </div>
@@ -299,13 +334,17 @@ function OrderDetail({ order, onChanged }) {
               <strong>
                 {order.isPaid
                   ? 'Đã thanh toán'
-                  : refund
-                    ? order.paymentStatus === 'REFUNDED'
-                      ? 'Đã hoàn tiền'
-                      : 'Đã nhận tiền, chờ hoàn tiền'
-                    : uiStatus === 'cancelled'
-                      ? 'Không thanh toán'
-                      : 'Chưa thanh toán'}
+                  : order.isDeposited
+                    ? 'Đã thanh toán cọc'
+                    : refund
+                      ? order.paymentStatus === 'REFUNDED'
+                        ? 'Đã hoàn tiền'
+                        : 'Đã nhận tiền, chờ hoàn tiền'
+                      : uiStatus === 'cancelled'
+                        ? 'Không thanh toán'
+                        : awaitingDeposit
+                          ? 'Chờ thanh toán cọc'
+                          : 'Chưa thanh toán'}
               </strong>
               <span>Chuyển khoản qua PayOS</span>
               {order.payment?.paidAt && <span>{formatDateTime(order.payment.paidAt)}</span>}
@@ -334,9 +373,46 @@ function OrderDetail({ order, onChanged }) {
               <dt>Phí giao hàng</dt>
               <dd>{order.shippingFee ? formatPrice(order.shippingFee) : 'Miễn phí'}</dd>
             </div>
-            <div className="od-sum__total">
-              <dt>Tổng thanh toán</dt>
+            <div>
+              <dt>Tổng đơn</dt>
               <dd>{formatPrice(order.total)}</dd>
+            </div>
+            {order.isPreorder && order.depositAmount > 0 && (
+              <>
+                <div>
+                  <dt>
+                    Tiền cọc
+                    {order.depositPercent > 0 ? ` (${order.depositPercent}%)` : ''}
+                  </dt>
+                  <dd>{formatPrice(order.depositAmount)}</dd>
+                </div>
+                {(awaitingDeposit || awaitingSettlement) && (
+                  <div>
+                    <dt>{awaitingSettlement ? 'Còn lại cần tất toán' : 'Còn lại sau cọc'}</dt>
+                    <dd>{formatPrice(remainingAfterDeposit)}</dd>
+                  </div>
+                )}
+              </>
+            )}
+            <div className="od-sum__total">
+              <dt>
+                {awaitingDeposit
+                  ? 'Cần thanh toán ngay (cọc)'
+                  : awaitingSettlement
+                    ? 'Cần tất toán ngay'
+                    : 'Tổng thanh toán'}
+              </dt>
+              <dd>
+                {formatPrice(
+                  awaitingDeposit
+                    ? payAmount
+                    : awaitingSettlement
+                      ? remainingBalance
+                      : order.isPaid
+                        ? order.total
+                        : remainingBalance || order.total,
+                )}
+              </dd>
             </div>
           </dl>
         </div>
@@ -348,19 +424,29 @@ function OrderDetail({ order, onChanged }) {
           <HeadsetIcon size={24} />
         </span>
         <div className="od-help__text">
-          <strong>{awaitingPayment ? 'Hoàn tất thanh toán để cửa hàng chuẩn bị hàng' : 'Cần hỗ trợ với đơn hàng?'}</strong>
+          <strong>
+            {awaitingDeposit
+              ? 'Thanh toán tiền cọc để cửa hàng giữ hàng và sản xuất phần thiếu'
+              : awaitingPayment
+                ? 'Hoàn tất thanh toán để cửa hàng chuẩn bị hàng'
+                : 'Cần hỗ trợ với đơn hàng?'}
+          </strong>
           <span>
             {checking
               ? 'Hệ thống đang kiểm tra giao dịch (khoảng 2 phút). Nếu bạn chưa chuyển khoản, đơn sẽ tự hủy.'
               : refund
                 ? 'Cửa hàng đã nhận tiền nhưng đơn không thể giao. Cửa hàng sẽ liên hệ để hoàn tiền cho bạn.'
-                : canCancel
-                  ? 'Bạn có thể hủy đơn khi chưa thanh toán.'
-                  : uiStatus === 'cancelled' || uiStatus === 'expired'
-                    ? uiStatus === 'expired'
-                      ? 'Đơn hết hạn thanh toán, hàng đã trả kho. Bạn có thể đặt lại đơn mới.'
-                      : 'Đơn đã hủy. Liên hệ cửa hàng nếu bạn cần hỗ trợ thêm.'
-                    : 'Đơn đã thanh toán không tự hủy được — liên hệ cửa hàng nếu cần đổi hoặc hủy.'}
+                  : awaitingSettlement
+                    ? 'Hàng đã đủ. Thanh toán phần còn lại để cửa hàng chuẩn bị giao.'
+                    : canCancel
+                      ? awaitingDeposit
+                        ? 'Bạn có thể hủy đơn khi chưa thanh toán cọc.'
+                        : 'Bạn có thể hủy đơn khi chưa thanh toán.'
+                      : uiStatus === 'cancelled' || uiStatus === 'expired'
+                        ? uiStatus === 'expired'
+                          ? 'Đơn hết hạn thanh toán, hàng đã trả kho. Bạn có thể đặt lại đơn mới.'
+                          : 'Đơn đã hủy. Liên hệ cửa hàng nếu bạn cần hỗ trợ thêm.'
+                        : 'Đơn đã thanh toán không tự hủy được — liên hệ cửa hàng nếu cần đổi hoặc hủy.'}
           </span>
         </div>
         <div className="od-help__actions">
@@ -374,9 +460,9 @@ function OrderDetail({ order, onChanged }) {
               <ClipboardIcon size={18} /> Xem biên lai
             </Link>
           )}
-          {awaitingPayment && order.payment?.payosOrderCode ? (
+          {awaitingPayment || awaitingSettlement ? (
             <Link to={resumePaymentPath(order.code)} className="btn btn--primary btn--pill">
-              Thanh toán ngay
+              {awaitingDeposit ? 'Thanh toán cọc' : awaitingSettlement ? 'Tất toán PayOS' : 'Thanh toán ngay'}
             </Link>
           ) : (
             <Link to={ROUTES.CONTACT} className="btn btn--primary btn--pill">

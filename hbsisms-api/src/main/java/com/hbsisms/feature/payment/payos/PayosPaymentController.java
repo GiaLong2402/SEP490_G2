@@ -19,10 +19,15 @@ public class PayosPaymentController {
 
     private final PayosLinkService payosLinkService;
     private final PayosReturnService payosReturnService;
+    private final PayosSimulateService payosSimulateService;
 
-    public PayosPaymentController(PayosLinkService payosLinkService, PayosReturnService payosReturnService) {
+    public PayosPaymentController(
+            PayosLinkService payosLinkService,
+            PayosReturnService payosReturnService,
+            PayosSimulateService payosSimulateService) {
         this.payosLinkService = payosLinkService;
         this.payosReturnService = payosReturnService;
+        this.payosSimulateService = payosSimulateService;
     }
 
     @GetMapping("/return")
@@ -41,5 +46,18 @@ public class PayosPaymentController {
             throw ApiException.forbidden("Chưa đăng nhập");
         }
         return payosLinkService.getActiveLink(payosOrderCode, user.id());
+    }
+
+    /**
+     * Dev/sandbox: giả lập thanh toán thành công (không quét QR).
+     * Tắt bằng {@code app.payment.payos.allow-simulate=false}.
+     */
+    @PostMapping("/{payosOrderCode}/simulate-paid")
+    public PayosReturnResponse simulatePaid(
+            @AuthenticationPrincipal AuthUser user, @PathVariable long payosOrderCode) {
+        if (user == null) {
+            throw ApiException.forbidden("Chưa đăng nhập");
+        }
+        return payosSimulateService.simulatePaid(user.id(), payosOrderCode);
     }
 }
