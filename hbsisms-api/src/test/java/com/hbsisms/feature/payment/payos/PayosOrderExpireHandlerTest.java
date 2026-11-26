@@ -14,11 +14,15 @@ import com.hbsisms.feature.payment.Payment;
 import com.hbsisms.feature.payment.PaymentMethod;
 import com.hbsisms.feature.payment.PaymentRepository;
 import com.hbsisms.feature.payment.PaymentStatus;
+import com.hbsisms.feature.sales.Delivery;
+import com.hbsisms.feature.sales.DeliveryRepository;
+import com.hbsisms.feature.sales.DeliveryState;
 import com.hbsisms.feature.sales.OrderAllocationService;
 import com.hbsisms.feature.sales.OrderEvent;
 import com.hbsisms.feature.sales.OrderEventRepository;
 import com.hbsisms.feature.sales.OrderState;
 import com.hbsisms.feature.sales.SalesOrder;
+import com.hbsisms.feature.sales.SaleChannel;
 import com.hbsisms.feature.sales.SalesOrderRepository;
 import com.hbsisms.feature.system.AppConfigService;
 import java.math.BigDecimal;
@@ -54,6 +58,8 @@ class PayosOrderExpireHandlerTest {
     private AppConfigService appConfigService;
     @Mock
     private PayosAmountMismatchRecorder mismatchRecorder;
+    @Mock
+    private DeliveryRepository deliveryRepository;
 
     private PayosOrderExpireHandler handler;
 
@@ -75,7 +81,8 @@ class PayosOrderExpireHandlerTest {
                 orderEventRepository,
                 orderAllocationService,
                 appConfigService,
-                mismatchRecorder);
+                mismatchRecorder,
+                deliveryRepository);
     }
 
     @Test
@@ -230,6 +237,48 @@ class PayosOrderExpireHandlerTest {
         assertThat(payment.getStatus()).isEqualTo(PayTxnStatus.CANCELLED);
         assertThat(payment.getNote()).contains("lệch số tiền"); // không bị ghi đè bằng "Hết hạn thanh toán"
         verify(orderAllocationService).releaseForOrder(any(), any(), any());
+    }
+
+    @Test
+    void expire_onlineOrder_closesReadyDeliveryAsFailed() {
+        SalesOrder order = unpaidOrder(9L);
+        Payment payment = pendingPayos(order, 42L, "10000");
+        Delivery pickup = delivery(DeliveryState.READY);
+        Delivery done = delivery(DeliveryState.DELIVERED);
+        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(9L)).thenReturn(List.of(payment));
+        when(payosClient.getPaymentRequest(42L))
+                .thenReturn(Optional.of(new PayosPaymentInfoResult(42L, 0, "NOT_FOUND", null)));
+        when(appConfigService.paymentHoldMinutes()).thenReturn(15);
+        when(deliveryRepository.findByOrder_IdOrderByIdAsc(9L)).thenReturn(List.of(pickup, done));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(salesOrderRepository.save(any(SalesOrder.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderEventRepository.save(any(OrderEvent.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThat(handler.expireIfNeeded(order)).isTrue();
+        assertThat(order.getState()).isEqualTo(OrderState.CANCELLED);
+        assertThat(pickup.getState()).as("đợt checkout tạo sẵn không còn Sẵn sàng").isEqualTo(DeliveryState.FAILED);
+        assertThat(done.getState()).isEqualTo(DeliveryState.DELIVERED);
+        verify(deliveryRepository).save(pickup);
+    }
+
+    @Test
+    void expire_salesChannelOrder_expiresWithoutTouchingDeliveries() {
+        SalesOrder order = unpaidOrder(9L);
+        order.setChannel(SaleChannel.PHONE);
+        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(9L)).thenReturn(List.of());
+        when(appConfigService.salesUnpaidHoldHours()).thenReturn(24);
+        when(salesOrderRepository.save(any(SalesOrder.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderEventRepository.save(any(OrderEvent.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThat(handler.expireIfNeeded(order)).isTrue();
+        assertThat(order.getState()).isEqualTo(OrderState.EXPIRED);
+        verify(deliveryRepository, never()).findByOrder_IdOrderByIdAsc(any());
+    }
+
+    private static Delivery delivery(DeliveryState state) {
+        Delivery d = new Delivery();
+        d.setState(state);
+        return d;
     }
 
     private static SalesOrder unpaidOrder(long id) {

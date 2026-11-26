@@ -2,6 +2,9 @@ package com.hbsisms.feature.dashboard;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.hbsisms.feature.approval.ApprovalTaskRepository;
@@ -16,7 +19,9 @@ import com.hbsisms.feature.inventory.Stock;
 import com.hbsisms.feature.inventory.StockRepository;
 import com.hbsisms.feature.payment.CustomerDebtLedger;
 import com.hbsisms.feature.payment.CustomerDebtLedgerRepository;
+import com.hbsisms.feature.sales.Delivery;
 import com.hbsisms.feature.sales.DeliveryRepository;
+import com.hbsisms.feature.sales.DeliveryState;
 import com.hbsisms.feature.sales.SalesOrderRepository;
 import com.hbsisms.feature.system.AppConfigService;
 import com.hbsisms.security.AuthUser;
@@ -32,6 +37,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 
 @ExtendWith(MockitoExtension.class)
 class DashboardServiceTest {
@@ -173,5 +180,25 @@ class DashboardServiceTest {
             throw new IllegalStateException(ex);
         }
         return e;
+    }
+
+    /** "Giao hàng hôm nay" dùng bộ lọc màn Giao hàng — không lấy thẳng mọi đợt theo ngày (đợt của đơn đã hủy). */
+    @Test
+    @SuppressWarnings("unchecked")
+    void deliveriesToday_usesDeliveryBoardFilter() {
+        Delivery ready = new Delivery();
+        ready.setCode("DL-2026-0020");
+        ready.setState(DeliveryState.READY);
+        Delivery done = new Delivery();
+        done.setCode("DL-2026-0021");
+        done.setState(DeliveryState.DELIVERED);
+        when(deliveryRepository.findAll(any(Specification.class), any(Sort.class))).thenReturn(List.of(ready, done));
+
+        DashboardSummaryResponse res = service.summary(new AuthUser(1L, "kho", "warehouse", Set.of("inventory")));
+
+        assertThat(res.deliveries().today()).isEqualTo(2);
+        assertThat(res.deliveries().items()).extracting(DashboardSummaryResponse.DeliveryItem::code)
+                .containsExactly("DL-2026-0020");
+        verify(deliveryRepository, never()).findByScheduledDateOrderByIdAsc(any());
     }
 }

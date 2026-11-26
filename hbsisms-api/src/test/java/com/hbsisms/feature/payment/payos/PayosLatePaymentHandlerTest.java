@@ -15,6 +15,9 @@ import com.hbsisms.feature.payment.PaymentRepository;
 import com.hbsisms.feature.payment.PaymentStatus;
 import com.hbsisms.feature.payment.payos.dto.PayosWebhookEnvelope;
 import com.hbsisms.feature.sales.AllocationStatus;
+import com.hbsisms.feature.sales.Delivery;
+import com.hbsisms.feature.sales.DeliveryRepository;
+import com.hbsisms.feature.sales.DeliveryState;
 import com.hbsisms.feature.sales.OrderAllocationService;
 import com.hbsisms.feature.sales.OrderEvent;
 import com.hbsisms.feature.sales.OrderEventRepository;
@@ -53,6 +56,8 @@ class PayosLatePaymentHandlerTest {
     private PaymentRepository paymentRepository;
     @Mock
     private OwnerNotifier ownerNotifier;
+    @Mock
+    private DeliveryRepository deliveryRepository;
 
     private PayosLatePaymentHandler handler;
 
@@ -69,7 +74,8 @@ class PayosLatePaymentHandlerTest {
                 salesOrderRepository,
                 orderEventRepository,
                 paymentRepository,
-                ownerNotifier);
+                ownerNotifier,
+                deliveryRepository);
     }
 
     @Test
@@ -92,6 +98,27 @@ class PayosLatePaymentHandlerTest {
         assertThat(payment.getRawPayload()).doesNotContainKey("needsRefund");
         assertThat(eventTypes()).contains("paid", "late_paid_reheld").doesNotContain("needs_refund");
         verify(ownerNotifier, never()).notifyOwners(any(), any(), any(), any());
+    }
+
+    @Test
+    void handleLatePaid_expiredOrder_fullHold_reopensDeliveryClosedByExpiry() {
+        SalesOrder order = cancelledOrder(9L);
+        Payment payment = cancelledPayos(order, 42L);
+        Delivery pickup = new Delivery();
+        pickup.setState(DeliveryState.FAILED);
+        stubSaves();
+        when(orderEventRepository.existsByOrder_IdAndEventType(9L, "expired")).thenReturn(true);
+        when(salesOrderRepository.findWithDetailsById(9L)).thenReturn(Optional.of(order));
+        when(deliveryRepository.findByOrder_IdOrderByIdAsc(9L)).thenReturn(List.of(pickup));
+        when(orderAllocationService.holdForOrder(eq(order), isNull(), eq(true))).thenAnswer(inv -> {
+            order.setAllocationStatus(AllocationStatus.FULL);
+            return 2;
+        });
+
+        handler.handleLatePaid(payment, envelope(42L, 10000), new HashMap<>(Map.of("status", "PAID")));
+
+        assertThat(order.getState()).isEqualTo(OrderState.PENDING);
+        assertThat(pickup.getState()).as("đơn chạy tiếp thì đợt giao Sẵn sàng lại").isEqualTo(DeliveryState.READY);
     }
 
     @Test

@@ -30,6 +30,7 @@ import com.hbsisms.feature.payment.CustomerDebtLedgerRepository;
 import com.hbsisms.feature.role.DefaultRoles;
 import com.hbsisms.feature.sales.Delivery;
 import com.hbsisms.feature.sales.DeliveryRepository;
+import com.hbsisms.feature.sales.DeliverySpecifications;
 import com.hbsisms.feature.sales.DeliveryState;
 import com.hbsisms.feature.sales.OrderState;
 import com.hbsisms.feature.sales.SalesOrder;
@@ -55,6 +56,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -349,7 +351,9 @@ public class DashboardService {
 
     private DeliveriesBlock deliveriesBlock() {
         LocalDate today = LocalDate.now(clock.withZone(ZONE));
-        List<Delivery> todayList = deliveryRepository.findByScheduledDateOrderByIdAsc(today);
+        // Cùng bộ lọc màn Giao hàng: bỏ đợt của đơn đã hủy / hết hạn / chưa xác nhận (vd. đơn online hết hạn thanh toán).
+        List<Delivery> todayList = deliveryRepository.findAll(
+                DeliverySpecifications.onDeliveryBoard(today), Sort.by(Sort.Direction.ASC, "id"));
         List<DeliveryItem> items = todayList.stream()
                 .filter(d -> d.getState() == DeliveryState.READY || d.getState() == DeliveryState.GOING)
                 .limit(5)

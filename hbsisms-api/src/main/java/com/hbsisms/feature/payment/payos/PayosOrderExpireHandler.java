@@ -6,6 +6,9 @@ import com.hbsisms.feature.payment.PaymentMethod;
 import com.hbsisms.feature.payment.PaymentReconcileFlag;
 import com.hbsisms.feature.payment.PaymentRepository;
 import com.hbsisms.feature.payment.PaymentStatus;
+import com.hbsisms.feature.sales.Delivery;
+import com.hbsisms.feature.sales.DeliveryRepository;
+import com.hbsisms.feature.sales.DeliveryState;
 import com.hbsisms.feature.sales.OrderAllocationService;
 import com.hbsisms.feature.sales.OrderEvent;
 import com.hbsisms.feature.sales.OrderEventRepository;
@@ -41,6 +44,7 @@ public class PayosOrderExpireHandler {
     private final OrderAllocationService orderAllocationService;
     private final AppConfigService appConfigService;
     private final PayosAmountMismatchRecorder mismatchRecorder;
+    private final DeliveryRepository deliveryRepository;
 
     public PayosOrderExpireHandler(
             PayosProperties properties,
@@ -51,7 +55,8 @@ public class PayosOrderExpireHandler {
             OrderEventRepository orderEventRepository,
             OrderAllocationService orderAllocationService,
             AppConfigService appConfigService,
-            PayosAmountMismatchRecorder mismatchRecorder) {
+            PayosAmountMismatchRecorder mismatchRecorder,
+            DeliveryRepository deliveryRepository) {
         this.properties = properties;
         this.payosClient = payosClient;
         this.paymentCompleter = paymentCompleter;
@@ -61,6 +66,7 @@ public class PayosOrderExpireHandler {
         this.orderAllocationService = orderAllocationService;
         this.appConfigService = appConfigService;
         this.mismatchRecorder = mismatchRecorder;
+        this.deliveryRepository = deliveryRepository;
     }
 
     /**
@@ -144,6 +150,9 @@ public class PayosOrderExpireHandler {
         order.setPaymentStatus(PaymentStatus.UNPAID);
         order.setHoldExpiresAt(null);
         salesOrderRepository.save(order);
+        if (!salesChannel) {
+            closeOpenDeliveries(order);
+        }
 
         for (Payment payment : pendingPayos) {
             payment.setStatus(PayTxnStatus.CANCELLED);
@@ -166,5 +175,20 @@ public class PayosOrderExpireHandler {
         event.setDescription(note + " — hủy đơn và giải phóng hold");
         orderEventRepository.save(event);
         return true;
+    }
+
+    /**
+     * Đơn online hủy do hết hạn thanh toán: đợt giao checkout tạo sẵn (Sẵn sàng) chuyển "Giao thất bại",
+     * giống cửa hàng hủy đơn — không còn hiện ở Giao hàng / Tổng quan. Đơn Sales hết hạn (EXPIRED) không
+     * đụng tới để khỏi lọt vào nhóm "Giao thất bại cần xử lý". Tiền về muộn giữ lại đủ hàng thì
+     * {@link PayosLatePaymentHandler} mở lại đợt giao.
+     */
+    private void closeOpenDeliveries(SalesOrder order) {
+        for (Delivery delivery : deliveryRepository.findByOrder_IdOrderByIdAsc(order.getId())) {
+            if (delivery.getState() == DeliveryState.READY) {
+                delivery.setState(DeliveryState.FAILED);
+                deliveryRepository.save(delivery);
+            }
+        }
     }
 }
