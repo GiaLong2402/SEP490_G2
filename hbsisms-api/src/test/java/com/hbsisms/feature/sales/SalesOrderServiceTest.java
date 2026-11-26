@@ -127,6 +127,7 @@ class SalesOrderServiceTest {
                 payosLinkCanceller,
                 businessCodeService,
                 appConfigService,
+                new DepositPolicy(appConfigService),
                 orderDetailAssembler,
                 clock);
         lenient()
@@ -975,6 +976,11 @@ class SalesOrderServiceTest {
                 h.placedBy(),
                 h.placedAt(),
                 h.holdExpiresAt(),
+                h.isPreorder(),
+                h.depositAmount(),
+                h.depositPercent(),
+                h.depositDueAt(),
+                h.paidAmount(),
                 h.note(),
                 h.createdAt(),
                 h.updatedAt(),

@@ -9,6 +9,10 @@ import java.util.Locale;
 public enum OrderState {
     PENDING,
     CONFIRMED,
+    /** Đơn đặt trước đã cọc — đang sản xuất phần thiếu. */
+    IN_PRODUCTION,
+    /** SX xong / nhập kho — chờ khách tất toán phần còn lại. */
+    AWAITING_SETTLEMENT,
     PREPARING,
     TO_SHIP,
     PARTIAL,

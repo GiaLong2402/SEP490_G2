@@ -21,6 +21,7 @@ import com.hbsisms.feature.sales.Delivery;
 import com.hbsisms.feature.sales.DeliveryTimeWindows;
 import com.hbsisms.feature.sales.DeliveryRepository;
 import com.hbsisms.feature.sales.DeliveryState;
+import com.hbsisms.feature.sales.DepositPolicy;
 import com.hbsisms.feature.sales.FulfillmentMethod;
 import com.hbsisms.feature.sales.OrderAllocationService;
 import com.hbsisms.feature.sales.OrderEvent;
@@ -74,6 +75,7 @@ public class CheckoutService {
     private final AppConfigService appConfigService;
     private final PayosLinkService payosLinkService;
     private final BusinessCodeService businessCodeService;
+    private final DepositPolicy depositPolicy;
     private final Clock clock;
 
     public CheckoutService(
@@ -93,6 +95,7 @@ public class CheckoutService {
             AppConfigService appConfigService,
             PayosLinkService payosLinkService,
             BusinessCodeService businessCodeService,
+            DepositPolicy depositPolicy,
             Clock clock) {
         this.idempotencyRepository = idempotencyRepository;
         this.customerAddressRepository = customerAddressRepository;
@@ -110,6 +113,7 @@ public class CheckoutService {
         this.appConfigService = appConfigService;
         this.payosLinkService = payosLinkService;
         this.businessCodeService = businessCodeService;
+        this.depositPolicy = depositPolicy;
         this.clock = clock;
     }
 
@@ -152,6 +156,16 @@ public class CheckoutService {
 
         if (!shortages.isEmpty()) {
             throw ApiException.conflict("Một số sản phẩm không đủ hàng", shortages);
+        }
+
+        int maxLineQty = prepared.stream().mapToInt(PreparedLine::qtyKhay).max().orElse(0);
+        BigDecimal shippingPreview = request.fulfillmentMethod() == FulfillmentMethod.SHOP_DELIVERY
+                ? BigDecimal.valueOf(appConfigService.shippingFeeDelivery())
+                : ZERO;
+        BigDecimal totalPreview = subtotal.add(shippingPreview);
+        if (depositPolicy.isLargeOrder(maxLineQty, totalPreview)) {
+            throw ApiException.conflict(
+                    "Đơn vượt ngưỡng số lượng lớn — vui lòng gửi yêu cầu đặt trước (có cọc), không mua thẳng qua giỏ hàng");
         }
 
         Instant now = Instant.now(clock);

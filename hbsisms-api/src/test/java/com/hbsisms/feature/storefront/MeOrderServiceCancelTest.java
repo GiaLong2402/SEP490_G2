@@ -58,7 +58,8 @@ class MeOrderServiceCancelTest {
                 paymentRepository,
                 orderEventRepository,
                 orderAllocationService,
-                payosClient);
+                payosClient,
+                org.mockito.Mockito.mock(com.hbsisms.feature.payment.payos.PayosLinkService.class));
     }
 
     @Test

@@ -39,6 +39,11 @@ public class BomExplosionService {
         this.clock = clock;
     }
 
+    /**
+     * {@code noRollbackFor}: caller có thể catch khi thiếu BOM (vd. tạo lệnh từ đơn cọc)
+     * mà không làm TX ngoài thành rollback-only.
+     */
+    @Transactional(readOnly = true, noRollbackFor = ApiException.class)
     public ExplosionResult explode(Long productId, BigDecimal plannedQty) {
         if (plannedQty == null || plannedQty.compareTo(BigDecimal.ZERO) <= 0) {
             throw ApiException.badRequest("Số lượng kế hoạch phải > 0");

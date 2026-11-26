@@ -21,4 +21,11 @@ export const paymentsApi = {
     checkDto(data, ['checkoutUrl', 'expiresAt'], 'POST /payments/payos/{orderCode}/link', '5. PayOS')
     return { ...data, order: data.order ? fromOrderDto(data.order) : null }
   },
+
+  /** Dev: giả lập webhook PayOS thành công (không quét QR). */
+  async simulatePaid(payosOrderCode) {
+    const data = await api.post(`/payments/payos/${payosOrderCode}/simulate-paid`)
+    checkDto(data, ['status'], 'POST /payments/payos/{orderCode}/simulate-paid', '5. PayOS')
+    return { ...data, order: data.order ? fromOrderDto(data.order) : null }
+  },
 }

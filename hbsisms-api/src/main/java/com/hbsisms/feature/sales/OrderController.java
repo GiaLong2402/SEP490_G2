@@ -2,6 +2,9 @@ package com.hbsisms.feature.sales;
 
 import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
+import com.hbsisms.feature.payment.Payment;
+import com.hbsisms.feature.payment.payos.PayosLinkService;
+import com.hbsisms.feature.payment.payos.dto.PayosLinkResponse;
 import com.hbsisms.feature.sales.dto.DailyPickingSlipResponse;
 import com.hbsisms.feature.sales.dto.OrderCancelRequest;
 import com.hbsisms.feature.sales.dto.OrderCountsResponse;
@@ -53,18 +56,24 @@ public class OrderController {
     private final OrderExportService orderExportService;
     private final OrderOwnerInboxService orderOwnerInboxService;
     private final PickingSlipService pickingSlipService;
+    private final PayosLinkService payosLinkService;
+    private final SalesOrderRepository salesOrderRepository;
 
     public OrderController(
             SalesOrderService salesOrderService,
             CounterFulfillmentService counterFulfillmentService,
             OrderExportService orderExportService,
             OrderOwnerInboxService orderOwnerInboxService,
-            PickingSlipService pickingSlipService) {
+            PickingSlipService pickingSlipService,
+            PayosLinkService payosLinkService,
+            SalesOrderRepository salesOrderRepository) {
         this.salesOrderService = salesOrderService;
         this.counterFulfillmentService = counterFulfillmentService;
         this.orderExportService = orderExportService;
         this.orderOwnerInboxService = orderOwnerInboxService;
         this.pickingSlipService = pickingSlipService;
+        this.payosLinkService = payosLinkService;
+        this.salesOrderRepository = salesOrderRepository;
     }
 
     @GetMapping
@@ -250,5 +259,22 @@ public class OrderController {
     public OrderDetailResponse completeAtCounter(
             @PathVariable Long id, @AuthenticationPrincipal AuthUser actor) {
         return counterFulfillmentService.completeAtCounter(id, actor == null ? null : actor.id());
+    }
+
+    /** Tạo link PayOS thu đúng số tiền cọc (đơn đặt trước). */
+    @PostMapping("/{id}/deposit-payos-link")
+    @ResponseStatus(HttpStatus.CREATED)
+    public PayosLinkResponse createDepositPayosLink(@PathVariable Long id) {
+        SalesOrder order = salesOrderRepository
+                .findWithDetailsById(id)
+                .orElseThrow(() -> com.hbsisms.common.exception.ApiException.notFound("Không tìm thấy đơn hàng"));
+        Payment payment = payosLinkService.createDepositLink(order);
+        return new PayosLinkResponse(
+                payment.getPayosOrderCode(),
+                payment.getAmount(),
+                payment.getCheckoutUrl(),
+                null,
+                order.getDepositDueAt(),
+                salesOrderService.getDetail(id));
     }
 }

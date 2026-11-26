@@ -29,6 +29,14 @@ public class AppConfigService {
     /** % markup trên giá vốn để gợi ý giá bán (Inter 1 dòng 53). */
     public static final String SELL_PRICE_MARKUP_PERCENT = "sell_price_markup_percent";
 
+    /** Ngưỡng đơn số lượng lớn — cọc đặt hàng (DEP-01). */
+    public static final String LARGE_ORDER_QTY_THRESHOLD = "large_order_qty_threshold";
+    public static final String LARGE_ORDER_VALUE_THRESHOLD = "large_order_value_threshold";
+    public static final String DEPOSIT_PERCENT = "deposit_percent";
+    public static final String DEPOSIT_PERCENT_MIN = "deposit_percent_min";
+    public static final String DEPOSIT_PERCENT_MAX = "deposit_percent_max";
+    public static final String DEPOSIT_PAYMENT_HOURS = "deposit_payment_hours";
+
     public static final int DEFAULT_LOW_STOCK_THRESHOLD = 15;
     public static final int DEFAULT_EXPIRY_WARNING_DAYS = 5;
     public static final int DEFAULT_PAYMENT_HOLD_MINUTES = 15;
@@ -39,6 +47,14 @@ public class AppConfigService {
     public static final int DEFAULT_SALES_UNPAID_HOLD_HOURS = 24;
     public static final int DEFAULT_SALES_HOLD_WARN_MINUTES = 60;
     public static final int DEFAULT_SELL_PRICE_MARKUP_PERCENT = 30;
+    /** SL khay mỗi dòng ≥ mức này → đặt trước có cọc (0 = tắt theo khay). */
+    public static final int DEFAULT_LARGE_ORDER_QTY_THRESHOLD = 50;
+    /** Tổng đơn (VND) ≥ mức này → đặt trước có cọc (0 = tắt theo giá trị). */
+    public static final int DEFAULT_LARGE_ORDER_VALUE_THRESHOLD = 5_000_000;
+    public static final int DEFAULT_DEPOSIT_PERCENT = 30;
+    public static final int DEFAULT_DEPOSIT_PERCENT_MIN = 20;
+    public static final int DEFAULT_DEPOSIT_PERCENT_MAX = 50;
+    public static final int DEFAULT_DEPOSIT_PAYMENT_HOURS = 24;
 
     private final AppConfigRepository appConfigRepository;
     private final UserRepository userRepository;
@@ -175,6 +191,30 @@ public class AppConfigService {
      */
     public int sellPriceMarkupPercent() {
         return Math.max(0, getInt(SELL_PRICE_MARKUP_PERCENT, DEFAULT_SELL_PRICE_MARKUP_PERCENT));
+    }
+
+    public int largeOrderQtyThreshold() {
+        return Math.max(0, getInt(LARGE_ORDER_QTY_THRESHOLD, DEFAULT_LARGE_ORDER_QTY_THRESHOLD));
+    }
+
+    public int largeOrderValueThreshold() {
+        return Math.max(0, getInt(LARGE_ORDER_VALUE_THRESHOLD, DEFAULT_LARGE_ORDER_VALUE_THRESHOLD));
+    }
+
+    public int depositPercent() {
+        return Math.max(0, getInt(DEPOSIT_PERCENT, DEFAULT_DEPOSIT_PERCENT));
+    }
+
+    public int depositPercentMin() {
+        return Math.max(0, getInt(DEPOSIT_PERCENT_MIN, DEFAULT_DEPOSIT_PERCENT_MIN));
+    }
+
+    public int depositPercentMax() {
+        return Math.max(depositPercentMin(), getInt(DEPOSIT_PERCENT_MAX, DEFAULT_DEPOSIT_PERCENT_MAX));
+    }
+
+    public int depositPaymentHours() {
+        return Math.max(1, getInt(DEPOSIT_PAYMENT_HOURS, DEFAULT_DEPOSIT_PAYMENT_HOURS));
     }
 
     private static final BigDecimal THOUSAND = BigDecimal.valueOf(1000);

@@ -6,14 +6,19 @@ import com.hbsisms.feature.payment.PayDirection;
 import com.hbsisms.feature.payment.PayTxnStatus;
 import com.hbsisms.feature.payment.Payment;
 import com.hbsisms.feature.payment.PaymentMethod;
+import com.hbsisms.feature.payment.PaymentPurpose;
 import com.hbsisms.feature.payment.PaymentReconcileFlag;
 import com.hbsisms.feature.payment.PaymentRepository;
+import com.hbsisms.feature.payment.PaymentStatus;
 import com.hbsisms.feature.payment.payos.dto.PayosLinkResponse;
+import com.hbsisms.feature.sales.OrderState;
 import com.hbsisms.feature.sales.SalesOrder;
 import com.hbsisms.feature.sales.SalesOrderService;
 import com.hbsisms.feature.storefront.dto.CheckoutPaymentResponse;
 import com.hbsisms.feature.system.AppConfigService;
 import com.hbsisms.feature.system.BusinessCodeService;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
 import org.springframework.http.HttpStatus;
@@ -89,8 +94,114 @@ public class PayosLinkService {
         payment.setPayosOrderCode(link.orderCode() == 0 ? orderCode : link.orderCode());
         payment.setCheckoutUrl(link.checkoutUrl());
         payment.setPaidAt(null);
+        payment.setPurpose(PaymentPurpose.ORDER);
         payment.setNote("PayOS link — Inter 2 #33");
         payment.setRawPayload(PayosClient.toRawPayload(link, holdExpires));
+        return paymentRepository.save(payment);
+    }
+
+    /** Link PayOS đúng số tiền cọc cho đơn đặt trước (DEP-04). */
+    @Transactional
+    public Payment createDepositLink(SalesOrder order) {
+        requireEnabled();
+        if (!order.isPreorder()) {
+            throw ApiException.badRequest("Đơn không phải đặt trước có cọc");
+        }
+        if (order.getPaymentStatus() != PaymentStatus.UNPAID) {
+            throw ApiException.conflict("Đơn đã nhận cọc hoặc đã thanh toán");
+        }
+        if (order.getDepositAmount() == null || order.getDepositAmount().signum() <= 0) {
+            throw ApiException.badRequest("Đơn chưa có số tiền cọc");
+        }
+        int amount;
+        try {
+            amount = order.getDepositAmount().intValueExact();
+        } catch (ArithmeticException ex) {
+            throw ApiException.badRequest("Số tiền cọc phải là số nguyên VND");
+        }
+
+        Instant due = order.getDepositDueAt() != null
+                ? order.getDepositDueAt()
+                : Instant.now(clock).plusSeconds(appConfigService.depositPaymentHours() * 3600L);
+        long expiredAtEpoch = due.getEpochSecond();
+        long orderCode = businessCodeService.nextPayosOrderCode();
+        String description = shortDescription("C" + order.getCode());
+
+        PayosPaymentLinkResult link =
+                payosClient.createPaymentRequest(orderCode, amount, description, expiredAtEpoch);
+
+        Payment payment = new Payment();
+        payment.setCode("PAY-DEP-" + order.getCode());
+        payment.setOrder(order);
+        payment.setCustomer(order.getCustomer());
+        payment.setMethod(PaymentMethod.PAYOS);
+        payment.setDirection(PayDirection.IN);
+        payment.setPurpose(PaymentPurpose.DEPOSIT);
+        payment.setAmount(order.getDepositAmount());
+        payment.setStatus(PayTxnStatus.PENDING);
+        payment.setReconcileFlag(PaymentReconcileFlag.NONE);
+        payment.setGateway("payos");
+        payment.setPayosOrderCode(link.orderCode() == 0 ? orderCode : link.orderCode());
+        payment.setCheckoutUrl(link.checkoutUrl());
+        payment.setPaidAt(null);
+        payment.setNote("PayOS cọc đặt trước");
+        payment.setRawPayload(PayosClient.toRawPayload(link, due));
+        return paymentRepository.save(payment);
+    }
+
+    /**
+     * Link PayOS tất toán phần còn lại sau khi đơn đặt trước đủ hàng
+     * ({@link OrderState#AWAITING_SETTLEMENT} / đã cọc).
+     */
+    @Transactional
+    public Payment createBalanceLink(SalesOrder order, BigDecimal outstanding) {
+        requireEnabled();
+        if (!order.isPreorder()) {
+            throw ApiException.badRequest("Đơn không phải đặt trước");
+        }
+        if (order.getState() != OrderState.AWAITING_SETTLEMENT) {
+            throw ApiException.conflict("Đơn chưa đến bước tất toán (chưa đủ hàng)");
+        }
+        if (order.getPaymentStatus() == PaymentStatus.PAID) {
+            throw ApiException.conflict("Đơn đã thanh toán đủ");
+        }
+        BigDecimal amountBd = outstanding == null
+                ? BigDecimal.ZERO
+                : outstanding.setScale(0, RoundingMode.HALF_UP);
+        if (amountBd.signum() <= 0) {
+            throw ApiException.conflict("Không còn số tiền cần tất toán");
+        }
+        int amount;
+        try {
+            amount = amountBd.intValueExact();
+        } catch (ArithmeticException ex) {
+            throw ApiException.badRequest("Số tiền tất toán phải là số nguyên VND");
+        }
+
+        Instant due = Instant.now(clock).plusSeconds(appConfigService.paymentHoldMinutes() * 60L);
+        long expiredAtEpoch = due.plusSeconds(appConfigService.paymentGraceMinutes() * 60L).getEpochSecond();
+        long orderCode = businessCodeService.nextPayosOrderCode();
+        String description = shortDescription("T" + order.getCode());
+
+        PayosPaymentLinkResult link =
+                payosClient.createPaymentRequest(orderCode, amount, description, expiredAtEpoch);
+
+        Payment payment = new Payment();
+        payment.setCode(businessCodeService.nextPaymentCode());
+        payment.setOrder(order);
+        payment.setCustomer(order.getCustomer());
+        payment.setMethod(PaymentMethod.PAYOS);
+        payment.setDirection(PayDirection.IN);
+        payment.setPurpose(PaymentPurpose.BALANCE);
+        payment.setAmount(amountBd);
+        payment.setStatus(PayTxnStatus.PENDING);
+        payment.setReconcileFlag(PaymentReconcileFlag.NONE);
+        payment.setGateway("payos");
+        payment.setPayosOrderCode(link.orderCode() == 0 ? orderCode : link.orderCode());
+        payment.setCheckoutUrl(link.checkoutUrl());
+        payment.setPaidAt(null);
+        payment.setNote("PayOS tất toán đặt trước");
+        payment.setRawPayload(PayosClient.toRawPayload(link, due));
         return paymentRepository.save(payment);
     }
 

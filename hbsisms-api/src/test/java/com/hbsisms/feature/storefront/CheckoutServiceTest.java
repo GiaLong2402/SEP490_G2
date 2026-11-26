@@ -116,6 +116,7 @@ class CheckoutServiceTest {
                 appConfigService,
                 payosLinkService,
                 businessCodeService,
+                new com.hbsisms.feature.sales.DepositPolicy(appConfigService),
                 CLOCK);
 
         lenient().when(businessCodeService.nextSalesOrderCode()).thenReturn("SO-2026-0001");
@@ -514,6 +515,11 @@ class CheckoutServiceTest {
                 null,
                 NOW,
                 NOW.plusSeconds(1800),
+                false,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                null,
+                BigDecimal.ZERO,
                 null,
                 NOW,
                 NOW,

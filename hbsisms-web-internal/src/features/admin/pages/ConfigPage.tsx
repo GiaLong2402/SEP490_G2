@@ -30,6 +30,19 @@ const GROUPS: { id: GroupId; title: string; blurb: string; keys: string[] }[] = 
     blurb: 'Giữ đơn PayOS, ân hạn, phí giao.',
     keys: ['payment_hold_minutes', 'payment_grace_minutes', 'shipping_fee_delivery'],
   },
+  {
+    id: 'other',
+    title: 'Đặt trước & cọc',
+    blurb: 'Ngưỡng số lượng lớn, % cọc, hạn trả cọc.',
+    keys: [
+      'large_order_qty_threshold',
+      'large_order_value_threshold',
+      'deposit_percent',
+      'deposit_percent_min',
+      'deposit_percent_max',
+      'deposit_payment_hours',
+    ],
+  },
 ];
 
 /** Tiêu đề ngắn + giải thích — tránh mô tả kỹ thuật dài từ DB. */
@@ -70,6 +83,30 @@ const COPY: Record<string, { title: string; hint: string }> = {
     title: 'Phí giao tận nơi (online)',
     hint: 'Cộng vào đơn web khi khách chọn giao tận nơi. Nhận tại shop = 0.',
   },
+  large_order_qty_threshold: {
+    title: 'Ngưỡng SL lớn (khay/dòng)',
+    hint: 'Một dòng ≥ mức này → bắt buộc đặt trước có cọc (0 = tắt theo khay).',
+  },
+  large_order_value_threshold: {
+    title: 'Ngưỡng SL lớn (tổng VND)',
+    hint: 'Tổng đơn ≥ mức này → đặt trước có cọc (0 = tắt theo giá trị).',
+  },
+  deposit_percent: {
+    title: '% cọc mặc định',
+    hint: 'Phần trăm cọc khi tạo đơn đặt trước.',
+  },
+  deposit_percent_min: {
+    title: '% cọc tối thiểu',
+    hint: 'Sales chỉ được chỉnh % cọc từ mức này trở lên.',
+  },
+  deposit_percent_max: {
+    title: '% cọc tối đa',
+    hint: 'Sales chỉ được chỉnh % cọc đến mức này.',
+  },
+  deposit_payment_hours: {
+    title: 'Hạn trả cọc',
+    hint: 'Quá số giờ này mà chưa cọc → hủy đơn đặt trước.',
+  },
   net_default: {
     title: 'Công nợ NET mặc định',
     hint: 'Số ngày công nợ mặc định khi mở hạn mức khách.',
@@ -87,7 +124,8 @@ function unitFor(key: string): string | null {
   if (key.endsWith('_pct') || key.endsWith('_percent')) return '%';
   if (key.includes('fee') || key.includes('shipping')) return '₫';
   if (key.endsWith('_km')) return 'km';
-  if (key === 'low_stock_threshold') return 'khay';
+  if (key === 'low_stock_threshold' || key === 'large_order_qty_threshold') return 'khay';
+  if (key === 'large_order_value_threshold') return '₫';
   if (key === 'net_default') return 'ngày';
   return null;
 }

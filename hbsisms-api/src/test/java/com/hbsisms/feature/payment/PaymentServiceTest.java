@@ -82,6 +82,7 @@ class PaymentServiceTest {
                 userRepository,
                 auditLogService,
                 businessCodeService,
+                org.mockito.Mockito.mock(com.hbsisms.feature.sales.PreorderFulfillmentService.class),
                 clock);
         org.mockito.Mockito.lenient()
                 .when(businessCodeService.nextPaymentCode())
@@ -116,7 +117,7 @@ class PaymentServiceTest {
                 .satisfies(ex -> {
                     ApiException api = (ApiException) ex;
                     assertThat(api.getStatus()).isEqualTo(HttpStatus.CONFLICT);
-                    assertThat(api.getMessage()).contains("vượt quá");
+                    assertThat(api.getMessage()).contains("Phải thu đủ phần còn lại");
                 });
     }
 
@@ -537,7 +538,7 @@ class PaymentServiceTest {
                 .thenReturn(ZERO)
                 .thenReturn(ZERO)
                 .thenReturn(new BigDecimal("150000.00"));
-        when(paymentRepository.findCodesByPrefix("TT-")).thenReturn(List.of());
+        org.mockito.Mockito.lenient().when(paymentRepository.findCodesByPrefix("TT-")).thenReturn(List.of());
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
             Payment p = inv.getArgument(0);
             if (p.getId() == null) {

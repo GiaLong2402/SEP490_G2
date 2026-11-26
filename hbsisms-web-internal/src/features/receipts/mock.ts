@@ -147,30 +147,7 @@ mock('POST', '/goods-receipts', ({ body, userId }) => {
   const now = new Date().toISOString();
   let items: ReceiptRow['items'] = [];
   if (body.receiptType === 'finished') {
-    if (!body.finishedLines?.length) fail(400, 'Phiếu phải có ít nhất một dòng');
-    items = body.finishedLines.map((line: any) => {
-      const qty = Number(line.qty);
-      if (!Number.isInteger(qty) || qty <= 0) fail(400, 'Số lượng phải là số nguyên dương');
-      if (line.mfgDate && line.expDate < line.mfgDate) fail(400, 'HSD không được trước ngày sản xuất');
-      const lotId = nextId(db.lots);
-      const lotCode = line.lotCode?.trim() || `LOT-${now.slice(2, 10).replace(/-/g, '')}-${String(lotId).padStart(2, '0')}`;
-      if (db.lots.some((l) => l.lotCode === lotCode)) fail(409, `Mã lô ${lotCode} đã tồn tại`);
-      db.lots.push({ id: lotId, lotCode, variantId: line.variantId, mfgDate: line.mfgDate, expDate: line.expDate, receivedAt: now, note: null });
-      const existing = db.stock.find((s) => s.variantId === line.variantId && s.lotId === lotId && s.locationId === line.locationId);
-      if (existing) {
-        existing.qtyAvailable += qty;
-        existing.updatedAt = now;
-      } else {
-        db.stock.push({ id: nextId(db.stock), variantId: line.variantId, lotId, locationId: line.locationId, qtyAvailable: qty, qtyHeld: 0, qtyQuarantine: 0, qtyExpired: 0, updatedAt: now });
-      }
-      appendLedger({ variantId: line.variantId, lotId, locationId: line.locationId, toLocationId: null, entryType: 'in', qtyDelta: qty, balanceAfter: qty, refType: 'goods_receipt', refId: id, note: 'Nhập thành phẩm', createdBy: userId });
-      return { name: `${variantLabel(line.variantId).sku} · ${lotCode}`, qty, unit: 'khay' };
-    });
-    const row = { id, code: nextCode('PN', db.receipts), receiptType: body.receiptType, source, receivedBy: userId, receivedAt: now, note: body.note, items };
-    db.receipts.push(row);
-    extras.set(id, { status: 'completed', expectedDate: null, completedAt: now, completedBy: userId, lines: [] });
-    audit(userId, 'create', 'goods_receipt', id);
-    return toItem(row);
+    fail(400, 'Không tạo phiếu nhập thành phẩm tại đây. Thành phẩm nhập qua lệnh sản xuất.');
   }
   // Phiếu NVL: Chờ nhập — chưa cộng tồn.
   if (!body.rawLines?.length) fail(400, 'Phiếu phải có ít nhất một dòng');

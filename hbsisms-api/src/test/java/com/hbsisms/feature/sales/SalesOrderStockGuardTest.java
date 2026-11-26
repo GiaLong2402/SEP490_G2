@@ -109,6 +109,7 @@ class SalesOrderStockGuardTest {
                 payosLinkCanceller,
                 businessCodeService,
                 appConfigService,
+                new DepositPolicy(appConfigService),
                 orderDetailAssembler,
                 Clock.fixed(Instant.parse("2026-11-11T00:00:00Z"), ZoneOffset.UTC));
 

@@ -152,7 +152,14 @@ export interface SalesOrder {
   paymentMethod: E.PaymentMethod; paymentTermDays: number; paymentStatus: E.PaymentStatus; allocationStatus: E.AllocationStatus;
   fulfillmentMethod: E.FulfillmentMethod; shipAddressId: ID | null; state: E.OrderState; subtotal: number; discountTotal: number;
   shippingFee: number; total: number; voucherCode: string | null; isOverLimit: boolean; overLimitAmount: number; approvedBy: ID | null;
-  placedBy: ID | null; placedAt: ISODateTime; holdExpiresAt: ISODateTime | null; note: string | null;
+  placedBy: ID | null; placedAt: ISODateTime; holdExpiresAt: ISODateTime | null;
+  isPreorder?: boolean;
+  depositAmount?: number;
+  depositPercent?: number;
+  depositDueAt?: ISODateTime | null;
+  /** Snapshot đã thu trên đơn (BE); chi tiết vẫn tính lại từ payments. */
+  storedPaidAmount?: number;
+  note: string | null;
   createdAt: ISODateTime; updatedAt: ISODateTime;
 }
 

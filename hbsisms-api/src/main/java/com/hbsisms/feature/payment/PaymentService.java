@@ -12,6 +12,7 @@ import com.hbsisms.feature.payment.dto.PaymentRefundRequest;
 import com.hbsisms.feature.sales.OrderEvent;
 import com.hbsisms.feature.sales.OrderEventRepository;
 import com.hbsisms.feature.sales.OrderState;
+import com.hbsisms.feature.sales.PreorderFulfillmentService;
 import com.hbsisms.feature.sales.SaleChannel;
 import com.hbsisms.feature.sales.SalesOrder;
 import com.hbsisms.feature.sales.SalesOrderRepository;
@@ -48,6 +49,7 @@ public class PaymentService {
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
     private final BusinessCodeService businessCodeService;
+    private final PreorderFulfillmentService preorderFulfillmentService;
     private final Clock clock;
 
     public PaymentService(
@@ -59,6 +61,7 @@ public class PaymentService {
             UserRepository userRepository,
             AuditLogService auditLogService,
             BusinessCodeService businessCodeService,
+            PreorderFulfillmentService preorderFulfillmentService,
             Clock clock) {
         this.paymentRepository = paymentRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -68,6 +71,7 @@ public class PaymentService {
         this.userRepository = userRepository;
         this.auditLogService = auditLogService;
         this.businessCodeService = businessCodeService;
+        this.preorderFulfillmentService = preorderFulfillmentService;
         this.clock = clock;
     }
 
@@ -159,12 +163,23 @@ public class PaymentService {
             }
             // Inter 3 dòng 8: không ghi thu tay khi đang có link PayOS chờ thanh toán.
             assertNoPendingPayosLink(order.getId());
-            BigDecimal outstanding = order.getTotal().subtract(netPaid(order.getId()));
+            BigDecimal netPaid = netPaid(order.getId());
+            BigDecimal outstanding = order.getTotal().subtract(netPaid);
             if (outstanding.compareTo(ZERO) <= 0) {
                 throw ApiException.conflict("Đơn đã thu đủ");
             }
-            // Thu theo đơn: một lần đủ phần còn lại (không thu dở → partial).
-            if (amount.compareTo(outstanding) != 0) {
+            if (order.isPreorder()
+                    && order.getPaymentStatus() == PaymentStatus.UNPAID
+                    && order.getDepositAmount() != null
+                    && order.getDepositAmount().compareTo(ZERO) > 0
+                    && netPaid.compareTo(ZERO) == 0) {
+                // Thu đúng số cọc — không thu vượt / thiếu.
+                if (amount.compareTo(order.getDepositAmount()) != 0) {
+                    throw ApiException.conflict(
+                            "Phải thu đúng tiền cọc (" + order.getDepositAmount().toPlainString() + ")");
+                }
+            } else if (amount.compareTo(outstanding) != 0) {
+                // Đơn thường / tất toán: một lần đủ phần còn lại.
                 throw ApiException.conflict("Phải thu đủ phần còn lại của đơn (" + outstanding.toPlainString() + ")");
             }
         }
@@ -180,12 +195,25 @@ public class PaymentService {
         }
 
         Instant now = Instant.now(clock);
+        PaymentPurpose purpose = PaymentPurpose.ORDER;
+        if (order != null && order.isPreorder()) {
+            if (order.getPaymentStatus() == PaymentStatus.UNPAID
+                    && order.getDepositAmount() != null
+                    && amount.compareTo(order.getDepositAmount()) == 0) {
+                purpose = PaymentPurpose.DEPOSIT;
+            } else if (order.getPaymentStatus() == PaymentStatus.DEPOSITED
+                    || order.getState() == OrderState.AWAITING_SETTLEMENT) {
+                purpose = PaymentPurpose.BALANCE;
+            }
+        }
+
         Payment payment = new Payment();
         payment.setCode(nextPaymentCode());
         payment.setOrder(order);
         payment.setCustomer(customer);
         payment.setMethod(request.method());
         payment.setDirection(PayDirection.IN);
+        payment.setPurpose(purpose);
         payment.setAmount(amount);
         payment.setStatus(PayTxnStatus.SUCCESS);
         payment.setReconcileFlag(PaymentReconcileFlag.NONE);
@@ -203,14 +231,24 @@ public class PaymentService {
 
         if (order != null) {
             applyOrderPaymentStatus(order);
+            order.setPaidAmount(netPaid(order.getId()));
             salesOrderRepository.save(order);
 
             OrderEvent event = new OrderEvent();
             event.setOrder(order);
             event.setEventType("payment");
-            event.setDescription("Thu " + amount.toPlainString() + " ₫ (" + payment.getCode() + ")");
+            event.setDescription(
+                    (purpose == PaymentPurpose.DEPOSIT ? "Thu cọc " : "Thu ")
+                            + amount.toPlainString()
+                            + " ₫ ("
+                            + payment.getCode()
+                            + ")");
             event.setCreatedBy(receiver);
             orderEventRepository.save(event);
+
+            if (purpose == PaymentPurpose.DEPOSIT && order.getPaymentStatus() == PaymentStatus.DEPOSITED) {
+                preorderFulfillmentService.onDepositReceived(order.getId(), receiver);
+            }
         }
 
         Map<String, Object> audit = new HashMap<>();
@@ -425,11 +463,20 @@ public class PaymentService {
         BigDecimal net = netPaid(order.getId());
         if (net.compareTo(ZERO) <= 0) {
             order.setPaymentStatus(PaymentStatus.REFUNDED);
-        } else if (net.compareTo(order.getTotal()) >= 0) {
-            order.setPaymentStatus(PaymentStatus.PAID);
-        } else {
-            order.setPaymentStatus(PaymentStatus.PARTIAL);
+            return;
         }
+        if (net.compareTo(order.getTotal()) >= 0) {
+            order.setPaymentStatus(PaymentStatus.PAID);
+            return;
+        }
+        if (order.isPreorder()
+                && order.getDepositAmount() != null
+                && order.getDepositAmount().compareTo(ZERO) > 0
+                && net.compareTo(order.getDepositAmount()) >= 0) {
+            order.setPaymentStatus(PaymentStatus.DEPOSITED);
+            return;
+        }
+        order.setPaymentStatus(PaymentStatus.PARTIAL);
     }
 
     private Customer resolveCustomer(Long customerId, SalesOrder order) {

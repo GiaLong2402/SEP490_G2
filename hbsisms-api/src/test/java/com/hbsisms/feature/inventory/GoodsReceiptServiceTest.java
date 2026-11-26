@@ -104,6 +104,7 @@ class GoodsReceiptServiceTest {
                 productionOrderRepository,
                 userRepository,
                 orderAllocationService,
+                org.mockito.Mockito.mock(com.hbsisms.feature.sales.PreorderFulfillmentService.class),
                 appConfigService,
                 auditLogService,
                 Clock.fixed(NOW, ZoneOffset.UTC));
@@ -183,40 +184,30 @@ class GoodsReceiptServiceTest {
         when(stockService.receiveIn(any())).thenReturn(new Stock());
         when(userRepository.findById(1L)).thenReturn(Optional.of(actor));
 
-        GoodsReceiptResponse response = service.create(
-                new GoodsReceiptRequest(
-                        ReceiptType.FINISHED,
-                        "Xưởng demo",
-                        null,
-                        List.of(new FinishedReceiptLineRequest(
-                                1L, "LOT-A", LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 20), 10L, 15)),
-                        null,
-                        null),
-                1L);
-
-        assertThat(response.code()).isEqualTo("PN-0001");
-        assertThat(response.supplierName()).isEqualTo("Xưởng demo");
-        assertThat(response.items()).hasSize(1);
-        assertThat(response.status()).isEqualTo(ReceiptStatus.COMPLETED);
-
-        ArgumentCaptor<StockMutation> captor = ArgumentCaptor.forClass(StockMutation.class);
-        verify(stockService).receiveIn(captor.capture());
-        assertThat(captor.getValue().refType()).isEqualTo("goods_receipt");
-        assertThat(captor.getValue().refId()).isEqualTo(5L);
-        assertThat(captor.getValue().qty()).isEqualTo(15);
-        verify(orderAllocationService).allocateOutstandingAfterReceipt(1L);
+        assertStatus(
+                () -> service.create(
+                        new GoodsReceiptRequest(
+                                ReceiptType.FINISHED,
+                                "Xưởng demo",
+                                null,
+                                List.of(new FinishedReceiptLineRequest(
+                                        1L, "LOT-A", LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 20), 10L, 15)),
+                                null,
+                                null),
+                        1L),
+                HttpStatus.BAD_REQUEST,
+                "Không tạo phiếu nhập thành phẩm");
+        verify(stockService, never()).receiveIn(any());
+        verify(orderAllocationService, never()).allocateOutstandingAfterReceipt(any());
     }
 
     @Test
     void createFinished_rejectsEmptyLines() {
-        when(goodsReceiptRepository.findMaxPnCode()).thenReturn(Optional.empty());
-        stubSaveAndFlush(1L);
-
         assertStatus(
                 () -> service.create(
                         new GoodsReceiptRequest(ReceiptType.FINISHED, "Nguồn", null, List.of(), null, null), null),
                 HttpStatus.BAD_REQUEST,
-                "ít nhất một dòng");
+                "Không tạo phiếu nhập thành phẩm");
     }
 
     // ---- Inter 1 dòng 46: tạo phiếu NVL chờ nhập ----
