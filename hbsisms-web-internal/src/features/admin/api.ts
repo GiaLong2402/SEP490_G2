@@ -11,5 +11,8 @@ export const adminApi = {
   updateRole: (id: ID, permissions: Permission[]) => api.put<void>(`/admin/roles/${id}`, { permissions }),
   config: () => api.get<AppConfig[]>('/admin/config'),
   updateConfig: (key: string, value: string) => api.put<void>(`/admin/config/${encodeURIComponent(key)}`, { value }),
-  audit: (query: ListQuery & { action?: string }, signal?: AbortSignal) => api.get<Page<AuditRow>>('/admin/audit-log', query, signal),
+  audit: (
+    query: ListQuery & { action?: string; entityType?: string; dateFrom?: string; dateTo?: string },
+    signal?: AbortSignal,
+  ) => api.get<Page<AuditRow>>('/admin/audit-log', query, signal),
 };

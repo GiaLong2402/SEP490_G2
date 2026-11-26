@@ -20,6 +20,7 @@ import com.hbsisms.feature.production.dto.ProductionOrderCreateRequest;
 import com.hbsisms.feature.production.dto.ProductionOrderResponse;
 import com.hbsisms.feature.production.dto.ProductionOrderUpdateRequest;
 import com.hbsisms.feature.system.AppConfigService;
+import com.hbsisms.feature.system.AuditLogService;
 import com.hbsisms.feature.system.BusinessCodeService;
 import com.hbsisms.feature.user.UserRepository;
 import java.math.BigDecimal;
@@ -66,6 +67,8 @@ class ProductionOrderServiceTest {
     @Mock
     private AppConfigService appConfigService;
     @Mock
+    private AuditLogService auditLogService;
+    @Mock
     private UserRepository userRepository;
 
     private ProductionOrderService service;
@@ -85,6 +88,7 @@ class ProductionOrderServiceTest {
                 rawMaterialStockService,
                 businessCodeService,
                 appConfigService,
+                auditLogService,
                 userRepository,
                 Clock.fixed(Instant.parse("2026-11-23T03:00:00Z"), ZoneOffset.UTC));
         lenient().when(leftoverRepository.findByProductionOrder_IdOrderByIdAsc(anyLong())).thenReturn(List.of());

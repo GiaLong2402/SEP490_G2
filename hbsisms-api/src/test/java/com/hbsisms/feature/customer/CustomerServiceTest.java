@@ -18,6 +18,7 @@ import com.hbsisms.feature.customer.dto.CustomerRequest;
 import com.hbsisms.feature.sales.OrderState;
 import com.hbsisms.feature.sales.SalesOrder;
 import com.hbsisms.feature.sales.SalesOrderRepository;
+import com.hbsisms.feature.user.UserRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -47,17 +48,22 @@ class CustomerServiceTest {
     private ApprovalTaskRepository approvalTaskRepository;
     @Mock
     private SalesOrderRepository salesOrderRepository;
+    @Mock
+    private UserRepository userRepository;
 
     private CustomerService customerService;
 
     @BeforeEach
     void setUp() {
+        CustomerCreditService customerCreditService =
+                new CustomerCreditService(customerRepository, approvalTaskRepository, userRepository);
         customerService = new CustomerService(
                 customerRepository,
                 addressRepository,
                 customerPriceRepository,
                 approvalTaskRepository,
-                salesOrderRepository);
+                salesOrderRepository,
+                customerCreditService);
         lenient()
                 .when(salesOrderRepository.findByCustomer_IdOrderByPlacedAtDescIdDesc(any(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
@@ -199,6 +205,7 @@ class CustomerServiceTest {
                         null,
                         new BigDecimal("1000"),
                         (short) 0,
+                        null,
                         true,
                         null)))
                 .isInstanceOf(ApiException.class)
@@ -217,6 +224,7 @@ class CustomerServiceTest {
                         null,
                         BigDecimal.ZERO,
                         (short) 0,
+                        null,
                         true,
                         null)))
                 .isInstanceOf(ApiException.class)
@@ -239,6 +247,7 @@ class CustomerServiceTest {
                         null,
                         BigDecimal.ZERO,
                         (short) 7,
+                        null,
                         true,
                         null)))
                 .isInstanceOf(ApiException.class)
@@ -264,6 +273,7 @@ class CustomerServiceTest {
                         null,
                         BigDecimal.ZERO,
                         (short) 0,
+                        null,
                         true,
                         null)))
                 .isInstanceOf(ApiException.class)
@@ -390,13 +400,35 @@ class CustomerServiceTest {
 
     private static CustomerRequest b2cRequest(String name, String phone, boolean active) {
         return new CustomerRequest(
-                CustomerType.B2C, name, null, phone, null, null, null, BigDecimal.ZERO, (short) 0, active, null);
+                CustomerType.B2C,
+                name,
+                null,
+                phone,
+                null,
+                null,
+                null,
+                BigDecimal.ZERO,
+                (short) 0,
+                null,
+                active,
+                null);
     }
 
     private static CustomerRequest b2bRequest(
             String name, String phone, String taxCode, BigDecimal creditLimit, short netDays) {
         return new CustomerRequest(
-                CustomerType.B2B, name, null, phone, taxCode, "Anh Tuấn", "0933000223", creditLimit, netDays, true, null);
+                CustomerType.B2B,
+                name,
+                null,
+                phone,
+                taxCode,
+                "Anh Tuấn",
+                "0933000223",
+                creditLimit,
+                netDays,
+                true,
+                true,
+                null);
     }
 
     private static Customer sample(String code, CustomerType type, String name) {

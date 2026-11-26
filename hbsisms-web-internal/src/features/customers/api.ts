@@ -14,6 +14,9 @@ export const customersApi = {
   create: (body: CustomerInput) => api.post<CustomerDetail>('/customers', body),
   /** API returns 200 + CustomerDetailResponse. */
   update: (id: ID, body: CustomerInput) => api.put<CustomerDetail>(`/customers/${id}`, body),
+  /** Task 72 — bật/tăng hạn mức có thể trả về creditChangePending. */
+  updateCredit: (id: ID, body: { creditEnabled?: boolean; creditLimit?: number; netDays?: number }) =>
+    api.patch<CustomerDetail>(`/customers/${id}/credit`, body),
   /** API returns 200 + CustomerDetailResponse; body `{ isActive }`. */
   setActive: (id: ID, isActive: boolean) => api.patch<CustomerDetail>(`/customers/${id}/active`, { isActive }),
   addresses: (id: ID) => api.get<CustomerAddress[]>(`/customers/${id}/addresses`),

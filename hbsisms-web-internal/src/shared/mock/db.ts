@@ -90,11 +90,11 @@ function seed(): MockDb {
 
   const b2b = (id: number, code: string, name: string, phone: string, tax: string, contact: string, limit: number, net: number): T.Customer => ({
     id, code, customerType: 'b2b', name, email: null, phone, taxCode: tax, contactName: contact, contactPhone: phone, accountUserId: null,
-    creditLimit: limit, netDays: net, currentDebt: 0, isActive: true, note: null, createdAt: isoTime(-300), updatedAt: now,
+    creditLimit: limit, netDays: net, creditEnabled: true, currentDebt: 0, isActive: true, note: null, createdAt: isoTime(-300), updatedAt: now,
   });
   const b2c = (id: number, code: string, name: string, phone: string, email: string | null): T.Customer => ({
     id, code, customerType: 'b2c', name, email, phone, taxCode: null, contactName: null, contactPhone: null, accountUserId: null,
-    creditLimit: 0, netDays: 0, currentDebt: 0, isActive: true, note: null, createdAt: isoTime(-120), updatedAt: now,
+    creditLimit: 0, netDays: 0, creditEnabled: false, currentDebt: 0, isActive: true, note: null, createdAt: isoTime(-120), updatedAt: now,
   });
   const customers: T.Customer[] = [
     b2c(1, 'KH-0001', 'Nguyễn Văn An', '0912 345 678', 'an@gmail.com'),

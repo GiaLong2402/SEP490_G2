@@ -8,6 +8,7 @@ import com.hbsisms.feature.approval.dto.ApprovalDecisionRequest;
 import com.hbsisms.feature.approval.dto.ApprovalListItemResponse;
 import com.hbsisms.feature.catalog.CustomerPrice;
 import com.hbsisms.feature.catalog.CustomerPriceRepository;
+import com.hbsisms.feature.customer.CustomerCreditService;
 import com.hbsisms.feature.customer.CustomerPriceService;
 import com.hbsisms.feature.inventory.DamageReportService;
 import com.hbsisms.feature.inventory.StocktakeService;
@@ -32,6 +33,7 @@ public class ApprovalService {
     private final UserRepository userRepository;
     private final DamageReportService damageReportService;
     private final SalesOrderService salesOrderService;
+    private final CustomerCreditService customerCreditService;
 
     public ApprovalService(
             ApprovalTaskRepository approvalTaskRepository,
@@ -39,13 +41,15 @@ public class ApprovalService {
             StocktakeService stocktakeService,
             UserRepository userRepository,
             DamageReportService damageReportService,
-            SalesOrderService salesOrderService) {
+            SalesOrderService salesOrderService,
+            CustomerCreditService customerCreditService) {
         this.approvalTaskRepository = approvalTaskRepository;
         this.customerPriceRepository = customerPriceRepository;
         this.stocktakeService = stocktakeService;
         this.userRepository = userRepository;
         this.damageReportService = damageReportService;
         this.salesOrderService = salesOrderService;
+        this.customerCreditService = customerCreditService;
     }
 
     public PageResponse<ApprovalListItemResponse> search(
@@ -77,6 +81,9 @@ public class ApprovalService {
         boolean approved = request.decision() == ApprovalStatus.APPROVED;
         if (CustomerPriceService.REF_TYPE_CUSTOMER_PRICE.equals(task.getRefType())) {
             applyCustomerPrice(task.getRefId(), approved, actor);
+        } else if (CustomerCreditService.REF_TYPE.equals(task.getRefType())
+                && task.getApprovalType() == ApprovalType.CREDIT_TERMS) {
+            customerCreditService.applyApprovalDecision(task.getRefId(), approved);
         } else if (StocktakeService.REF_TYPE.equals(task.getRefType())) {
             stocktakeService.applyApprovalDecision(task.getRefId(), approved, actor.getId());
         } else if (DamageReportService.REF_TYPE.equals(task.getRefType())) {
@@ -130,6 +137,9 @@ public class ApprovalService {
                     .findWithCustomerById(task.getRefId())
                     .map(price -> "/customers/" + price.getCustomer().getId())
                     .orElse(null);
+        }
+        if (CustomerCreditService.REF_TYPE.equals(task.getRefType())) {
+            return "/customers/" + task.getRefId();
         }
         if (StocktakeService.REF_TYPE.equals(task.getRefType())) {
             return "/stocktakes/" + task.getRefId();

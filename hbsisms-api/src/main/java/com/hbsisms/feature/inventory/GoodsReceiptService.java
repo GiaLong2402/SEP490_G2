@@ -240,6 +240,7 @@ public class GoodsReceiptService {
             }
             lines = goodsReceiptLineRepository.saveAll(lines);
             auditLogService.record(actorId, "create", REF_TYPE, receipt.getId(), Map.of(
+                    "code", receipt.getCode(),
                     "receiptType", ReceiptType.RAW.code(),
                     "status", ReceiptStatus.PENDING.code(),
                     "lines", lines.size()));
@@ -293,6 +294,7 @@ public class GoodsReceiptService {
         line.setQtyExpected(qty);
         goodsReceiptLineRepository.save(line);
         auditLogService.record(actorId, "create", REF_TYPE, saved.getId(), Map.of(
+                "code", saved.getCode(),
                 "receiptType", ReceiptType.FINISHED.code(),
                 "status", ReceiptStatus.PENDING.code(),
                 "productionOrderId", productionOrderId,
@@ -390,6 +392,7 @@ public class GoodsReceiptService {
         goodsReceiptRepository.save(receipt);
 
         Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("code", receipt.getCode());
         detail.put("status", ReceiptStatus.COMPLETED.code());
         detail.put("lines", lines.size());
         detail.put("qtyReceived", totalReceived);
@@ -607,6 +610,7 @@ public class GoodsReceiptService {
         }
 
         Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("code", receipt.getCode());
         detail.put("status", ReceiptStatus.COMPLETED.code());
         detail.put("productionOrderId", orderId);
         detail.put("qty", request.qty());
@@ -687,6 +691,7 @@ public class GoodsReceiptService {
         }
         goodsReceiptRepository.save(receipt);
         Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("code", receipt.getCode());
         detail.put("status", ReceiptStatus.CANCELLED.code());
         if (why != null) {
             detail.put("reason", why);

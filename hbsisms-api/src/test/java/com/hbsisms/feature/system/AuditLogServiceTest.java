@@ -6,6 +6,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.hbsisms.feature.inventory.GoodsReceiptRepository;
+import com.hbsisms.feature.inventory.StocktakeRepository;
+import com.hbsisms.feature.payment.PaymentRepository;
+import com.hbsisms.feature.production.ProductionOrderRepository;
+import com.hbsisms.feature.sales.DeliveryRepository;
+import com.hbsisms.feature.sales.QuoteRepository;
+import com.hbsisms.feature.sales.SalesOrderRepository;
+import com.hbsisms.feature.sales.SalesReturnRepository;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
 import java.util.LinkedHashMap;
@@ -25,12 +33,38 @@ class AuditLogServiceTest {
     private AuditLogRepository auditLogRepository;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private GoodsReceiptRepository goodsReceiptRepository;
+    @Mock
+    private SalesOrderRepository salesOrderRepository;
+    @Mock
+    private QuoteRepository quoteRepository;
+    @Mock
+    private ProductionOrderRepository productionOrderRepository;
+    @Mock
+    private StocktakeRepository stocktakeRepository;
+    @Mock
+    private PaymentRepository paymentRepository;
+    @Mock
+    private DeliveryRepository deliveryRepository;
+    @Mock
+    private SalesReturnRepository salesReturnRepository;
 
     private AuditLogService auditLogService;
 
     @BeforeEach
     void setUp() {
-        auditLogService = new AuditLogService(auditLogRepository, userRepository);
+        auditLogService = new AuditLogService(
+                auditLogRepository,
+                userRepository,
+                goodsReceiptRepository,
+                salesOrderRepository,
+                quoteRepository,
+                productionOrderRepository,
+                stocktakeRepository,
+                paymentRepository,
+                deliveryRepository,
+                salesReturnRepository);
     }
 
     @Test

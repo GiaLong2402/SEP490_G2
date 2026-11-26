@@ -257,6 +257,7 @@ public class OrderExportService {
         return switch (state) {
             case PENDING -> "Chờ xác nhận";
             case CONFIRMED -> "Đã xác nhận";
+            case AWAITING_DEPOSIT -> "Chờ cọc";
             case IN_PRODUCTION -> "Đang sản xuất";
             case AWAITING_SETTLEMENT -> "Chờ tất toán";
             case PREPARING -> "Đang chuẩn bị";

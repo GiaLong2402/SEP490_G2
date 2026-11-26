@@ -42,18 +42,21 @@ public class CustomerService {
     private final CustomerPriceRepository customerPriceRepository;
     private final ApprovalTaskRepository approvalTaskRepository;
     private final SalesOrderRepository salesOrderRepository;
+    private final CustomerCreditService customerCreditService;
 
     public CustomerService(
             CustomerRepository customerRepository,
             CustomerAddressRepository addressRepository,
             CustomerPriceRepository customerPriceRepository,
             ApprovalTaskRepository approvalTaskRepository,
-            SalesOrderRepository salesOrderRepository) {
+            SalesOrderRepository salesOrderRepository,
+            CustomerCreditService customerCreditService) {
         this.customerRepository = customerRepository;
         this.addressRepository = addressRepository;
         this.customerPriceRepository = customerPriceRepository;
         this.approvalTaskRepository = approvalTaskRepository;
         this.salesOrderRepository = salesOrderRepository;
+        this.customerCreditService = customerCreditService;
     }
 
     public PageResponse<CustomerListItemResponse> search(
@@ -79,13 +82,18 @@ public class CustomerService {
         customer.setCode(nextCode(type));
         customer.setCurrentDebt(BigDecimal.ZERO);
         customer.setAccountUser(null);
-        applyProfile(customer, type, profile);
+        applyProfile(customer, type, profile, true);
         Customer saved = customerRepository.save(customer);
         return toDetail(saved);
     }
 
     @Transactional
     public CustomerDetailResponse update(Long id, CustomerRequest request) {
+        return update(id, request, null);
+    }
+
+    @Transactional
+    public CustomerDetailResponse update(Long id, CustomerRequest request, Long actorUserId) {
         Customer customer = requireCustomer(id);
         CustomerType type = requireType(request);
 
@@ -96,7 +104,9 @@ public class CustomerService {
         }
 
         NormalizedProfile profile = normalizeAndValidate(request, type);
-        applyProfile(customer, type, profile);
+        applyProfile(customer, type, profile, false);
+        customerCreditService.applyOrPropose(
+                customer, profile.creditEnabled(), profile.creditLimit(), profile.netDays(), actorUserId);
         Customer saved = customerRepository.save(customer);
         return toDetail(saved);
     }
@@ -174,15 +184,32 @@ public class CustomerService {
 
         BigDecimal creditLimit = request.creditLimit() == null ? BigDecimal.ZERO : request.creditLimit();
         short netDays = request.netDays() == null ? 0 : request.netDays();
+        boolean creditEnabled = type == CustomerType.B2B
+                ? (request.creditEnabled() == null || Boolean.TRUE.equals(request.creditEnabled()))
+                : Boolean.TRUE.equals(request.creditEnabled());
 
         if (type == CustomerType.B2C) {
-            if (taxCode != null || creditLimit.compareTo(BigDecimal.ZERO) != 0 || netDays != 0) {
-                throw ApiException.badRequest("Khách B2C không được có MST / hạn mức / kỳ hạn nợ");
+            if (taxCode != null) {
+                throw ApiException.badRequest("Khách B2C không được có mã số thuế");
             }
             taxCode = null;
-            creditLimit = BigDecimal.ZERO;
-            netDays = 0;
+            if (!creditEnabled) {
+                if (creditLimit.compareTo(BigDecimal.ZERO) != 0 || netDays != 0) {
+                    throw ApiException.badRequest(
+                            "Khách B2C chưa bật mua nợ — không được có hạn mức / kỳ hạn");
+                }
+                creditLimit = BigDecimal.ZERO;
+                netDays = 0;
+            } else {
+                if (creditLimit.compareTo(BigDecimal.ZERO) < 0) {
+                    throw ApiException.badRequest("Hạn mức không được âm");
+                }
+                if (netDays < 0) {
+                    throw ApiException.badRequest("Số ngày nợ không hợp lệ");
+                }
+            }
         } else {
+            creditEnabled = true;
             if (creditLimit.compareTo(BigDecimal.ZERO) < 0) {
                 throw ApiException.badRequest("Hạn mức không được âm");
             }
@@ -196,7 +223,17 @@ public class CustomerService {
 
         boolean active = Boolean.TRUE.equals(request.isActive());
         return new NormalizedProfile(
-                name, email, phone, taxCode, contactName, contactPhone, creditLimit, netDays, active, note);
+                name,
+                email,
+                phone,
+                taxCode,
+                contactName,
+                contactPhone,
+                creditLimit,
+                netDays,
+                creditEnabled,
+                active,
+                note);
     }
 
     private static String normalizeOptionalPhone(String raw, String label) {
@@ -216,7 +253,8 @@ public class CustomerService {
         return digits;
     }
 
-    private static void applyProfile(Customer customer, CustomerType type, NormalizedProfile profile) {
+    private static void applyProfile(
+            Customer customer, CustomerType type, NormalizedProfile profile, boolean includeCredit) {
         customer.setCustomerType(type);
         customer.setName(profile.name());
         customer.setEmail(profile.email());
@@ -224,8 +262,11 @@ public class CustomerService {
         customer.setTaxCode(profile.taxCode());
         customer.setContactName(profile.contactName());
         customer.setContactPhone(profile.contactPhone());
-        customer.setCreditLimit(profile.creditLimit());
-        customer.setNetDays(profile.netDays());
+        if (includeCredit) {
+            customer.setCreditLimit(profile.creditLimit());
+            customer.setNetDays(profile.netDays());
+            customer.setCreditEnabled(profile.creditEnabled());
+        }
         customer.setActive(profile.active());
         customer.setNote(profile.note());
     }
@@ -269,6 +310,7 @@ public class CustomerService {
             String contactPhone,
             BigDecimal creditLimit,
             short netDays,
+            boolean creditEnabled,
             boolean active,
             String note) {
     }

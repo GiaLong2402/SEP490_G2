@@ -17,7 +17,10 @@ export interface AppUser {
 export interface Customer {
   id: ID; code: string; customerType: E.CustomerType; name: string; email: string | null; phone: string | null;
   taxCode: string | null; contactName: string | null; contactPhone: string | null; accountUserId: ID | null;
-  creditLimit: number; netDays: number; currentDebt: number; isActive: boolean; note: string | null;
+  creditLimit: number; netDays: number; creditEnabled: boolean;
+  pendingCreditEnabled?: boolean | null; pendingCreditLimit?: number | null; pendingNetDays?: number | null;
+  creditChangePending?: boolean;
+  currentDebt: number; isActive: boolean; note: string | null;
   createdAt: ISODateTime; updatedAt: ISODateTime;
 }
 
@@ -197,6 +200,11 @@ export interface Payment {
 export interface CustomerDebtLedger {
   id: ID; customerId: ID; orderId: ID | null; paymentId: ID | null; entryType: E.DebtEntryType; amount: number; balanceAfter: number | null;
   dueDate: ISODate | null; createdAt: ISODateTime; note: string | null;
+}
+
+/** 1 lần thu → nhiều đơn (task 71). */
+export interface PaymentAllocation {
+  id: ID; paymentId: ID; orderId: ID; amount: number; createdAt: ISODateTime;
 }
 
 export interface ProductReview {

@@ -10,6 +10,7 @@ const refLink = (a: (typeof db.approvals)[number]) => {
     const price = db.customerPrices.find((p) => p.id === a.refId);
     return price ? `/customers/${price.customerId}` : null;
   }
+  if (a.refType === 'customer') return `/customers/${a.refId}`;
   return null;
 };
 
@@ -74,6 +75,27 @@ function applyStocktake(refId: number, approved: boolean, userId: number | null)
   row.closedAt = new Date().toISOString();
 }
 
+function applyCreditTerms(refId: number, approved: boolean) {
+  const customer = db.customers.find((c) => c.id === refId);
+  if (!customer) fail(404, 'Không tìm thấy khách hàng');
+  if (!customer.creditChangePending) fail(409, 'Khách không có đề xuất hạn mức chờ duyệt');
+  if (approved) {
+    if (customer.pendingCreditEnabled != null) customer.creditEnabled = customer.pendingCreditEnabled;
+    if (customer.pendingCreditLimit != null) customer.creditLimit = customer.pendingCreditLimit;
+    if (customer.pendingNetDays != null) customer.netDays = customer.pendingNetDays;
+    if (customer.customerType === 'b2b') customer.creditEnabled = true;
+    if (!customer.creditEnabled) {
+      customer.creditLimit = 0;
+      customer.netDays = 0;
+    }
+  }
+  customer.pendingCreditEnabled = null;
+  customer.pendingCreditLimit = null;
+  customer.pendingNetDays = null;
+  customer.creditChangePending = false;
+  customer.updatedAt = new Date().toISOString();
+}
+
 mock('GET', '/approvals', ({ query }) => {
   const rows = db.approvals
     .filter((a) => matches(query.q, a.title))
@@ -92,6 +114,7 @@ mock('POST', '/approvals/:id/decision', ({ params, body, userId }) => {
   if (task.refType === 'damage_report') applyDamage(task.refId, approved, userId, body.note);
   if (task.refType === 'customer_price') applyPrice(task.refId, approved, userId);
   if (task.refType === 'stocktake') applyStocktake(task.refId, approved, userId);
+  if (task.refType === 'customer' && task.approvalType === 'credit_terms') applyCreditTerms(task.refId, approved);
   task.status = body.decision;
   task.decidedBy = userId;
   task.decidedAt = new Date().toISOString();

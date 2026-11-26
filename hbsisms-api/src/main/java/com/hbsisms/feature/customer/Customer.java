@@ -14,6 +14,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -22,13 +23,17 @@ import org.hibernate.annotations.Check;
 import org.hibernate.annotations.DynamicUpdate;
 
 /**
- * A buyer: B2C individual or B2B business. Only B2B customers get credit terms.
+ * A buyer: B2C individual or B2B business.
+ * Credit terms allowed for B2B always, or for B2C when {@code creditEnabled}.
  * {@code currentDebt} is the running balance of {@code customer_debt_ledger}.
  */
 @Entity
 @DynamicUpdate
 @Table(name = "customer", indexes = @Index(name = "idx_customer_account", columnList = "account_user_id"))
-@Check(name = "chk_b2b_terms", constraints = "customer_type = 'B2B' OR (credit_limit = 0 AND net_days = 0)")
+@Check(
+        name = "chk_b2b_terms",
+        constraints =
+                "customer_type = 'B2B' OR credit_enabled OR (credit_limit = 0 AND net_days = 0)")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -76,8 +81,34 @@ public class Customer extends AuditableEntity {
     @Column(nullable = false)
     private short netDays;
 
+    /**
+     * Cho phép khách lẻ (B2C) mua nợ khi Chủ bật. B2B luôn được dùng hạn mức / kỳ hạn.
+     */
+    @Column(name = "credit_enabled", nullable = false)
+    private boolean creditEnabled = false;
+
+    /** Đề xuất chờ Chủ duyệt (task 72) — null = không có đề xuất. */
+    @Column(name = "pending_credit_enabled")
+    private Boolean pendingCreditEnabled;
+
+    @Column(name = "pending_credit_limit", precision = 14, scale = 2)
+    private BigDecimal pendingCreditLimit;
+
+    @Column(name = "pending_net_days")
+    private Short pendingNetDays;
+
     @Column(nullable = false, precision = 14, scale = 2)
     private BigDecimal currentDebt = BigDecimal.ZERO;
+
+    public boolean hasPendingCreditTerms() {
+        return pendingCreditEnabled != null || pendingCreditLimit != null || pendingNetDays != null;
+    }
+
+    public void clearPendingCreditTerms() {
+        pendingCreditEnabled = null;
+        pendingCreditLimit = null;
+        pendingNetDays = null;
+    }
 
     /**
      * {@code false} = khách đã khóa. Module bán hàng phải từ chối tạo đơn mới / báo giá
@@ -88,4 +119,13 @@ public class Customer extends AuditableEntity {
 
     @Column(columnDefinition = "text")
     private String note;
+
+    @Version
+    @Column(nullable = false)
+    private long version;
+
+    /** B2B luôn được nợ; B2C chỉ khi {@link #creditEnabled}. */
+    public boolean allowsCreditTerms() {
+        return customerType == CustomerType.B2B || creditEnabled;
+    }
 }

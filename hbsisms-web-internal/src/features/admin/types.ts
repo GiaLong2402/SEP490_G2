@@ -19,6 +19,8 @@ export interface UserInput {
 
 export interface AuditRow extends AuditLog {
   userName: string | null;
+  /** Mã nghiệp vụ resolve từ chứng từ (PN-…, SO-…) — ưu tiên hơn #id. */
+  entityCode?: string | null;
 }
 
 export type { AppConfig, AppRole };

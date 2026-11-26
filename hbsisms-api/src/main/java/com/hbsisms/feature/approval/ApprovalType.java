@@ -12,6 +12,8 @@ public enum ApprovalType {
     ORDER_PRICE_OVERRIDE,
     DAMAGE_REPORT,
     PRICE_LIST,
+    /** Bật mua nợ hoặc tăng hạn mức khách — task 72. */
+    CREDIT_TERMS,
     STOCKTAKE,
     OTHER;
 
