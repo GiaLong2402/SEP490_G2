@@ -52,7 +52,14 @@ export function LocationFormModal({ open, warehouse, location, onClose }: { open
     >
       {raw ? (
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Mã khu" required error={touched ? errors.code : undefined}><Input placeholder="LANH" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} /></Field>
+          <Field
+            label="Mã khu"
+            required
+            error={touched ? errors.code : undefined}
+            hint="Khu lạnh: đặt mã bắt đầu bằng LANH (LANH, LANH-2…). Đồ khu lạnh dư sau sản xuất tách lô -TL; khu khác trả về lô gốc."
+          >
+            <Input placeholder="LANH" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
+          </Field>
           <Field label="Tên khu" required error={touched ? errors.zone : undefined}><Input placeholder="Khu lạnh" value={form.zone} onChange={(e) => setForm({ ...form, zone: e.target.value })} /></Field>
           <Field label="Ghi chú" className="sm:col-span-2" hint="Ví dụ: đồ tươi sống, tủ đông 2…"><Input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
         </div>

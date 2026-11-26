@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { canWarehouseOps, useAuth } from '@/features/auth';
 import { date, daysUntil, money, num } from '@/shared/lib/format';
 import { Button, Chip, DataTable, InfoTip, Modal, type Column } from '@/shared/ui';
 import { useRawMaterialLots, useUnitLabel } from '../hooks';
@@ -6,13 +7,16 @@ import type { RawMaterial, RawMaterialLot } from '../types';
 import { DiscardLotDialog } from './DiscardLotDialog';
 
 export const isLotExpired = (l: Pick<RawMaterialLot, 'expDate'>) => !!l.expDate && (daysUntil(l.expDate) ?? 0) < 0;
-/** Lô trả lại từ lệnh sản xuất (2C): mã lô gốc + "-TL", ghi chú "Dư từ LSX-…". */
-const returnedFrom = (l: RawMaterialLot) => (l.lotCode.endsWith('-TL') ? l.note?.match(/LSX-[\w-]+/)?.[0] ?? 'lệnh sản xuất' : null);
+/** Lô trả lại từ lệnh sản xuất (đồ khu lạnh): mã lô gốc + "-TL" / "-TL2"…, ghi chú "Dư từ LSX-…". */
+const returnedFrom = (l: RawMaterialLot) => (/-TL\d*$/i.test(l.lotCode) ? l.note?.match(/LSX-[\w-]+/)?.[0] ?? 'lệnh sản xuất' : null);
 
 /** Lô của 1 NVL theo FEFO (HSD gần nhất trước) — nguồn cho xuất NVL sản xuất và tính tiền NVL. */
 export type LotsModalMaterial = Pick<RawMaterial, 'id' | 'name' | 'unit' | 'qtyOnHand'> & { code?: string };
 
 export function RawMaterialLotsModal({ material, onClose }: { material: LotsModalMaterial | null; onClose: () => void }) {
+  const { user } = useAuth();
+  /** Dòng 54: Thủ kho / Chủ / Admin bỏ phần còn lại của lô — lô hết hạn (nút đỏ) hoặc lô còn hạn bị hỏng. */
+  const canDiscard = canWarehouseOps(user?.roleCode);
   const lots = useRawMaterialLots(material?.id ?? null);
   const unit = useUnitLabel()(material?.unit);
   const [discarding, setDiscarding] = useState<RawMaterialLot | null>(null);
@@ -40,7 +44,10 @@ export function RawMaterialLotsModal({ material, onClose }: { material: LotsModa
     { key: 'left', header: 'Còn', align: 'right', cell: (l) => <span className={`num ${l.qtyRemaining > 0 ? 'font-medium' : 'text-ink-faint'}`}>{num(l.qtyRemaining)} {unit}</span> },
     {
       key: 'discard', header: '', align: 'right',
-      cell: (l) => (l.qtyRemaining > 0 && isLotExpired(l) ? <Button variant="danger" className="!h-7 !px-2.5 text-small" onClick={() => setDiscarding(l)}>Bỏ lô</Button> : null),
+      cell: (l) =>
+        canDiscard && l.qtyRemaining > 0 ? (
+          <Button variant={isLotExpired(l) ? 'danger' : 'secondary'} className="!h-7 !px-2.5 text-small" onClick={() => setDiscarding(l)}>Bỏ lô</Button>
+        ) : null,
     },
   ];
 

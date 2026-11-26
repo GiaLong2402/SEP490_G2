@@ -56,6 +56,9 @@ Tổng cộng 97 endpoint, sinh từ `src/features/*/mock.ts`. Kiểu dữ liệ
 | Phương thức | Đường dẫn |
 |---|---|
 | GET | `/dashboard/summary` |
+| GET | `/dashboard/tasks` |
+
+`/dashboard/tasks` (Inter 4 dòng 10): `lowStock` = thành phẩm dưới ngưỡng chung + nguyên liệu dưới mức đặt lại (cần quyền `inventory`); `pending` = việc chờ xử lý chia nhóm, mỗi nhóm `count`, `urgentCount`, tối đa 5 việc cũ nhất. Duyệt (báo hỏng, giá riêng B2B, khác) cần `approve`; lệnh SX chờ duyệt cần `inventory` + Chủ/Admin; phiếu nhập NVL chờ nhập, phiếu xuất NVL chờ xuất, thành phẩm chờ cất kho cần `inventory` + Thủ kho/Chủ/Admin. Khối null = không có quyền.
 
 ## debt
 
@@ -189,7 +192,7 @@ Quyền `inventory`. **Role (sơ đồ Inter):** `warehouse` tạo/sửa lệnh 
 | PUT | `/production-orders/:id` | Chỉ `draft` |
 | POST | `/production-orders/:id/approve` | Duy — đủ NVL → `approved` + phiếu xuất `pending` |
 | POST | `/production-orders/:id/cancel` | `draft` / `approved` (chưa xuất) |
-| POST | `/production-orders/:id/complete` | **Cường** — body `{ actualQty, actualProductionCost?, variantId?, finishedDate?, defectQty?, defectReason?, leftovers: [{ rawMaterialId, qty, expDate }] }`; chỉ `in_progress`; leftover → lô `<lô gốc>-TL` (đã có thì `-TL2`, `-TL3`…; lô xuất ra là lô -TL thì vẫn lấy mã gốc) + trừ `actualMaterialCost`; tạo PN FINISHED **pending** kèm dòng variant+qty; PO → `awaiting_receipt` (idempotent nếu đã có PN). Vượt KH chỉ cảnh báo FE. |
+| POST | `/production-orders/:id/complete` | **Cường** — body `{ actualQty, actualProductionCost?, variantId?, finishedDate?, defectQty?, defectReason?, leftovers: [{ rawMaterialId, qty, expDate? }] }`; chỉ `in_progress`; leftover theo **khu cất** của NVL: khu mã bắt đầu `LANH` → lô mới `<lô gốc>-TL` (đã có thì `-TL2`, `-TL3`…; lô xuất ra là lô -TL thì vẫn lấy mã gốc), `expDate` bắt buộc, không trước hôm nay, không muộn hơn HSD lô đã xuất; khu khác → **cộng lại vào lô đã xuất** (trả ngược từ dòng xuất sau cùng, mỗi dòng ≤ số đã xuất; giữ mã lô / HSD / đơn giá; `expDate` bỏ qua; sổ NVL `IN` ref `production_order`); cả hai đều trừ `actualMaterialCost`; tạo PN FINISHED **pending** kèm dòng variant+qty; PO → `awaiting_receipt` (idempotent nếu đã có PN). Vượt KH chỉ cảnh báo FE. |
 | GET | `/material-issues/:id` | Phiếu xuất NVL |
 | POST | `/material-issues/:id/confirm` | **Cường** — body `{ note? }`; luôn FEFO (bỏ lô hết hạn, chỉ tồn dùng được); lưu `note`; trừ tồn lô + ledger `OUT` `refType=material_issue`; PO → `in_progress`; idempotent nếu đã `completed` |
 
@@ -214,6 +217,7 @@ Contract FE: `features/receipts/api.ts`. **Long (Inter 1 dòng 46–47):** phi�
 | POST | `/raw-materials` | `storageLocationId` **bắt buộc**: khu cất thuộc kho nguyên liệu (Khu lạnh / Khu khô) |
 | PUT | `/raw-materials/:id` | `storageLocationId` bỏ trống = giữ khu cũ |
 | GET | `/raw-materials/:id/lots` | Lô NVL theo FEFO (HSD gần nhất trước, lô không HSD cuối). `availableOnly=true` chỉ lô còn tồn. Mỗi lô: mã lô, NSX, HSD, **đơn giá nhập**, SL nhập / còn, phiếu nhập. Dòng 50 (xuất NVL) dùng thứ tự này |
+| POST | `/raw-material-lots/:id/discard` | **Dòng 54** — Thủ kho / Chủ / Admin (`@roles.warehouseOps()`). Body `{ reason: "expired" \| "damaged" \| "other", note? }` (`note` bắt buộc khi `other`). Số còn của lô về 0, trừ `qtyOnHand`, ghi sổ NVL `DISCARD` (ref `raw_lot_discard`, ghi chú "Bỏ lô … · lý do · ghi chú"). 409 lô đã hết; 400 `expired` cho lô chưa hết hạn. Trả lô sau khi bỏ |
 | GET | `/goods-receipts` | Lọc `q`, `receiptType` (`finished`/`raw`), `status` (`pending`/`completed`/`cancelled`; phiếu cũ không có trạng thái = `completed`), `sort` (`asc` = mã phiếu tăng dần; mặc định giảm dần). Trả thêm `status`, `expectedDate`, `completedAt`, `completerName`, `totalAmount`, `lines` |
 | GET | `/goods-receipts/:id` | Chi tiết + `lines` (NVL: dự kiến / thực nhận / lô / HSD / đơn giá / thành tiền) |
 | POST | `/goods-receipts` | **201.** `finished` → nhập ngay (như cũ). `raw` → **Chờ nhập**, `rawLines[].qty` = SL dự kiến, `expectedDate` tùy chọn; không cộng tồn. Mỗi NVL 1 dòng; NVL ngừng dùng → 409 |
