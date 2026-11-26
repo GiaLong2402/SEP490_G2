@@ -266,7 +266,8 @@ public class ProductionOrderService {
     }
 
     /**
-     * Mỗi dòng leftover → lô {@code <lô gốc>-TL} (trùng thì -TL2, -TL3…), trừ chi phí NVL thực tế.
+     * Mỗi dòng leftover, trừ chi phí NVL thực tế: đồ khu lạnh → lô {@code <lô gốc>-TL} (trùng thì -TL2, -TL3…);
+     * đồ khu khô → cộng lại vào lô đã xuất.
      * Source lot = dòng xuất sau cùng của NVL trên phiếu (khớp FE {@code lots[last]}).
      */
     private void applyLeftovers(
@@ -283,6 +284,8 @@ public class ProductionOrderService {
         Map<Long, IssuedMaterialAgg> byMaterial = aggregateIssued(issuedLines);
 
         Map<Long, BigDecimal> leftoverRequested = new HashMap<>();
+        /** Số đã trả về theo từng dòng xuất (đồ khu khô) — nhiều dòng dư cùng NVL không trả quá số đã xuất. */
+        Map<Long, BigDecimal> returnedByLine = new HashMap<>();
         List<ProductionLeftover> saved = new ArrayList<>();
         for (ProductionLeftoverInput input : leftovers) {
             if (input == null || input.qty() == null || input.qty().signum() <= 0) {
@@ -301,49 +304,94 @@ public class ProductionOrderService {
             }
             leftoverRequested.put(materialId, nextTotal);
 
-            if (input.expDate() == null) {
-                throw ApiException.badRequest("Vui lòng nhập hạn dùng lô dư");
+            String note = "Trả lại NVL dư lệnh " + order.getCode();
+            if (RawMaterialStockService.isColdStorage(agg.material)) {
+                saved.add(leftoverToNewLot(order, agg, input, actor, today, note));
+            } else {
+                saved.addAll(leftoverToSourceLots(order, agg, input.qty(), returnedByLine, actor, note));
             }
-            if (input.expDate().isBefore(today)) {
-                throw ApiException.badRequest("Hạn dùng lô dư không được ở quá khứ");
-            }
-            if (agg.minExpDate != null && input.expDate().isAfter(agg.minExpDate)) {
-                throw ApiException.badRequest(
-                        "Hạn dùng lô dư không được muộn hơn hạn lô đã xuất (" + agg.minExpDate + ")");
-            }
-
-            RawMaterialLot sourceLot = agg.lastLot;
-            BigDecimal unitPrice = sourceLot.getUnitPrice() == null ? BigDecimal.ZERO : sourceLot.getUnitPrice();
-            // Gốc-TL, đã có thì Gốc-TL2, TL3…; lô xuất ra là lô -TL thì vẫn lấy mã gốc (không thành -TL-TL).
-            String lotCode = rawMaterialStockService.nextLeftoverLotCode(agg.material, sourceLot.getLotCode());
-            RawMaterialLot returned = rawMaterialStockService.receive(
-                    agg.material,
-                    lotCode,
-                    null,
-                    input.expDate(),
-                    unitPrice,
-                    input.qty(),
-                    null,
-                    actor,
-                    "Trả lại NVL dư lệnh " + order.getCode());
-
-            BigDecimal amount = input.qty().multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal cost = order.getActualMaterialCost() == null ? BigDecimal.ZERO : order.getActualMaterialCost();
-            BigDecimal credited = cost.subtract(amount);
-            order.setActualMaterialCost(credited.signum() < 0 ? BigDecimal.ZERO : credited);
-
-            ProductionLeftover row = new ProductionLeftover();
-            row.setProductionOrder(order);
-            row.setRawMaterial(agg.material);
-            row.setLot(returned);
-            row.setQty(input.qty());
-            row.setExpDate(input.expDate());
-            row.setAmount(amount);
-            saved.add(row);
         }
         if (!saved.isEmpty()) {
             leftoverRepository.saveAll(saved);
         }
+    }
+
+    /**
+     * Đồ khu lạnh (đã ra khỏi kho lạnh, có thể đã rã đông): tách lô {@code <lô gốc>-TL} (trùng → -TL2…), hạn do kho chọn,
+     * không trước hôm nay và không muộn hơn hạn lô đã xuất; giá theo lô xuất sau cùng.
+     */
+    private ProductionLeftover leftoverToNewLot(
+            ProductionOrder order, IssuedMaterialAgg agg, ProductionLeftoverInput input, AppUser actor, LocalDate today, String note) {
+        if (input.expDate() == null) {
+            throw ApiException.badRequest("Vui lòng nhập hạn dùng lô dư");
+        }
+        if (input.expDate().isBefore(today)) {
+            throw ApiException.badRequest("Hạn dùng lô dư không được ở quá khứ");
+        }
+        if (agg.minExpDate != null && input.expDate().isAfter(agg.minExpDate)) {
+            throw ApiException.badRequest(
+                    "Hạn dùng lô dư không được muộn hơn hạn lô đã xuất (" + agg.minExpDate + ")");
+        }
+        RawMaterialLot sourceLot = agg.lastLot;
+        BigDecimal unitPrice = sourceLot.getUnitPrice() == null ? BigDecimal.ZERO : sourceLot.getUnitPrice();
+        // Gốc-TL, đã có thì Gốc-TL2, TL3…; lô xuất ra là lô -TL thì vẫn lấy mã gốc (không thành -TL-TL).
+        String lotCode = rawMaterialStockService.nextLeftoverLotCode(agg.material, sourceLot.getLotCode());
+        RawMaterialLot returned = rawMaterialStockService.receive(
+                agg.material, lotCode, null, input.expDate(), unitPrice, input.qty(), null, actor, note);
+        return leftoverRow(order, agg.material, returned, input.qty(), input.expDate(), unitPrice);
+    }
+
+    /**
+     * Đồ khu khô (khay, màng bọc, gia vị…): cộng lại vào chính lô đã xuất, giữ mã lô / HSD / đơn giá. Trả ngược từ dòng xuất
+     * sau cùng, mỗi dòng không quá số đã xuất từ dòng đó → số và tiền từng lô luôn khớp.
+     */
+    private List<ProductionLeftover> leftoverToSourceLots(
+            ProductionOrder order,
+            IssuedMaterialAgg agg,
+            BigDecimal qty,
+            Map<Long, BigDecimal> returnedByLine,
+            AppUser actor,
+            String note) {
+        List<ProductionLeftover> rows = new ArrayList<>();
+        BigDecimal left = qty;
+        for (int i = agg.lines.size() - 1; i >= 0 && left.signum() > 0; i--) {
+            MaterialIssueLine line = agg.lines.get(i);
+            BigDecimal room = line.getQtyIssued().subtract(returnedByLine.getOrDefault(line.getId(), BigDecimal.ZERO));
+            BigDecimal back = left.min(room);
+            if (back.signum() <= 0) {
+                continue;
+            }
+            RawMaterialLot lot = rawMaterialStockService.returnToLot(
+                    line.getRawMaterialLot().getId(),
+                    back,
+                    RawMaterialStockService.REF_PRODUCTION_ORDER,
+                    order.getId(),
+                    actor,
+                    note);
+            returnedByLine.merge(line.getId(), back, BigDecimal::add);
+            BigDecimal unitPrice = lot.getUnitPrice() == null ? BigDecimal.ZERO : lot.getUnitPrice();
+            rows.add(leftoverRow(order, agg.material, lot, back, lot.getExpDate(), unitPrice));
+            left = left.subtract(back);
+        }
+        return rows;
+    }
+
+    /** Một dòng NVL dư + trừ tiền phần dư khỏi chi phí NVL thực tế của lệnh. */
+    private static ProductionLeftover leftoverRow(
+            ProductionOrder order, RawMaterial material, RawMaterialLot lot, BigDecimal qty, LocalDate expDate, BigDecimal unitPrice) {
+        BigDecimal amount = qty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal cost = order.getActualMaterialCost() == null ? BigDecimal.ZERO : order.getActualMaterialCost();
+        BigDecimal credited = cost.subtract(amount);
+        order.setActualMaterialCost(credited.signum() < 0 ? BigDecimal.ZERO : credited);
+
+        ProductionLeftover row = new ProductionLeftover();
+        row.setProductionOrder(order);
+        row.setRawMaterial(material);
+        row.setLot(lot);
+        row.setQty(qty);
+        row.setExpDate(expDate);
+        row.setAmount(amount);
+        return row;
     }
 
     private static Map<Long, IssuedMaterialAgg> aggregateIssued(List<MaterialIssueLine> lines) {
@@ -359,6 +407,7 @@ public class ProductionOrderService {
                     materialId, id -> new IssuedMaterialAgg(line.getRawMaterial()));
             agg.totalIssued = agg.totalIssued.add(line.getQtyIssued());
             agg.lastLot = line.getRawMaterialLot();
+            agg.lines.add(line);
             LocalDate exp = line.getRawMaterialLot().getExpDate();
             if (exp != null) {
                 agg.minExpDate = agg.minExpDate == null || exp.isBefore(agg.minExpDate) ? exp : agg.minExpDate;
@@ -453,6 +502,8 @@ public class ProductionOrderService {
         private BigDecimal totalIssued = BigDecimal.ZERO;
         private RawMaterialLot lastLot;
         private LocalDate minExpDate;
+        /** Các dòng xuất của NVL theo thứ tự xuất (đồ khu khô trả ngược từ dòng cuối). */
+        private final List<MaterialIssueLine> lines = new ArrayList<>();
 
         private IssuedMaterialAgg(RawMaterial material) {
             this.material = material;

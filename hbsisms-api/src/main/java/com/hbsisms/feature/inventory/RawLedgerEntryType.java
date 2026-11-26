@@ -9,6 +9,8 @@ public enum RawLedgerEntryType {
     IN,
     /** Xuất cho sản xuất (dòng 50). */
     OUT,
+    /** Bỏ phần còn lại của lô (hết hạn / hư hỏng / khác) — dòng 54. */
+    DISCARD,
     /** Điều chỉnh / tồn đầu kỳ. */
     ADJUST;
 
