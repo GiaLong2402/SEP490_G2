@@ -1,6 +1,7 @@
 package com.hbsisms.feature.production;
 
 import jakarta.persistence.LockModeType;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -19,4 +20,8 @@ public interface MaterialIssueRepository extends JpaRepository<MaterialIssue, Lo
     Optional<MaterialIssue> findByIdForUpdate(@Param("id") Long id);
 
     Optional<MaterialIssue> findByProductionOrder_Id(Long productionOrderId);
+
+    /** Trang Tổng quan: phiếu xuất NVL chờ thủ kho xuất, cũ nhất trước. */
+    @EntityGraph(attributePaths = {"productionOrder", "productionOrder.product"})
+    List<MaterialIssue> findByStatusOrderByCreatedAtAsc(MaterialIssueStatus status);
 }
