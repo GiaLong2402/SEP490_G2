@@ -81,3 +81,53 @@ mock('GET', '/dashboard/summary', ({ userId }) => {
       : null,
   };
 });
+
+/** Dòng 10 — bản giả của GET /dashboard/tasks (chỉ nhóm duyệt + tồn thấp; mock chưa có phiếu nhập / lệnh SX chờ). */
+mock('GET', '/dashboard/tasks', ({ userId }) => {
+  const user = requireUser(userId);
+  const permissions = db.roles.find((r) => r.id === user.roleId)?.permissions ?? [];
+  const can = (p: (typeof permissions)[number]) => permissions.includes(p);
+  const threshold = configInt('low_stock_threshold', 15);
+  const staleBefore = Date.now() - 24 * 3_600_000;
+
+  const pendingApprovals = db.approvals
+    .filter((a) => a.status === 'pending')
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const approvalGroup = (key: 'damage_report' | 'customer_price' | 'other_approval', label: string, link: string, rows: typeof pendingApprovals) => {
+    const items = rows.map((a) => ({
+      code: null,
+      title: a.title,
+      createdAt: a.createdAt,
+      dueDate: null,
+      urgent: new Date(a.createdAt).getTime() < staleBefore,
+      link: a.refType === 'sales_order' ? `/orders/${a.refId}` : `/approvals?approvalType=${a.approvalType}`,
+    }));
+    return { key, label, count: items.length, urgentCount: items.filter((i) => i.urgent).length, link, items: items.slice(0, 5) };
+  };
+  const groups = can('approve')
+    ? [
+        approvalGroup('damage_report', 'Phiếu báo hỏng chờ duyệt', '/approvals?approvalType=damage_report', pendingApprovals.filter((a) => a.approvalType === 'damage_report')),
+        approvalGroup('customer_price', 'Giá riêng B2B chờ duyệt', '/approvals?approvalType=price_list', pendingApprovals.filter((a) => a.approvalType === 'price_list')),
+        approvalGroup('other_approval', 'Yêu cầu duyệt khác', '/approvals', pendingApprovals.filter((a) => a.approvalType !== 'damage_report' && a.approvalType !== 'price_list')),
+      ].filter((g) => g.count > 0)
+    : [];
+
+  return {
+    lowStock: can('inventory')
+      ? {
+          threshold,
+          finished: db.variants
+            .map((v) => ({ ...variantLabel(v.id), available: db.stock.filter((s) => s.variantId === v.id).reduce((sum, s) => sum + s.qtyAvailable, 0) }))
+            .filter((r) => r.available < threshold)
+            .sort((a, b) => a.available - b.available)
+            .map((r) => ({ sku: r.sku, productName: r.productName, available: r.available })),
+          raw: db.rawMaterials
+            .filter((m) => m.isActive && m.reorderLevel !== null && m.reorderLevel > 0 && m.qtyOnHand < m.reorderLevel)
+            .map((m) => ({ id: m.id, code: m.code, name: m.name, unit: m.unit, qtyOnHand: m.qtyOnHand, reorderLevel: m.reorderLevel as number, locationCode: m.storageLocationCode ?? null })),
+        }
+      : null,
+    pending: can('approve') || can('inventory')
+      ? { total: groups.reduce((s, g) => s + g.count, 0), urgent: groups.reduce((s, g) => s + g.urgentCount, 0), groups }
+      : null,
+  };
+});
