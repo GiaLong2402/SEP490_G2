@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { receiptsApi } from '@/features/receipts';
+import { receiptsApi, useUnitLabel } from '@/features/receipts';
 import { date, money, num } from '@/shared/lib/format';
 import { InfoTip, LinkButton } from '@/shared/ui';
 import { useMaterialIssue } from '../hooks';
@@ -12,7 +12,7 @@ import { actualTotalCost, estimatedUnitCost, leftoverTotal, reportedEvent } from
 
 const signed = (v: number, fmt: (n: number) => string) => (v === 0 ? '0' : `${v > 0 ? '+' : '−'}${fmt(Math.abs(v))}`);
 
-function Kpi({ label, value, unit, sub, subTone, bar, accent }: { label: ReactNode; value: string; unit?: string; sub: string; subTone?: 'warn' | 'muted'; bar?: number; accent?: boolean }) {
+function Kpi({ label, value, unit, sub, subTone, bar, accent }: { label: ReactNode; value: string; unit?: string; sub: ReactNode; subTone?: 'warn' | 'muted'; bar?: number; accent?: boolean }) {
   return (
     <div className="rounded-lg border border-line bg-card p-4 shadow-card">
       <div className="flex items-center gap-1 text-small text-ink-muted">{label}</div>
@@ -26,11 +26,28 @@ function Kpi({ label, value, unit, sub, subTone, bar, accent }: { label: ReactNo
   );
 }
 
-function Row({ k, v }: { k: string; v: ReactNode }) {
+/** Dòng nhãn – giá trị; `sub` là dòng phụ nhỏ dưới giá trị (không nhồi chung một dòng). */
+function Row({ k, v, sub }: { k: string; v: ReactNode; sub?: ReactNode }) {
   return (
-    <div className="flex justify-between gap-4">
-      <dt className="text-ink-muted">{k}</dt>
-      <dd className="text-right font-semibold text-ink">{v}</dd>
+    <div className="flex items-start justify-between gap-4">
+      <dt className="shrink-0 text-ink-muted">{k}</dt>
+      <dd className="min-w-0 text-right">
+        <div className="font-semibold text-ink">{v}</div>
+        {sub && <div className="text-small text-ink-muted">{sub}</div>}
+      </dd>
+    </div>
+  );
+}
+
+/** Một dòng cộng tiền trong ô Tổng chi phí. */
+function CostLine({ k, v, note }: { k: string; v: string; note?: string }) {
+  return (
+    <div>
+      <div className="flex justify-between gap-3">
+        <span>{k}</span>
+        <span className="tabular-nums text-ink">{v}</span>
+      </div>
+      {note && <div className="text-green-fg">{note}</div>}
     </div>
   );
 }
@@ -57,32 +74,58 @@ export function SummaryPanel({ order }: { order: ProductionOrder }) {
   const putAway = order.finishedPutAway ?? null;
   /** Ưu tiên API; dự phòng: dòng hàng của phiếu thành phẩm có dạng "SKU · mã lô". */
   const lotCode = putAway?.lotCode ?? (receipt.data?.items[0]?.name.split(' · ').slice(1).join(' · ') || null);
-  const locationText = putAway?.locationCode
-    ? [putAway.locationCode, putAway.locationZone, putAway.warehouseName].filter(Boolean).join(' · ')
-    : '—';
+  const unitLabel = useUnitLabel();
+  const locationMain = putAway?.locationCode ? [putAway.locationCode, putAway.locationZone].filter(Boolean).join(' · ') : '—';
   const leftoverNames = (order.leftovers ?? []).map((l) => l.rawMaterialName.toLowerCase()).join(', ');
+  const materialDiff = (order.actualMaterialCost ?? 0) - (order.estimatedMaterialCost ?? 0);
+  const productionDiff = (order.actualProductionCost ?? 0) - (order.estimatedProductionCost ?? 0);
 
-  const rows = [
-    { k: 'Số khay', plan: num(order.plannedQty), real: num(received), diff: signed(received - order.plannedQty, num), cls: tone(received - order.plannedQty, false) },
+  /** `note` = lý do chênh lệch, hiện dòng nhỏ dưới con số (không nối chung một dòng). */
+  const rows: { k: string; plan: string; real: string; diff: string; cls: string; note?: string }[] = [
+    { k: 'Số khay', plan: num(order.plannedQty), real: num(received), diff: signed(received - order.plannedQty, num), cls: tone(received - order.plannedQty, false), note: order.defectQty ? `Hỏng ${num(order.defectQty)} khay` : undefined },
     {
       k: 'Tiền nguyên liệu',
       plan: money(order.estimatedMaterialCost),
       real: money(order.actualMaterialCost),
-      diff: signed((order.actualMaterialCost ?? 0) - (order.estimatedMaterialCost ?? 0), money) + (leftover ? ` (${leftoverNames || 'nguyên liệu'} dư)` : ''),
-      cls: tone((order.actualMaterialCost ?? 0) - (order.estimatedMaterialCost ?? 0)),
+      diff: signed(materialDiff, money),
+      cls: tone(materialDiff),
+      note: leftover ? `Trả lại kho: ${leftoverNames || 'nguyên liệu dư'}` : undefined,
     },
-    { k: 'Chi phí sản xuất', plan: money(order.estimatedProductionCost), real: money(order.actualProductionCost), diff: signed((order.actualProductionCost ?? 0) - (order.estimatedProductionCost ?? 0), money), cls: tone((order.actualProductionCost ?? 0) - (order.estimatedProductionCost ?? 0)) },
-    { k: 'Giá vốn / khay', plan: money(est), real: money(unit), diff: unitDiff === null ? '—' : signed(unitDiff, money), cls: tone(unitDiff ?? 0) },
+    { k: 'Chi phí sản xuất', plan: money(order.estimatedProductionCost), real: money(order.actualProductionCost), diff: signed(productionDiff, money), cls: tone(productionDiff) },
+    {
+      k: 'Giá vốn / khay',
+      plan: money(est),
+      real: money(unit),
+      diff: unitDiff === null ? '—' : signed(unitDiff, money),
+      cls: tone(unitDiff ?? 0),
+      note: unitDiff && unitDiff < 0 && leftover ? 'Nhờ nguyên liệu dư trả lại' : unitDiff && unitDiff > 0 && order.defectQty ? 'Do có khay hỏng' : undefined,
+    },
   ];
   const history = orderHistory(order, issue.data, [
-    ...(order.completedAt ? [{ what: 'Tự chuyển Hoàn thành', who: 'Hệ thống', at: order.completedAt }, { what: `Nhập kho ${order.finishedReceiptCode ?? ''} · ${num(received)} khay`, at: order.completedAt }] : []),
-    reportedEvent(order),
+    ...(order.completedAt
+      ? [{
+          what: 'Nhập kho · lệnh hoàn thành',
+          details: [
+            `Phiếu ${order.finishedReceiptCode ?? ''} · ${num(received)} khay${putAway?.locationCode ? ` vào ${putAway.locationCode}` : ''}`,
+            'Lệnh tự chuyển "Hoàn thành"',
+          ],
+          who: 'Hệ thống',
+          at: order.completedAt,
+        }]
+      : []),
+    reportedEvent(order, unitLabel),
   ]);
 
   return (
     <StepLayout aside={<HistoryCard events={history} />}>
       <div className="grid gap-3 sm:grid-cols-3">
-        <Kpi label="Sản lượng đạt" value={num(received)} unit={` / ${num(order.plannedQty)} khay`} bar={pct} sub={`${pct}% kế hoạch · hỏng ${num(order.defectQty ?? 0)} khay${order.defectReason ? ` (${order.defectReason.toLowerCase()})` : ''}`} />
+        <Kpi
+          label="Sản lượng đạt"
+          value={num(received)}
+          unit={` / ${num(order.plannedQty)} khay`}
+          bar={pct}
+          sub={<><div>{pct}% kế hoạch</div><div>Hỏng {num(order.defectQty ?? 0)} khay{order.defectReason ? ` · ${order.defectReason.toLowerCase()}` : ''}</div></>}
+        />
         <Kpi
           accent
           label={<>Giá vốn<InfoTip label="Ghi chú giá vốn">Giá vốn chia cho số khay thật nhập kho, nên khay hỏng làm giá vốn tăng; phần nguyên liệu dư trả về kho được trừ ra. Nếu lý do hỏng lặp lại nhiều lệnh, xem lại khâu đó.</InfoTip></>}
@@ -91,7 +134,16 @@ export function SummaryPanel({ order }: { order: ProductionOrder }) {
           sub={unitDiff === null || !est ? '—' : `${unitDiff >= 0 ? 'Cao' : 'Thấp'} hơn dự tính ${money(Math.abs(unitDiff))} (${unitDiff >= 0 ? '+' : '−'}${Math.abs((unitDiff / est) * 100).toFixed(1).replace('.', ',')}%)`}
           subTone={unitDiff !== null && unitDiff > 0 ? 'warn' : 'muted'}
         />
-        <Kpi label="Tổng chi phí" value={money(total)} sub={`Nguyên liệu ${num(order.actualMaterialCost)}${leftover ? ` (đã trừ ${num(leftover)} ${leftoverNames} dư)` : ''} + sản xuất ${num(order.actualProductionCost)}`} />
+        <Kpi
+          label="Tổng chi phí"
+          value={money(total)}
+          sub={
+            <div className="mt-1 space-y-1">
+              <CostLine k="Nguyên liệu" v={money(order.actualMaterialCost)} note={leftover ? `đã trừ ${money(leftover)} dư trả lại` : undefined} />
+              <CostLine k="Sản xuất" v={money(order.actualProductionCost)} />
+            </div>
+          }
+        />
       </div>
 
       <Section flush title="Kế hoạch so với thực tế">
@@ -111,7 +163,10 @@ export function SummaryPanel({ order }: { order: ProductionOrder }) {
                   <td className="px-4 py-3">{r.k}</td>
                   <td className="px-3 py-3 text-right tabular-nums">{r.plan}</td>
                   <td className="px-3 py-3 text-right font-semibold tabular-nums">{r.real}</td>
-                  <td className={`px-4 py-3 text-right tabular-nums ${r.cls}`}>{r.diff}</td>
+                  <td className="px-4 py-3 text-right">
+                    <div className={`tabular-nums ${r.cls}`}>{r.diff}</div>
+                    {r.note && <div className="text-small text-ink-muted">{r.note}</div>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -122,14 +177,38 @@ export function SummaryPanel({ order }: { order: ProductionOrder }) {
       <div className="grid gap-4 md:grid-cols-2">
         <section className="rounded-lg border border-line bg-card p-4 shadow-card">
           <h2 className="mb-3 text-h2 text-ink">Hàng đã nhập kho</h2>
-          <dl className="space-y-2.5">
+          <dl className="space-y-3">
             <Row k="Mã lô" v={<span className="font-mono">{lotCode ?? '—'}</span>} />
-            <Row k="Số khay" v={`Báo ${num(order.actualQty)} · Nhập kho ${num(received)}`} />
-            <Row k="Nguyên liệu trả lại" v={order.leftovers?.length ? <span className="font-mono">{order.leftovers.map((l) => `${l.lotCode} · ${num(l.qty)} ${l.unit}`).join(', ')}</span> : 'Không'} />
-            <Row k="Vị trí" v={locationText} />
+            <Row
+              k="Số khay"
+              v={`${num(received)} khay`}
+              sub={order.actualQty != null && order.actualQty !== received ? `Báo đạt ${num(order.actualQty)}, đếm lại khi nhập kho` : 'Đúng số báo đạt'}
+            />
+            <Row k="Vị trí" v={locationMain} sub={putAway?.warehouseName ?? undefined} />
             <Row k="Hạn sử dụng" v={putAway?.expDate ? date(putAway.expDate) : '—'} />
             <Row k="Phiếu nhập" v={order.finishedReceiptCode ? <Link to="/receipts" className="font-mono font-normal text-primary hover:underline">{order.finishedReceiptCode}</Link> : '—'} />
           </dl>
+          <div className="mt-4 border-t border-line pt-3">
+            <div className="mb-2 text-small font-medium text-ink-muted">Nguyên liệu dư trả lại kho</div>
+            {order.leftovers?.length ? (
+              <ul className="space-y-2">
+                {order.leftovers.map((l) => (
+                  <li key={`${l.rawMaterialId}-${l.lotCode}`} className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-ink">{l.rawMaterialName}</div>
+                      <div className="font-mono text-small text-ink-faint">Lô {l.lotCode}</div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className="font-semibold tabular-nums text-ink">{num(l.qty)} {unitLabel(l.unit)}</div>
+                      <div className="text-small tabular-nums text-green-fg">−{money(l.amount)}</div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-small text-ink-faint">Không có</p>
+            )}
+          </div>
         </section>
         <section className="flex flex-col rounded-lg border border-line bg-card p-4 shadow-card">
           <div className="flex items-start justify-between gap-2">

@@ -17,15 +17,21 @@ export function stepOf(status: ProductionOrderStatus) {
 /** Thanh "Tiến trình sản xuất" 5 bước trên trang lệnh. */
 export function StepTracker({ status }: { status: ProductionOrderStatus }) {
   const current = stepOf(status);
+  // Lệnh đã hoàn thành: cả 5 bước đều xong → bước 5 cũng tick xanh, không còn "đang làm".
+  const allDone = status === 'completed';
   return (
     <nav aria-label="Tiến trình sản xuất" className="mb-4 rounded-lg border border-line bg-card px-4 pb-4 pt-3 shadow-card">
-      <div className="mb-2.5 text-micro font-semibold uppercase tracking-wide text-ink-muted">Tiến trình sản xuất</div>
+      <div className="mb-2.5 flex items-center justify-between gap-2">
+        <span className="text-micro font-semibold uppercase tracking-wide text-ink-muted">Tiến trình sản xuất</span>
+        {allDone && <span className="inline-flex items-center gap-1 text-small font-semibold text-green-fg"><Check size={14} strokeWidth={3} aria-hidden />Đã xong 5/5 bước</span>}
+      </div>
       <ol className="grid gap-2 sm:grid-cols-5">
         {PRODUCTION_STEPS.map((s, i) => {
-          const done = current > i;
-          const now = current === i;
+          const done = allDone || current > i;
+          const now = !allDone && current === i;
+          const last = allDone && i === PRODUCTION_STEPS.length - 1;
           return (
-            <li key={s.name} aria-current={now ? 'step' : undefined} className={`flex items-start gap-2.5 rounded-lg p-2.5 ${now ? 'bg-primary/10' : ''} ${current < 0 ? 'opacity-50' : ''}`}>
+            <li key={s.name} aria-current={now || last ? 'step' : undefined} className={`flex items-start gap-2.5 rounded-lg p-2.5 ${now ? 'bg-primary/10' : last ? 'bg-green-bg' : ''} ${current < 0 ? 'opacity-50' : ''}`}>
               <span
                 className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-small font-bold ${
                   done ? 'bg-green-fg text-card' : now ? 'bg-primary text-card' : 'border border-line bg-rowalt text-ink-muted'

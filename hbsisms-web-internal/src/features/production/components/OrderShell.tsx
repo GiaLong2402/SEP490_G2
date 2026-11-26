@@ -1,7 +1,7 @@
 import type { InputHTMLAttributes, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { ProductionOrderStatus } from '@/shared/domain/enums';
-import { dateTimeFull } from '@/shared/lib/format';
+import { date, dateTimeFull } from '@/shared/lib/format';
 import type { Tone } from '@/shared/domain/enums';
 import type { ProductionOrder } from '../types';
 import { StepTracker } from './StepTracker';
@@ -68,7 +68,7 @@ export function OverviewCard({ items, footer }: { items: [string, ReactNode][]; 
       <div className={asideTitle}>Tổng quan lệnh</div>
       <dl className="space-y-2.5">
         {items.map(([k, v]) => (
-          <div key={k} className="flex justify-between gap-4">
+          <div key={k} className="flex items-start justify-between gap-4">
             <dt className="shrink-0 text-ink-muted">{k}</dt>
             <dd className="min-w-0 text-right font-semibold tabular-nums text-ink">{v ?? '—'}</dd>
           </div>
@@ -84,20 +84,38 @@ export function OverviewCard({ items, footer }: { items: [string, ReactNode][]; 
   );
 }
 
-export interface HistoryEvent { what: string; who?: string | null; at?: string | null }
+/** Một mốc lịch sử: tiêu đề ngắn, các ý chi tiết (mỗi ý một dòng), người làm và thời điểm. */
+export interface HistoryEvent { what: string; details?: string[]; who?: string | null; at?: string | null }
 
-/** Cột phải: Lịch sử hoạt động (mới nhất trên cùng). */
+/** "2026-11-25" (chỉ ngày) thì hiện ngày; có giờ thì hiện ngày giờ — tránh "07:00:00" giả. */
+const whenText = (at: string) => (/^\d{4}-\d{2}-\d{2}$/.test(at) ? date(at) : dateTimeFull(at));
+
+/** Cột phải: Lịch sử hoạt động (mới nhất trên cùng), dạng dòng thời gian. */
 export function HistoryCard({ events }: { events: HistoryEvent[] }) {
   return (
     <section className="rounded-lg border border-line bg-card p-4 shadow-card">
       <div className={asideTitle}>Lịch sử hoạt động</div>
-      <ol className="space-y-3">
-        {events.map((e) => (
-          <li key={e.what} className="flex gap-2.5">
-            <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" aria-hidden />
-            <div>
-              <div className="font-medium text-ink">{e.what}</div>
-              {(e.who || e.at) && <div className="text-small text-ink-faint">{[e.who, e.at && dateTimeFull(e.at)].filter(Boolean).join(' · ')}</div>}
+      <ol>
+        {events.map((e, idx) => (
+          <li key={`${idx}-${e.what}`} className="relative flex gap-3 pb-4 last:pb-0">
+            {idx < events.length - 1 && <span className="absolute left-[4px] top-4 bottom-0 w-px bg-line" aria-hidden />}
+            <span className={`relative mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${idx === 0 ? 'bg-primary' : 'bg-ink-faint/60'}`} aria-hidden />
+            <div className="min-w-0">
+              <div className="font-semibold leading-5 text-ink">{e.what}</div>
+              {e.details && e.details.length > 0 && (
+                <ul className="mt-1 space-y-0.5 text-small text-ink-muted">
+                  {e.details.map((d) => (
+                    <li key={d} className="flex gap-1.5"><span className="text-ink-faint" aria-hidden>–</span><span className="min-w-0">{d}</span></li>
+                  ))}
+                </ul>
+              )}
+              {(e.who || e.at) && (
+                <div className="mt-1 text-small text-ink-faint">
+                  {e.who && <span>{e.who}</span>}
+                  {e.who && e.at && <span aria-hidden> · </span>}
+                  {e.at && <span className="tabular-nums">{whenText(e.at)}</span>}
+                </div>
+              )}
             </div>
           </li>
         ))}
@@ -140,7 +158,9 @@ export function orderHistory(order: ProductionOrder | null, issue?: { code: stri
   return [
     ...extra,
     ...(issue?.completedAt ? [{ what: `Xuất nguyên liệu ${issue.code}`, who: issue.completerName, at: issue.completedAt }] : []),
-    ...(order.approvedAt ? [{ what: `Duyệt lệnh${order.materialIssueCode ? ` · tự tạo ${order.materialIssueCode}` : ''}`, who: order.approverName, at: order.approvedAt }] : []),
+    ...(order.approvedAt
+      ? [{ what: 'Duyệt lệnh', details: order.materialIssueCode ? [`Tự tạo phiếu xuất ${order.materialIssueCode}`] : undefined, who: order.approverName, at: order.approvedAt }]
+      : []),
     { what: 'Tạo lệnh sản xuất', who: order.creatorName, at: order.createdAt },
   ];
 }

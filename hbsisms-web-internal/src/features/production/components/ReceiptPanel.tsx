@@ -1,20 +1,30 @@
 import type { ReactNode } from 'react';
 import { PackageCheck } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { FinishedReceiptFields, receiptsApi, useFinishedReceiptForm } from '@/features/receipts';
+import { FinishedReceiptFields, receiptsApi, useFinishedReceiptForm, useUnitLabel } from '@/features/receipts';
 import { money, num } from '@/shared/lib/format';
 import { Button, Chip, ErrorState, InfoTip, PageLoading } from '@/shared/ui';
 import { useMaterialIssue } from '../hooks';
 import type { ProductionOrder } from '../types';
 import { ActionBar, HistoryCard, OverviewCard, Section, StepLayout, orderHistory, type HistoryEvent } from './OrderShell';
 
-/** Mốc "Báo làm xong" trong lịch sử. */
-export function reportedEvent(o: ProductionOrder): HistoryEvent {
-  const parts = [`Báo làm xong ${num(o.actualQty)}/${num(o.plannedQty)}`];
-  if (o.defectQty) parts.push(`hỏng ${num(o.defectQty)}`);
-  for (const l of o.leftovers ?? []) parts.push(`trả ${num(l.qty)} ${l.unit} ${l.rawMaterialName.toLowerCase()} (${l.lotCode})`);
-  if (o.finishedReceiptCode) parts.push(`tạo ${o.finishedReceiptCode}`);
-  return { what: parts.join(' · '), at: o.finishedDate ?? null };
+/** Mốc "Báo làm xong" trong lịch sử: tiêu đề ngắn, mỗi việc kèm theo một dòng. */
+export function reportedEvent(o: ProductionOrder, unitLabel: (u: string) => string = (u) => u): HistoryEvent {
+  const details: string[] = [];
+  if (o.defectQty) details.push(`Hỏng ${num(o.defectQty)} khay${o.defectReason ? ` (${o.defectReason.toLowerCase()})` : ''}`);
+  for (const l of o.leftovers ?? []) details.push(`Trả ${num(l.qty)} ${unitLabel(l.unit)} ${l.rawMaterialName.toLowerCase()} → lô ${l.lotCode}`);
+  if (o.finishedReceiptCode) details.push(`Tạo phiếu nhập ${o.finishedReceiptCode}`);
+  return { what: `Báo làm xong ${num(o.actualQty)}/${num(o.plannedQty)} khay`, details, at: o.finishedDate ?? null };
+}
+
+/** Ô giá trị nhiều dòng trong Tổng quan: dòng chính + dòng phụ nhỏ. */
+export function Stacked({ main, sub, subTone }: { main: ReactNode; sub?: ReactNode; subTone?: 'green' | 'muted' }) {
+  return (
+    <span className="flex flex-col items-end">
+      <span>{main}</span>
+      {sub && <span className={`text-small font-normal ${subTone === 'green' ? 'text-green-fg' : 'text-ink-muted'}`}>{sub}</span>}
+    </span>
+  );
 }
 
 /** Tổng chi phí thật của lệnh: NVL đã xuất (backend trừ phần dư trả lại) + chi phí sản xuất. */
@@ -46,6 +56,7 @@ export function ReceiptPanel({ order }: { order: ProductionOrder }) {
   const total = actualTotalCost(order);
   const form = useFinishedReceiptForm(receipt.data, { productLabel, reportedQty: order.actualQty ?? 0, totalCost: total, mfgDate: order.finishedDate ?? null });
   const issue = useMaterialIssue(order.materialIssueId);
+  const unitLabel = useUnitLabel();
   const leftover = leftoverTotal(order);
   const aside = (
     <>
@@ -54,13 +65,22 @@ export function ReceiptPanel({ order }: { order: ProductionOrder }) {
           ['Trạng thái', 'Chờ nhập kho'],
           ['Thành phẩm', order.productName],
           ['Kế hoạch / đạt', `${num(order.plannedQty)} / ${num(order.actualQty)} khay`],
-          ['Hỏng', order.defectQty ? `${num(order.defectQty)} khay${order.defectReason ? ` · ${order.defectReason.toLowerCase()}` : ''}` : '0'],
-          ['Phiếu nhập', <><span className="font-mono">{order.finishedReceiptCode ?? '—'}</span> · {receipt.data?.status === 'completed' ? 'đã nhập' : 'chờ nhập'}</>],
-          ...(order.leftovers?.length ? [['Nguyên liệu dư trả lại', `${order.leftovers.map((l) => `${num(l.qty)} ${l.unit}`).join(', ')} · −${money(leftover)}`] as [string, ReactNode]] : []),
+          ['Hỏng', order.defectQty ? <Stacked main={`${num(order.defectQty)} khay`} sub={order.defectReason} /> : '0'],
+          ['Phiếu nhập', <Stacked main={<span className="font-mono">{order.finishedReceiptCode ?? '—'}</span>} sub={receipt.data?.status === 'completed' ? 'Đã nhập' : 'Chờ nhập'} />],
+          ...(order.leftovers?.length
+            ? [[
+                'Nguyên liệu dư trả lại',
+                <Stacked
+                  main={<span className="flex flex-col items-end">{order.leftovers.map((l) => <span key={l.lotCode + l.rawMaterialId}>{num(l.qty)} {unitLabel(l.unit)} {l.rawMaterialName.toLowerCase()}</span>)}</span>}
+                  sub={`−${money(leftover)} giá vốn`}
+                  subTone="green"
+                />,
+              ] as [string, ReactNode]]
+            : []),
           ['Tổng chi phí', money(total)],
         ]}
       />
-      <HistoryCard events={orderHistory(order, issue.data, [reportedEvent(order)])} />
+      <HistoryCard events={orderHistory(order, issue.data, [reportedEvent(order, unitLabel)])} />
     </>
   );
 
