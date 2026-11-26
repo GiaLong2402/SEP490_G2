@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowDown, ArrowUp, Layers, PackageCheck, Pencil, Plus, Trash2, XCircle } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Layers, PackageCheck, Pencil, Plus, Trash2, XCircle } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useVariantOptions } from '@/features/products';
 import { useFinishedWarehouses, useRawZones } from '@/features/warehouses';
@@ -119,6 +119,21 @@ export default function ReceiptsPage() {
   const finishedValid = overCapacity.length === 0 && finished.every((r) => Number(r.variantId) > 0 && Number(r.locationId) > 0 && r.expDate && Number.isInteger(Number(r.qty)) && Number(r.qty) > 0 && (!r.mfgDate || r.expDate >= r.mfgDate));
   const rawValid = rawRows.every((r) => Number(r.rawMaterialId) > 0 && Number(r.qty) > 0) && new Set(rawRows.map((r) => r.rawMaterialId)).size === rawRows.length;
   const linesValid = type === 'finished' ? finishedValid : rawValid;
+  /** Lỗi từng ô của một dòng (cùng điều kiện với finishedValid / rawValid) — để đánh dấu đỏ và tự cuộn tới khi Lưu. */
+  const finishedRowErrors = (r: FinishedRow) => {
+    const qtyNum = Number(r.qty);
+    const over = overCapacity.find(([id]) => id === Number(r.locationId));
+    return {
+      variant: Number(r.variantId) > 0 ? undefined : 'Chọn quy cách',
+      expDate: !r.expDate ? 'Chọn hạn sử dụng' : r.mfgDate && r.expDate < r.mfgDate ? 'HSD trước ngày sản xuất' : undefined,
+      qty: Number.isInteger(qtyNum) && qtyNum > 0 ? undefined : 'Số khay nguyên > 0',
+      location: !(Number(r.locationId) > 0) ? 'Chọn vị trí' : over ? `Chỉ còn ${num(roomOf.get(over[0]) ?? 0)} khay` : undefined,
+    };
+  };
+  const rawRowErrors = (r: RawRow, duplicate: boolean) => ({
+    material: !(Number(r.rawMaterialId) > 0) ? 'Chọn nguyên liệu' : duplicate ? 'Nguyên liệu này đã chọn ở trên - gộp số lượng vào một dòng.' : undefined,
+    qty: Number(r.qty) > 0 ? undefined : 'Số lượng lớn hơn 0',
+  });
   const sourceValid = source.trim().length > 0;
 
   const create = useAction(
@@ -144,8 +159,18 @@ export default function ReceiptsPage() {
     onDone: () => setCancelling(null),
   });
 
-  const shownItems = (r: ReceiptListItem) => r.items.slice(0, 4);
-  const moreItems = (r: ReceiptListItem) => Math.max(0, r.items.length - 4);
+  /** Phiếu nhiều mặt hàng: mặc định hiện 4 dòng, bấm "Xem thêm" để mở hết, "Thu gọn" để ẩn lại. */
+  const ITEMS_PREVIEW = 4;
+  const [expandedReceipts, setExpandedReceipts] = useState<Set<string>>(new Set());
+  const isExpanded = (r: ReceiptListItem) => expandedReceipts.has(String(r.id));
+  const toggleItems = (r: ReceiptListItem) =>
+    setExpandedReceipts((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(String(r.id))) next.add(String(r.id));
+      return next;
+    });
+  const shownItems = (r: ReceiptListItem) => (isExpanded(r) ? r.items : r.items.slice(0, ITEMS_PREVIEW));
+  const moreItems = (r: ReceiptListItem) => Math.max(0, r.items.length - ITEMS_PREVIEW);
   const columns: Column<ReceiptListItem>[] = [
     {
       key: 'code',
@@ -178,7 +203,19 @@ export default function ReceiptsPage() {
               </div>
             );
           })}
-          {moreItems(r) > 0 && <div className="text-small leading-5 text-ink-faint">+ {moreItems(r)} mặt hàng khác</div>}
+          {moreItems(r) > 0 && (
+            <button
+              type="button"
+              aria-expanded={isExpanded(r)}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleItems(r);
+              }}
+              className="inline-flex items-center gap-1 text-small leading-5 font-medium text-primary hover:underline"
+            >
+              {isExpanded(r) ? <><ChevronUp size={13} aria-hidden />Thu gọn</> : <><ChevronDown size={13} aria-hidden />Xem thêm {moreItems(r)} mặt hàng</>}
+            </button>
+          )}
         </div>
       ),
     },
@@ -247,7 +284,7 @@ export default function ReceiptsPage() {
   const rawColumns: Column<RawMaterial>[] = [
     { key: 'code', header: 'Mã', cell: (m) => <span className="num">{m.code}</span> },
     { key: 'name', header: 'Nguyên liệu', cell: (m) => <span className="font-medium">{m.name}</span> },
-    { key: 'zone', header: 'Khu', cell: (m) => (m.storageLocationId ? <Chip tone={m.storageLocationCode === 'LANH' ? 'blue' : undefined}>{m.storageLocationName ?? m.storageLocationCode}</Chip> : <span className="text-ink-faint">Chưa gắn khu</span>) },
+    { key: 'zone', header: 'Khu', cell: (m) => (m.storageLocationId ? <Chip tone={m.storageLocationCode?.toUpperCase().startsWith('LANH') ? 'blue' : undefined}>{m.storageLocationName ?? m.storageLocationCode}</Chip> : <span className="text-ink-faint">Chưa gắn khu</span>) },
     { key: 'qty', header: 'Tồn', align: 'right', cell: (m) => <span className="num">{num(m.qtyOnHand)} {unitLabel(m.unit)}</span> },
     { key: 'reorder', header: 'Mức đặt lại', align: 'right', cell: (m) => <span className="num">{num(m.reorderLevel)} {unitLabel(m.unit)}</span> },
     { key: 'status', header: 'Tình trạng', cell: (m) => (!m.isActive ? <Chip>Ngừng dùng</Chip> : m.reorderLevel !== null && m.qtyOnHand < m.reorderLevel ? <Chip tone="red">Cần đặt thêm</Chip> : <Chip tone="green">Đủ dùng</Chip>) },
@@ -336,7 +373,7 @@ export default function ReceiptsPage() {
             </Field>
           )}
         </div>
-        <div className="mt-4 overflow-x-auto">
+        <div className="mt-4 overflow-x-auto overflow-y-hidden">
           {type === 'finished' ? (
             <ul className="space-y-2.5">
               {finished.map((r, i) => {
@@ -344,6 +381,7 @@ export default function ReceiptsPage() {
                 /** Chỗ còn ở vị trí cho dòng này = chỗ trống − số khay các dòng khác đã định để vào cùng vị trí. */
                 const roomFor = (locationId: number) =>
                   (roomOf.get(locationId) ?? 0) - finished.filter((x) => x.key !== r.key && Number(x.locationId) === locationId).reduce((sum, x) => sum + (Number(x.qty) || 0), 0);
+                const err = touched ? finishedRowErrors(r) : null;
                 return (
                   <li key={r.key} className="rounded-md border border-line">
                     <div className="flex items-center gap-2 rounded-t-md border-b border-line bg-rowalt/60 px-3 py-1.5">
@@ -354,7 +392,7 @@ export default function ReceiptsPage() {
                       </span>
                     </div>
                     <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-12">
-                      <Field label="Quy cách" required className="lg:col-span-7">
+                      <Field label="Quy cách" required className="lg:col-span-7" error={err?.variant}>
                         <Select value={r.variantId} onChange={(e) => patch({ variantId: e.target.value })}>
                           <option value="">Chọn...</option>
                           {variants.map((v) => <option key={v.id} value={v.id}>{v.productName} · {v.packLabel}</option>)}
@@ -370,16 +408,17 @@ export default function ReceiptsPage() {
                       <Field label="Ngày sản xuất" className="lg:col-span-3">
                         <DateInput max={todayISO()} value={r.mfgDate} onChange={(v) => patch({ mfgDate: v })} />
                       </Field>
-                      <Field label="Hạn sử dụng" required className="lg:col-span-3">
+                      <Field label="Hạn sử dụng" required className="lg:col-span-3" error={err?.expDate}>
                         <DateInput value={r.expDate} onChange={(v) => patch({ expDate: v })} />
                       </Field>
-                      <Field label="Số khay" required className="lg:col-span-2">
+                      <Field label="Số khay" required className="lg:col-span-2" error={err?.qty}>
                         <Input type="number" min={1} className="text-right" value={r.qty} onChange={(e) => patch({ qty: e.target.value })} />
                       </Field>
                       <Field
                         label="Vị trí"
                         required
                         className="lg:col-span-4"
+                        error={err?.location}
                         tip={<><span className="block">Bấm để xem các kho còn chỗ, rê chuột vào kho để xem các chỗ trong kho.</span><span className="block">Chỉ hiện chỗ còn đủ cho số khay bạn đã nhập.</span></>}
                       >
                         <LocationPicker warehouses={warehouses} value={r.locationId} need={Number(r.qty) || 0} roomFor={roomFor} onChange={(id) => patch({ locationId: id })} />
@@ -396,6 +435,7 @@ export default function ReceiptsPage() {
                 const material = rawCatalog.data?.find((m) => String(m.id) === r.rawMaterialId);
                 const unit = material ? unitLabel(material.unit) : '';
                 const duplicate = !!r.rawMaterialId && rawRows.some((x, j) => j < i && x.rawMaterialId === r.rawMaterialId);
+                const err = touched ? rawRowErrors(r, duplicate) : null;
                 return (
                   <li key={r.key} className="rounded-md border border-line">
                     <div className="flex items-center gap-2 rounded-t-md border-b border-line bg-rowalt/60 px-3 py-1.5">
@@ -410,7 +450,7 @@ export default function ReceiptsPage() {
                         label="Nguyên liệu"
                         required
                         className="sm:col-span-8"
-                        error={touched && duplicate ? 'Nguyên liệu này đã chọn ở trên - gộp số lượng vào một dòng.' : undefined}
+                        error={err?.material}
                         hint={material ? <>Đang tồn <span className="font-medium tabular-nums text-ink-muted">{num(material.qtyOnHand)} {unit}</span></> : undefined}
                       >
                         <Select value={r.rawMaterialId} onChange={(e) => patch({ rawMaterialId: e.target.value })}>
@@ -422,6 +462,7 @@ export default function ReceiptsPage() {
                         label={unit ? `Số lượng dự kiến (${unit})` : 'Số lượng dự kiến'}
                         required
                         className="sm:col-span-4"
+                        error={err?.qty}
                         tip="Số hàng bạn hẹn nhận. Khi hàng về sẽ ghi số thật, khác số này cũng được."
                       >
                         <Input type="number" min={0} step="0.1" className="text-right" placeholder="0" value={r.qty} onChange={(e) => patch({ qty: e.target.value })} />

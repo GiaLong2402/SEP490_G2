@@ -59,6 +59,14 @@ const closeOnEsc =
     onClose();
   };
 
+/** Cuộn tới và đặt con trỏ vào ô đầu tiên đang báo lỗi (Field gắn aria-invalid cho ô lỗi). */
+function focusFirstInvalid(root: HTMLElement) {
+  const el = root.querySelector<HTMLElement>('[aria-invalid="true"]');
+  if (!el) return;
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  el.focus({ preventScroll: true });
+}
+
 interface ModalProps {
   open: boolean;
   title: ReactNode;
@@ -75,36 +83,42 @@ export function Modal({ open, title, onClose, children, footer, width = 'md', on
   const ref = useNativeDialog(open);
   const ignoreFilePickerCancel = useIgnoreFilePickerCancel(ref, open);
   const w = { md: 'max-w-[480px]', lg: 'max-w-[680px]', xl: 'max-w-[920px]' }[width];
+  // Header + footer cố định, chỉ phần thân cuộn → luôn đúng 1 thanh cuộn dù form dài (vd. phiếu nhập nhiều mặt hàng).
+  const frame = 'flex max-h-[calc(100dvh-32px)] flex-col';
   const body = (
     <>
-      <header className="flex items-center justify-between border-b border-line px-4 py-3">
+      <header className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
         <h2 className="text-h1 text-ink">{title}</h2>
         <IconButton label="Đóng" onClick={onClose}>
           <X size={16} />
         </IconButton>
       </header>
-      <div className="max-h-[70vh] overflow-y-auto p-4">{open && children}</div>
-      {footer && <footer className="flex justify-end gap-2 border-t border-line px-4 py-3">{footer}</footer>}
+      <div className="max-h-[70vh] min-h-0 flex-1 overflow-y-auto p-4">{open && children}</div>
+      {footer && <footer className="flex shrink-0 justify-end gap-2 border-t border-line px-4 py-3">{footer}</footer>}
     </>
   );
   return (
     <dialog
       ref={ref}
       onCancel={closeOnEsc(onClose, ignoreFilePickerCancel)}
-      className={`w-[calc(100vw-32px)] ${w} rounded-lg bg-card p-0 text-ink shadow-pop`}
+      className={`max-h-[calc(100dvh-32px)] w-[calc(100vw-32px)] overflow-hidden ${w} rounded-lg bg-card p-0 text-ink shadow-pop`}
     >
       {onSubmit ? (
         <form
           noValidate
-          onSubmit={(event: FormEvent) => {
+          className={frame}
+          onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault();
+            const form = event.currentTarget;
             onSubmit();
+            // Lỗi nằm ở phần đã cuộn qua (vd. quên Nguồn hàng khi đang ở mặt hàng cuối) → tự cuộn tới ô lỗi đầu tiên.
+            requestAnimationFrame(() => focusFirstInvalid(form));
           }}
         >
           {body}
         </form>
       ) : (
-        body
+        <div className={frame}>{body}</div>
       )}
     </dialog>
   );
