@@ -36,6 +36,14 @@ public class RawMaterialStockService {
     /** refType xuất NVL cho lệnh sản xuất (phiếu xuất). */
     public static final String REF_MATERIAL_ISSUE = "material_issue";
 
+    /** refType trả NVL dư về lô gốc sau sản xuất (refId = id lệnh). */
+    public static final String REF_PRODUCTION_ORDER = "production_order";
+
+    /** refType bỏ lô (refId = id lô). */
+    public static final String REF_LOT_DISCARD = "raw_lot_discard";
+
+    static final String COLD_ZONE_PREFIX = "LANH";
+
     static final String OPENING_LOT_CODE = "TON-DAU";
 
     /** Một lát xuất từ đúng một lô (task 50). */
@@ -118,6 +126,112 @@ public class RawMaterialStockService {
         entry.setCreatedAt(now);
         rawMaterialLedgerRepository.save(entry);
         return lot;
+    }
+
+    /**
+     * Khu lạnh của kho nguyên liệu = khu có mã bắt đầu bằng {@code LANH} (LANH, LANH-2…). Đồ khu lạnh dư sau sản xuất
+     * tách thành lô -TL hạn ngắn; đồ khu khác trả thẳng về lô đã xuất.
+     */
+    public static boolean isColdStorage(RawMaterial material) {
+        Location zone = material == null ? null : material.getStorageLocation();
+        String code = zone == null || zone.getCode() == null ? "" : zone.getCode().trim().toUpperCase(Locale.ROOT);
+        return code.startsWith(COLD_ZONE_PREFIX);
+    }
+
+    /**
+     * Cộng lại phần dư vào chính lô đã xuất (đồ khu khô): giữ mã lô, HSD, đơn giá; ghi sổ IN gắn {@code refType/refId}.
+     */
+    @Transactional
+    public RawMaterialLot returnToLot(Long lotId, BigDecimal qty, String refType, Long refId, AppUser actor, String note) {
+        if (qty == null || qty.signum() <= 0) {
+            throw ApiException.badRequest("Số lượng trả lại phải lớn hơn 0");
+        }
+        RawMaterialLot lot = rawMaterialLotRepository
+                .findByIdForUpdate(lotId)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy lô nguyên liệu"));
+        RawMaterial material = rawMaterialRepository
+                .findByIdForUpdate(lot.getRawMaterial().getId())
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy nguyên liệu"));
+        Instant now = Instant.now(clock);
+        lot.setQtyRemaining(lot.getQtyRemaining().add(qty));
+        rawMaterialLotRepository.save(lot);
+
+        BigDecimal balance = material.getQtyOnHand().add(qty);
+        material.setQtyOnHand(balance);
+        rawMaterialRepository.save(material);
+
+        writeLedger(material, lot, RawLedgerEntryType.IN, qty, balance, refType, refId, actor, note, now);
+        return lot;
+    }
+
+    /**
+     * Dòng 54 — bỏ phần còn lại của lô (hết hạn / hư hỏng / khác): số còn về 0, trừ tồn NVL, ghi sổ DISCARD. Không cần duyệt.
+     */
+    @Transactional
+    public RawMaterialLot discard(Long lotId, String reasonCode, String note, AppUser actor) {
+        RawLotDiscardReason reason;
+        try {
+            reason = RawLotDiscardReason.fromCode(reasonCode);
+        } catch (IllegalArgumentException ex) {
+            throw ApiException.badRequest(ex.getMessage());
+        }
+        String cleanNote = Strings.trimToNull(note);
+        if (reason == RawLotDiscardReason.OTHER && cleanNote == null) {
+            throw ApiException.badRequest("Ghi rõ lý do khi chọn \"Khác\"");
+        }
+        RawMaterialLot lot = rawMaterialLotRepository
+                .findByIdForUpdate(lotId)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy lô nguyên liệu"));
+        BigDecimal qty = lot.getQtyRemaining();
+        if (qty == null || qty.signum() <= 0) {
+            throw ApiException.conflict("Lô " + lot.getLotCode() + " đã hết, không còn gì để bỏ");
+        }
+        LocalDate today = LocalDate.now(clock.withZone(VN));
+        if (reason == RawLotDiscardReason.EXPIRED && (lot.getExpDate() == null || !lot.getExpDate().isBefore(today))) {
+            throw ApiException.badRequest("Lô " + lot.getLotCode() + " chưa hết hạn, chọn Hư hỏng hoặc Khác");
+        }
+        RawMaterial material = rawMaterialRepository
+                .findByIdForUpdate(lot.getRawMaterial().getId())
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy nguyên liệu"));
+
+        Instant now = Instant.now(clock);
+        lot.setQtyRemaining(BigDecimal.ZERO);
+        rawMaterialLotRepository.save(lot);
+
+        BigDecimal balance = material.getQtyOnHand().subtract(qty).max(BigDecimal.ZERO);
+        material.setQtyOnHand(balance);
+        rawMaterialRepository.save(material);
+
+        String ledgerNote = "Bỏ lô " + lot.getLotCode() + " · " + reason.label() + (cleanNote == null ? "" : " · " + cleanNote);
+        writeLedger(material, lot, RawLedgerEntryType.DISCARD, qty.negate(), balance, REF_LOT_DISCARD, lot.getId(), actor, ledgerNote, now);
+        log.info("Discarded raw lot {} qty={} reason={}", lot.getLotCode(), qty, reason);
+        return lot;
+    }
+
+    private void writeLedger(
+            RawMaterial material,
+            RawMaterialLot lot,
+            RawLedgerEntryType type,
+            BigDecimal qtyDelta,
+            BigDecimal balance,
+            String refType,
+            Long refId,
+            AppUser actor,
+            String note,
+            Instant at) {
+        RawMaterialLedger entry = new RawMaterialLedger();
+        entry.setRawMaterial(material);
+        entry.setLot(lot);
+        entry.setEntryType(type);
+        entry.setQtyDelta(qtyDelta);
+        entry.setBalanceAfter(balance);
+        entry.setUnitPrice(lot.getUnitPrice() == null ? BigDecimal.ZERO : lot.getUnitPrice());
+        entry.setRefType(refType);
+        entry.setRefId(refId);
+        entry.setNote(note);
+        entry.setCreatedBy(actor);
+        entry.setCreatedAt(at);
+        rawMaterialLedgerRepository.save(entry);
     }
 
     /** Lô của NVL theo thứ tự FEFO; {@code availableOnly} = chỉ lô còn tồn. */

@@ -213,6 +213,101 @@ class RawMaterialStockServiceTest {
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.CONFLICT));
     }
 
+    // ---- Khu lạnh / khô, trả về lô gốc, bỏ lô (dòng 54) ----
+
+    @Test
+    void isColdStorage_zoneCodeStartsWithLanh() {
+        assertThat(RawMaterialStockService.isColdStorage(withZone("LANH"))).isTrue();
+        assertThat(RawMaterialStockService.isColdStorage(withZone("lanh-2"))).isTrue();
+        assertThat(RawMaterialStockService.isColdStorage(withZone("KHO"))).isFalse();
+        assertThat(RawMaterialStockService.isColdStorage(ice)).isFalse();
+    }
+
+    @Test
+    void returnToLot_addsBackToSameLot_andWritesInLedgerWithOrderRef() {
+        RawMaterialLot lot = lot(30L, ice, "NVL-261124-01", new BigDecimal("1"), new BigDecimal("1000"));
+        when(rawMaterialLotRepository.findByIdForUpdate(30L)).thenReturn(Optional.of(lot));
+        when(rawMaterialRepository.findByIdForUpdate(3L)).thenReturn(Optional.of(ice));
+
+        RawMaterialLot result = service.returnToLot(30L, new BigDecimal("0.5"), RawMaterialStockService.REF_PRODUCTION_ORDER, 7L, null, "Trả lại NVL dư lệnh LSX-7");
+
+        assertThat(result.getLotCode()).isEqualTo("NVL-261124-01");
+        assertThat(lot.getQtyRemaining()).isEqualByComparingTo("1.5");
+        assertThat(ice.getQtyOnHand()).isEqualByComparingTo("5.5");
+        ArgumentCaptor<RawMaterialLedger> ledger = ArgumentCaptor.forClass(RawMaterialLedger.class);
+        verify(rawMaterialLedgerRepository).save(ledger.capture());
+        assertThat(ledger.getValue().getEntryType()).isEqualTo(RawLedgerEntryType.IN);
+        assertThat(ledger.getValue().getQtyDelta()).isEqualByComparingTo("0.5");
+        assertThat(ledger.getValue().getRefType()).isEqualTo("production_order");
+        assertThat(ledger.getValue().getRefId()).isEqualTo(7L);
+    }
+
+    @Test
+    void discard_zeroesLot_reducesStock_andWritesDiscardLedger() {
+        RawMaterialLot lot = lot(31L, ice, "NVL-261124-01-TL", new BigDecimal("0.5"), new BigDecimal("120000"));
+        lot.setExpDate(LocalDate.of(2026, 11, 22)); // đã quá hạn so với 23/11
+        when(rawMaterialLotRepository.findByIdForUpdate(31L)).thenReturn(Optional.of(lot));
+        when(rawMaterialRepository.findByIdForUpdate(3L)).thenReturn(Optional.of(ice));
+
+        service.discard(31L, "expired", null, null);
+
+        assertThat(lot.getQtyRemaining()).isEqualByComparingTo("0");
+        assertThat(ice.getQtyOnHand()).isEqualByComparingTo("4.5");
+        ArgumentCaptor<RawMaterialLedger> ledger = ArgumentCaptor.forClass(RawMaterialLedger.class);
+        verify(rawMaterialLedgerRepository).save(ledger.capture());
+        assertThat(ledger.getValue().getEntryType()).isEqualTo(RawLedgerEntryType.DISCARD);
+        assertThat(ledger.getValue().getQtyDelta()).isEqualByComparingTo("-0.5");
+        assertThat(ledger.getValue().getBalanceAfter()).isEqualByComparingTo("4.5");
+        assertThat(ledger.getValue().getUnitPrice()).isEqualByComparingTo("120000");
+        assertThat(ledger.getValue().getNote()).contains("NVL-261124-01-TL").contains("Hết hạn");
+    }
+
+    @Test
+    void discard_damagedLotStillInDate_isAllowed() {
+        RawMaterialLot lot = lot(32L, ice, "NVL-261124-02", new BigDecimal("2"), new BigDecimal("100000"));
+        lot.setExpDate(LocalDate.of(2026, 12, 24));
+        when(rawMaterialLotRepository.findByIdForUpdate(32L)).thenReturn(Optional.of(lot));
+        when(rawMaterialRepository.findByIdForUpdate(3L)).thenReturn(Optional.of(ice));
+
+        service.discard(32L, "damaged", "Tủ đông hỏng điện", null);
+
+        assertThat(lot.getQtyRemaining()).isEqualByComparingTo("0");
+        ArgumentCaptor<RawMaterialLedger> ledger = ArgumentCaptor.forClass(RawMaterialLedger.class);
+        verify(rawMaterialLedgerRepository).save(ledger.capture());
+        assertThat(ledger.getValue().getNote()).contains("Hư hỏng").contains("Tủ đông hỏng điện");
+    }
+
+    @Test
+    void discard_rejectsEmptyLot_otherWithoutNote_expiredReasonOnInDateLot_andBadReason() {
+        RawMaterialLot empty = lot(33L, ice, "L-EMPTY", BigDecimal.ZERO, BigDecimal.ONE);
+        RawMaterialLot inDate = lot(34L, ice, "L-OK", BigDecimal.ONE, BigDecimal.ONE);
+        inDate.setExpDate(LocalDate.of(2026, 11, 23)); // hết hạn tính từ ngày sau → hôm nay chưa hết
+        when(rawMaterialLotRepository.findByIdForUpdate(33L)).thenReturn(Optional.of(empty));
+        when(rawMaterialLotRepository.findByIdForUpdate(34L)).thenReturn(Optional.of(inDate));
+
+        assertThatThrownBy(() -> service.discard(33L, "damaged", null, null))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.CONFLICT));
+        assertThatThrownBy(() -> service.discard(34L, "other", "  ", null))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("Khác");
+        assertThatThrownBy(() -> service.discard(34L, "expired", null, null))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("chưa hết hạn");
+        assertThatThrownBy(() -> service.discard(34L, "lost", null, null))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+        verify(rawMaterialLedgerRepository, never()).save(any());
+    }
+
+    private static RawMaterial withZone(String code) {
+        Location zone = new Location();
+        zone.setCode(code);
+        RawMaterial material = new RawMaterial();
+        material.setStorageLocation(zone);
+        return material;
+    }
+
     // ---- Mã lô nguyên liệu dư trả lại (-TL) ----
 
     @Test

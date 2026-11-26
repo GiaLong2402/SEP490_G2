@@ -45,7 +45,8 @@ public class ProductionLeftover {
     @Column(nullable = false, precision = 14, scale = 4)
     private BigDecimal qty;
 
-    @Column(name = "exp_date", nullable = false)
+    /** HSD lô nhận phần dư: lô -TL (khu lạnh) hoặc lô gốc (khu khô, có thể không có HSD). */
+    @Column(name = "exp_date")
     private LocalDate expDate;
 
     /** qty × đơn giá lô gốc — phần trừ khỏi chi phí NVL. */
