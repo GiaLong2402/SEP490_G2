@@ -25,3 +25,29 @@ export interface DashboardSummary {
   } | null;
   deliveries: { today: number; items: { id: ID; code: string | null; customerName: string; timeWindow: string | null; state: DeliveryState }[] } | null;
 }
+
+/** Inter 4 dòng 10 — GET /dashboard/tasks. Khối null = người xem không có quyền. */
+export interface DashboardTasks {
+  lowStock: {
+    /** Ngưỡng chung cho thành phẩm (Cấu hình hệ thống). */
+    threshold: number;
+    finished: { sku: string; productName: string; available: number }[];
+    /** Nguyên liệu đang dùng, tồn dưới mức đặt lại của chính nó. */
+    raw: { id: ID; code: string; name: string; unit: string | null; qtyOnHand: number; reorderLevel: number; locationCode: string | null }[];
+  } | null;
+  pending: {
+    total: number;
+    urgent: number;
+    groups: PendingTaskGroup[];
+  } | null;
+}
+
+export interface PendingTaskGroup {
+  key: 'damage_report' | 'customer_price' | 'other_approval' | 'production_approval' | 'raw_receipt' | 'material_issue' | 'finished_receipt';
+  label: string;
+  count: number;
+  urgentCount: number;
+  link: string;
+  /** Tối đa 5 việc treo lâu nhất. */
+  items: { code: string | null; title: string; createdAt: string | null; dueDate: string | null; urgent: boolean; link: string }[];
+}
