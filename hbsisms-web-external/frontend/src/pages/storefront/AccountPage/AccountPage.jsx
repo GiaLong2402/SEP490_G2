@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import AccountShell from '@/components/storefront/AccountShell/AccountShell'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
-import { CheckIcon, ClipboardIcon, MailIcon, PhoneIcon, TruckIcon, UserIcon } from '@/components/icons/Icons'
+import { CheckIcon, MailIcon, PhoneIcon, UserIcon } from '@/components/icons/Icons'
 import { profileApi } from '@/api/profile'
 import {
   clearPhoneAuthSession,
@@ -13,37 +14,31 @@ import {
 import { ROUTES } from '@/constants/routes'
 import { useAuth } from '@/context/AuthContext'
 import { isValidVietnamPhone } from '@/utils/phone'
-import { getInitials } from '@/utils/initials'
+import AddressBookSection from './AddressBookSection'
 import './AccountPage.css'
-
-function formatJoined(date = new Date()) {
-  const d = String(date.getDate()).padStart(2, '0')
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const y = date.getFullYear()
-  return `${d}/${m}/${y}`
-}
 
 export default function AccountPage() {
   const { user, isLoggedIn, applyUser } = useAuth()
+  const { hash } = useLocation()
   const [savedFlash, setSavedFlash] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
+  useEffect(() => {
+    if (hash !== '#dia-chi') return
+    const el = document.getElementById('dia-chi')
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [hash])
+
   const displayName = user?.name || 'Khách hàng'
-  const initials = getInitials(displayName)
 
   const [savedForm, setSavedForm] = useState(() => ({
     fullName: displayName,
     phone: user?.phone || '',
     email: user?.email || '',
-    sendReceipt: true,
-    sendOrderUpdates: true,
   }))
   const [form, setForm] = useState(savedForm)
-  const isDirty = ['fullName', 'email', 'sendReceipt', 'sendOrderUpdates'].some(
-    (key) => form[key] !== savedForm[key],
-  )
-  const hasEmail = form.email.trim() !== ''
+  const isDirty = ['fullName', 'email'].some((key) => form[key] !== savedForm[key])
 
   const [phoneDialog, setPhoneDialog] = useState(false)
   const [phoneStep, setPhoneStep] = useState('phone') // phone | code
@@ -59,15 +54,11 @@ export default function AccountPage() {
       fullName: user.name || '',
       phone: user.phone || '',
       email: user.email || '',
-      sendReceipt: savedForm.sendReceipt,
-      sendOrderUpdates: savedForm.sendOrderUpdates,
     }
     setSavedForm(next)
     setForm(next)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sync when auth user identity changes
   }, [user?.id, user?.name, user?.phone, user?.email])
-
-  const joinedLabel = useMemo(() => formatJoined(), [])
 
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -179,144 +170,97 @@ export default function AccountPage() {
       title="Tài khoản"
       breadcrumbs={[{ label: 'Trang chủ', to: ROUTES.HOME }, { label: 'Tài khoản' }]}
     >
-      <form className="account-card account-card--flush" onSubmit={handleSave}>
-        <div className="account-hero">
-          <span className="account-hero__avatar" aria-hidden="true">
-            {initials}
-          </span>
-          <div className="account-hero__meta">
-            <h2>{form.fullName.trim() || displayName}</h2>
-            <div className="account-hero__chips">
-              <span className="account-chip account-chip--accent">
-                {isLoggedIn ? 'Khách hàng' : 'Chưa đăng nhập'}
-              </span>
-              {isLoggedIn && <span className="account-chip">Tham gia {joinedLabel}</span>}
+      <div className="account-card account-card--flush account-panel">
+        <form onSubmit={handleSave}>
+          <section className="account-section">
+            <div className="account-section__head">
+              <h2>Thông tin cá nhân</h2>
+              <p>Cập nhật tên và email liên hệ. Số điện thoại dùng để đăng nhập.</p>
             </div>
-          </div>
-        </div>
+            {saveError && (
+              <p className="account-note" role="alert">
+                {saveError}
+              </p>
+            )}
+            <div className="account-grid">
+              <label className="account-field account-field--full">
+                <span className="account-field__label">Họ và tên</span>
+                <span className="account-input">
+                  <UserIcon size={18} />
+                  <input
+                    type="text"
+                    value={form.fullName}
+                    onChange={(e) => updateField('fullName', e.target.value)}
+                    autoComplete="name"
+                    placeholder="Nhập họ và tên"
+                    disabled={!isLoggedIn || saving}
+                  />
+                </span>
+              </label>
 
-        <section className="account-section">
-          {saveError && (
-            <p className="account-note" role="alert">
-              {saveError}
-            </p>
-          )}
-          <div className="account-grid">
-            <label className="account-field account-field--full">
-              <span className="account-field__label">Họ và tên</span>
-              <span className="account-input">
-                <UserIcon size={18} />
-                <input
-                  type="text"
-                  value={form.fullName}
-                  onChange={(e) => updateField('fullName', e.target.value)}
-                  autoComplete="name"
-                  placeholder="Nhập họ và tên"
-                  disabled={!isLoggedIn || saving}
-                />
-              </span>
-            </label>
+              <label className="account-field">
+                <span className="account-field__label">Số điện thoại</span>
+                <span className="account-input">
+                  <PhoneIcon size={18} />
+                  <input
+                    type="tel"
+                    value={form.phone}
+                    readOnly
+                    autoComplete="tel"
+                    placeholder="Chưa có số điện thoại"
+                  />
+                  <button
+                    type="button"
+                    className="account-input__action"
+                    onClick={openPhoneDialog}
+                    disabled={!isLoggedIn || saving}
+                  >
+                    Đổi SĐT
+                  </button>
+                </span>
+              </label>
 
-            <label className="account-field">
-              <span className="account-field__label">Số điện thoại</span>
-              <span className="account-input">
-                <PhoneIcon size={18} />
-                <input
-                  type="tel"
-                  value={form.phone}
-                  readOnly
-                  autoComplete="tel"
-                  placeholder="Chưa có số điện thoại"
-                />
-                <button
-                  type="button"
-                  className="account-input__action"
-                  onClick={openPhoneDialog}
-                  disabled={!isLoggedIn || saving}
-                >
-                  Đổi SĐT
-                </button>
-              </span>
-            </label>
+              <label className="account-field">
+                <span className="account-field__label">Email (không bắt buộc)</span>
+                <span className="account-input">
+                  <MailIcon size={18} />
+                  <input
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => updateField('email', e.target.value)}
+                    autoComplete="email"
+                    placeholder="you@email.com"
+                    disabled={!isLoggedIn || saving}
+                  />
+                </span>
+                <span className="account-field__hint">Chỉ để lưu thông tin liên hệ — hệ thống chưa gửi email.</span>
+              </label>
+            </div>
 
-            <label className="account-field">
-              <span className="account-field__label">Email</span>
-              <span className="account-input">
-                <MailIcon size={18} />
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => updateField('email', e.target.value)}
-                  autoComplete="email"
-                  placeholder="you@email.com"
-                  disabled={!isLoggedIn || saving}
-                />
-              </span>
-            </label>
-          </div>
-        </section>
+            {(isDirty || saving || savedFlash) && (
+              <div className="account-actions account-actions--in-section" role="status">
+                {savedFlash && !isDirty ? (
+                  <span className="account-actions__flash">
+                    <CheckIcon size={16} /> Đã lưu thay đổi
+                  </span>
+                ) : (
+                  <>
+                    <Button type="button" variant="ghost" pill onClick={handleReset} disabled={saving}>
+                      Hủy
+                    </Button>
+                    <Button type="submit" variant="primary" pill disabled={!isLoggedIn || saving}>
+                      <CheckIcon size={18} />
+                      {saving ? 'Đang lưu…' : 'Lưu thông tin'}
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          </section>
+        </form>
 
-        <section className="account-section">
-          <div className="account-section__head">
-            <h3>Thông báo qua email</h3>
-            <p>Chọn những thông tin Hòa Bình gửi đến email của bạn.</p>
-          </div>
-
-          {!hasEmail && (
-            <p className="account-note">Nhập email ở phần trên để bật các thông báo này.</p>
-          )}
-
-          <div className="account-toggles">
-            <label className={`account-toggle ${hasEmail ? '' : 'is-disabled'}`}>
-              <span className="account-toggle__icon" aria-hidden="true">
-                <ClipboardIcon size={20} />
-              </span>
-              <span className="account-toggle__text">
-                <strong>Gửi biên lai</strong>
-                <span>Nhận hóa đơn sau mỗi lần thanh toán</span>
-              </span>
-              <input
-                type="checkbox"
-                checked={hasEmail && form.sendReceipt}
-                disabled={!hasEmail}
-                onChange={(e) => updateField('sendReceipt', e.target.checked)}
-              />
-              <span className="account-toggle__ui" aria-hidden="true" />
-            </label>
-            <label className={`account-toggle ${hasEmail ? '' : 'is-disabled'}`}>
-              <span className="account-toggle__icon" aria-hidden="true">
-                <TruckIcon size={20} />
-              </span>
-              <span className="account-toggle__text">
-                <strong>Gửi cập nhật đơn hàng</strong>
-                <span>Báo khi đơn được xác nhận, giao và hoàn tất</span>
-              </span>
-              <input
-                type="checkbox"
-                checked={hasEmail && form.sendOrderUpdates}
-                disabled={!hasEmail}
-                onChange={(e) => updateField('sendOrderUpdates', e.target.checked)}
-              />
-              <span className="account-toggle__ui" aria-hidden="true" />
-            </label>
-          </div>
-        </section>
-
-        <div className="account-actions">
-          {savedFlash && (
-            <span className="account-actions__flash" role="status">
-              <CheckIcon size={16} /> Đã lưu thay đổi
-            </span>
-          )}
-          <Button type="button" variant="ghost" pill onClick={handleReset} disabled={!isDirty || saving}>
-            Hủy thay đổi
-          </Button>
-          <Button type="submit" variant="primary" pill disabled={!isDirty || !isLoggedIn || saving}>
-            <CheckIcon size={18} />
-            {saving ? 'Đang lưu…' : 'Lưu thay đổi'}
-          </Button>
-        </div>
-      </form>
+        <AddressBookSection />
+      </div>
 
       <Modal
         open={phoneDialog}

@@ -13,9 +13,13 @@ final class PhoneNumbers {
     }
 
     static String normalizeVnMobile(String raw) {
+        return normalizeVnMobile(raw, "Số điện thoại trên token không hợp lệ");
+    }
+
+    static String normalizeVnMobile(String raw, String invalidMessage) {
         String value = Strings.trimToNull(raw);
         if (value == null) {
-            throw ApiException.badRequest("Số điện thoại trên token không hợp lệ");
+            throw ApiException.badRequest(invalidMessage);
         }
         String digits = value.replaceAll("[\\s.-]", "");
         if (digits.startsWith("+84")) {
@@ -24,7 +28,7 @@ final class PhoneNumbers {
             digits = "0" + digits.substring(2);
         }
         if (!VN_MOBILE.matcher(digits).matches()) {
-            throw ApiException.badRequest("Số điện thoại trên token không hợp lệ");
+            throw ApiException.badRequest(invalidMessage);
         }
         return digits;
     }

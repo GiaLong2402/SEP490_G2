@@ -15,7 +15,8 @@ export const ROUTES = {
   /** Tiếp tục thanh toán đơn đã tạo — màn QR custom */
   RESUME_PAYMENT: '/thanh-toan/don/:code',
   ACCOUNT: '/tai-khoan',
-  ADDRESSES: '/tai-khoan/so-dia-chi',
+  /** Gộp trong trang Tài khoản (#dia-chi). URL cũ redirect. */
+  ADDRESSES: '/tai-khoan#dia-chi',
   ORDERS: '/don-hang',
   ORDER_DETAIL: '/don-hang/:code',
   ORDER_RECEIPT: '/don-hang/:code/bien-lai',

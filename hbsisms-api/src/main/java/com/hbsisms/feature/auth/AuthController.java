@@ -4,6 +4,8 @@ import com.hbsisms.feature.auth.dto.CurrentUserResponse;
 import com.hbsisms.feature.auth.dto.LoginRequest;
 import com.hbsisms.feature.auth.dto.LoginResponse;
 import com.hbsisms.feature.auth.dto.OtpLoginRequest;
+import com.hbsisms.feature.auth.dto.OtpPrecheckRequest;
+import com.hbsisms.feature.auth.dto.OtpPrecheckResponse;
 import com.hbsisms.feature.auth.dto.OtpRegisterRequest;
 import com.hbsisms.security.AuthUser;
 import jakarta.validation.Valid;
@@ -22,14 +24,27 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final OtpSendRateLimitService otpSendRateLimitService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, OtpSendRateLimitService otpSendRateLimitService) {
         this.authService = authService;
+        this.otpSendRateLimitService = otpSendRateLimitService;
     }
 
     @PostMapping("/login")
     public LoginResponse login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request);
+    }
+
+    /**
+     * Precheck trước khi client gọi Firebase gửi SMS OTP.
+     * Quá 5 lần / 15 phút / SĐT → 429 khoá ~30 phút.
+     */
+    @PostMapping("/otp/precheck")
+    public OtpPrecheckResponse otpPrecheck(@Valid @RequestBody OtpPrecheckRequest request) {
+        String phone = PhoneNumbers.normalizeVnMobile(request.phone(), "Số điện thoại không hợp lệ");
+        int remaining = otpSendRateLimitService.acquireOrThrow(phone);
+        return new OtpPrecheckResponse(true, remaining, OtpSendRateLimitService.WINDOW_MINUTES * 60);
     }
 
     /** Inter 2 task 1 — phone OTP via Firebase ID token (stub verifier in local/dev). */

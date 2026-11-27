@@ -115,7 +115,7 @@ export default function CompleteProfileForm({ phone, submitting, onComplete }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <p className="auth-profile__hint">Nhận biên lai và thông báo đơn hàng.</p>
+          <p className="auth-profile__hint">Không bắt buộc — chỉ để lưu thông tin liên hệ.</p>
         </div>
 
         <h3 className="auth-profile__section">Địa chỉ nhận hàng đầu tiên</h3>
