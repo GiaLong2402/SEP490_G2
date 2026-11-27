@@ -91,6 +91,8 @@ public class PayosPaymentCompleter {
                 event.setEventType("paid");
                 event.setDescription("Thanh toán thành công qua PayOS");
                 orderEventRepository.save(event);
+
+                preorderFulfillmentService.onFullyPaid(order.getId(), null);
             } else {
                 order.setPaymentStatus(PaymentStatus.PARTIAL);
                 salesOrderRepository.save(order);

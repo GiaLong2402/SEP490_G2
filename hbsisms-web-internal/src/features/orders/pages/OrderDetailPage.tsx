@@ -352,7 +352,25 @@ export default function OrderDetailPage() {
         </aside>
       </div>
 
-      <ConfirmDialog open={cancelling} danger title={`Hủy đơn ${order.code}?`} message={order.paymentStatus === 'paid' || order.paymentStatus === 'partial' ? 'Hàng đang giữ sẽ được nhả. Đơn đã thu tiền sẽ chuyển sang Chờ hoàn tiền.' : 'Hàng đang giữ sẽ được nhả. Lý do hủy là bắt buộc.'} withNote noteRequired noteLabel="Lý do hủy" confirmLabel="Hủy đơn" loading={cancel.isPending} onConfirm={(reason) => cancel.mutate(reason)} onClose={() => setCancelling(false)} />
+      <ConfirmDialog
+        open={cancelling}
+        danger
+        title={`Hủy đơn ${order.code}?`}
+        message={
+          order.paymentStatus === 'paid' || order.paymentStatus === 'partial'
+            ? 'Hàng đang giữ sẽ được nhả. Đơn đã thu tiền sẽ chuyển sang Chờ hoàn tiền.'
+            : order.paymentStatus === 'deposited'
+              ? 'Hàng đang giữ sẽ trả kho để bán lại. Tiền cọc khách đã trả sẽ không hoàn (mất cọc). Lý do hủy là bắt buộc.'
+              : 'Hàng đang giữ sẽ được nhả. Lý do hủy là bắt buộc.'
+        }
+        withNote
+        noteRequired
+        noteLabel="Lý do hủy"
+        confirmLabel={order.paymentStatus === 'deposited' ? 'Hủy và giữ cọc' : 'Hủy đơn'}
+        loading={cancel.isPending}
+        onConfirm={(reason) => cancel.mutate(reason)}
+        onClose={() => setCancelling(false)}
+      />
       <ConfirmDialog
         open={deciding != null}
         danger={deciding === 'rejected'}

@@ -40,7 +40,10 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Inter 2 #29 list/detail + #30 cancel unpaid — B2C {@code /me/orders}. */
+/**
+ * Inter 2 #29 list/detail + #30 cancel — B2C {@code /me/orders}.
+ * Hủy khi chờ cọc (chưa trả) hoặc khi chờ tất toán (đã cọc → mất cọc + nhả hàng).
+ */
 @Service
 public class MeOrderService {
 
@@ -199,13 +202,22 @@ public class MeOrderService {
     public MeOrderDetailResponse cancelMine(Customer customer, String code) {
         SalesOrder order = requireOwned(customer, code);
         if (!portalCanCancel(order)) {
-            throw ApiException.conflict("Đơn không thể hủy (chỉ hủy khi chờ thanh toán)");
+            throw ApiException.conflict("Đơn không thể hủy (chỉ hủy khi chờ thanh toán cọc hoặc chờ tất toán)");
         }
 
+        boolean forfeitDeposit = isSettlementCancel(order);
         Long actorId = customer.getAccountUser() == null ? null : customer.getAccountUser().getId();
-        orderAllocationService.releaseForOrder(order, actorId, "Khách hủy đơn — giải phóng hold");
+        orderAllocationService.releaseForOrder(
+                order,
+                actorId,
+                forfeitDeposit
+                        ? "Khách hủy khi tất toán — giải phóng hold (mất cọc)"
+                        : "Khách hủy đơn — giải phóng hold");
         order.setState(OrderState.CANCELLED);
-        order.setPaymentStatus(PaymentStatus.UNPAID);
+        // Chưa trả → UNPAID; đã cọc → giữ DEPOSITED (cửa hàng giữ tiền cọc, không hoàn).
+        if (!forfeitDeposit) {
+            order.setPaymentStatus(PaymentStatus.UNPAID);
+        }
         order.setHoldExpiresAt(null);
         salesOrderRepository.save(order);
 
@@ -214,7 +226,10 @@ public class MeOrderService {
                 payosClient.cancelPaymentRequest(PayosCancelIds.from(payment), "Khách hủy đơn");
                 payment.setStatus(PayTxnStatus.CANCELLED);
                 payment.setCheckoutUrl(null);
-                payment.setNote("Khách hủy đơn — đã hủy link PayOS");
+                payment.setNote(
+                        forfeitDeposit
+                                ? "Khách hủy khi tất toán — đã hủy link PayOS (cọc không hoàn)"
+                                : "Khách hủy đơn — đã hủy link PayOS");
                 paymentRepository.save(payment);
             }
         }
@@ -222,7 +237,10 @@ public class MeOrderService {
         OrderEvent event = new OrderEvent();
         event.setOrder(order);
         event.setEventType("cancelled");
-        event.setDescription("Khách hủy đơn chưa thanh toán");
+        event.setDescription(
+                forfeitDeposit
+                        ? "Khách hủy khi tất toán — mất tiền cọc, hàng trả kho"
+                        : "Khách hủy đơn chưa thanh toán");
         event.setCreatedBy(customer.getAccountUser());
         orderEventRepository.save(event);
 
@@ -246,8 +264,21 @@ public class MeOrderService {
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy đơn hàng"));
     }
 
+    /**
+     * Khách hủy được khi: (1) chờ thanh toán cọc/đơn thường, hoặc (2) chờ tất toán sau khi đã
+     * cọc — hủy lúc này = mất cọc + nhả hàng.
+     */
     static boolean portalCanCancel(SalesOrder order) {
-        return order.getState() == OrderState.PENDING && order.getPaymentStatus() != PaymentStatus.PAID;
+        if (order.getState() == OrderState.PENDING && order.getPaymentStatus() != PaymentStatus.PAID) {
+            return true;
+        }
+        return isSettlementCancel(order);
+    }
+
+    /** Đơn đặt trước đã cọc, đủ hàng, đang chờ tất toán phần còn lại. */
+    static boolean isSettlementCancel(SalesOrder order) {
+        return order.getState() == OrderState.AWAITING_SETTLEMENT
+                && order.getPaymentStatus() == PaymentStatus.DEPOSITED;
     }
 
     private MeOrderDetailResponse toMeDetail(SalesOrder order) {

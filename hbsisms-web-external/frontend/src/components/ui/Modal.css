@@ -118,6 +118,16 @@
   font-size: 18px;
 }
 
+.modal-summary--warn {
+  margin-top: 10px;
+  background: #fdecec;
+  color: var(--color-danger);
+}
+
+.modal-summary--warn strong {
+  color: var(--color-danger);
+}
+
 .modal-error {
   margin: 12px 0 0;
   padding: 10px 14px;

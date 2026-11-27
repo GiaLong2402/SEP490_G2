@@ -671,6 +671,25 @@ class SalesOrderServiceTest {
     }
 
     @Test
+    void cancel_depositedOrder_forfeitsDepositKeepsDeposited() {
+        SalesOrder order =
+                baseOrder(16L, OrderState.AWAITING_SETTLEMENT, PaymentStatus.DEPOSITED, AllocationStatus.FULL);
+        when(salesOrderRepository.findWithDetailsById(16L)).thenReturn(Optional.of(order));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(actor));
+        when(deliveryRepository.findByOrder_IdOrderByIdAsc(16L)).thenReturn(List.of());
+        when(approvalTaskRepository.findByRefTypeAndRefIdAndStatus(any(), eq(16L), any()))
+                .thenReturn(Optional.empty());
+
+        service.cancel(16L, "Khách bỏ tất toán", 9L);
+
+        assertThat(order.getState()).isEqualTo(OrderState.CANCELLED);
+        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.DEPOSITED);
+        verify(orderAllocationService)
+                .releaseForOrder(eq(order), eq(9L), org.mockito.ArgumentMatchers.contains("mất cọc"));
+        verify(payosLinkCanceller).cancelPendingLinks(order, "Cửa hàng hủy đơn");
+    }
+
+    @Test
     void cancel_blankReason_returns400() {
         assertThatThrownBy(() -> service.cancel(11L, "   ", 9L))
                 .isInstanceOf(ApiException.class)

@@ -205,6 +205,25 @@ public interface SalesOrderRepository
             """)
     List<SalesOrder> findOverduePreorderDeposits(@Param("now") Instant now);
 
+    /** Đơn đặt trước đang SX — dùng reconcile khi nhập TP xong nhưng chưa sang chờ tất toán. */
+    @Query("""
+            select o from SalesOrder o
+            where o.preorder = true
+              and o.state = com.hbsisms.feature.sales.OrderState.IN_PRODUCTION
+            order by o.id asc
+            """)
+    List<SalesOrder> findInProductionPreorders();
+
+    /** Đã trả đủ nhưng còn Chờ tất toán — reconcile sang Đang chuẩn bị. */
+    @Query("""
+            select o from SalesOrder o
+            where o.preorder = true
+              and o.state = com.hbsisms.feature.sales.OrderState.AWAITING_SETTLEMENT
+              and o.paymentStatus = com.hbsisms.feature.payment.PaymentStatus.PAID
+            order by o.id asc
+            """)
+    List<SalesOrder> findAwaitingSettlementFullyPaidPreorders();
+
     @EntityGraph(attributePaths = {"customer", "shipAddress", "placedBy", "approvedBy", "sourceQuote"})
     Optional<SalesOrder> findByCodeAndCustomer_Id(String code, Long customerId);
 

@@ -179,7 +179,7 @@ function OrderDetail({ order, onChanged }) {
             </span>
           ) : order.isDeposited ? (
             <span className="order-status order-status--info">
-              <CheckIcon size={16} /> Đã cọc
+              <CheckIcon size={16} /> {uiStatus === 'cancelled' ? 'Đã mất cọc' : 'Đã cọc'}
             </span>
           ) : uiStatus === 'awaiting_payment' ? (
             <span className="order-status order-status--warning">
@@ -439,13 +439,17 @@ function OrderDetail({ order, onChanged }) {
                   : awaitingSettlement
                     ? 'Hàng đã đủ. Thanh toán phần còn lại để cửa hàng chuẩn bị giao.'
                     : canCancel
-                      ? awaitingDeposit
-                        ? 'Bạn có thể hủy đơn khi chưa thanh toán cọc.'
-                        : 'Bạn có thể hủy đơn khi chưa thanh toán.'
+                      ? awaitingSettlement
+                        ? 'Hủy lúc này bạn sẽ mất tiền cọc; hàng giữ sẽ trả kho để bán lại.'
+                        : awaitingDeposit
+                          ? 'Bạn có thể hủy đơn khi chưa thanh toán cọc.'
+                          : 'Bạn có thể hủy đơn khi chưa thanh toán.'
                       : uiStatus === 'cancelled' || uiStatus === 'expired'
                         ? uiStatus === 'expired'
                           ? 'Đơn hết hạn thanh toán, hàng đã trả kho. Bạn có thể đặt lại đơn mới.'
-                          : 'Đơn đã hủy. Liên hệ cửa hàng nếu bạn cần hỗ trợ thêm.'
+                          : order.isDeposited
+                            ? 'Đơn đã hủy. Tiền cọc không được hoàn; hàng đã trả kho.'
+                            : 'Đơn đã hủy. Liên hệ cửa hàng nếu bạn cần hỗ trợ thêm.'
                         : 'Đơn đã thanh toán không tự hủy được — liên hệ cửa hàng nếu cần đổi hoặc hủy.'}
           </span>
         </div>

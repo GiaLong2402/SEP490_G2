@@ -25,7 +25,10 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Sau khi thu đủ cọc: giữ TP có sẵn + tạo lệnh SX nháp phần thiếu → {@link OrderState#IN_PRODUCTION}.
@@ -44,6 +47,7 @@ public class PreorderFulfillmentService {
     private final BusinessCodeService businessCodeService;
     private final NotificationService notificationService;
     private final Clock clock;
+    private final TransactionTemplate requiresNewTx;
 
     public PreorderFulfillmentService(
             SalesOrderRepository salesOrderRepository,
@@ -53,7 +57,8 @@ public class PreorderFulfillmentService {
             BomExplosionService bomExplosionService,
             BusinessCodeService businessCodeService,
             NotificationService notificationService,
-            Clock clock) {
+            Clock clock,
+            PlatformTransactionManager transactionManager) {
         this.salesOrderRepository = salesOrderRepository;
         this.orderEventRepository = orderEventRepository;
         this.orderAllocationService = orderAllocationService;
@@ -62,6 +67,9 @@ public class PreorderFulfillmentService {
         this.businessCodeService = businessCodeService;
         this.notificationService = notificationService;
         this.clock = clock;
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.requiresNewTx = tx;
     }
 
     /**
@@ -121,6 +129,131 @@ public class PreorderFulfillmentService {
     @Transactional
     public void tryAdvanceToSettlement(Long orderId) {
         advanceToSettlement(orderId, null);
+    }
+
+    /**
+     * Sau tất toán đủ (PayOS / thu tay): {@link OrderState#AWAITING_SETTLEMENT} → {@link OrderState#PREPARING}.
+     * Hàng đã giữ đủ + đã trả đủ — không cần Sales bấm xác nhận tay.
+     */
+    @Transactional
+    public void onFullyPaid(Long orderId, AppUser actor) {
+        SalesOrder order = salesOrderRepository
+                .findWithDetailsById(orderId)
+                .orElse(null);
+        if (order == null || !order.isPreorder()) {
+            return;
+        }
+        if (order.getState() != OrderState.AWAITING_SETTLEMENT) {
+            return;
+        }
+        if (order.getPaymentStatus() != PaymentStatus.PAID) {
+            return;
+        }
+        orderAllocationService.syncOutstandingFromHolds(order);
+        if (order.getAllocationStatus() != AllocationStatus.FULL) {
+            log.warn(
+                    "Skip auto PREPARING for {}: allocationStatus={}",
+                    order.getCode(),
+                    order.getAllocationStatus());
+            return;
+        }
+        order.setState(OrderState.PREPARING);
+        salesOrderRepository.save(order);
+
+        OrderEvent event = new OrderEvent();
+        event.setOrder(order);
+        event.setEventType("preparing");
+        event.setDescription("Tất toán xong — bắt đầu chuẩn bị hàng");
+        event.setCreatedBy(actor);
+        orderEventRepository.save(event);
+    }
+
+    /**
+     * Sửa đơn kẹt {@link OrderState#IN_PRODUCTION} sau khi TP đã vào kho nhưng allocate/afterCommit lỗi:
+     * giữ thêm phần outstanding rồi thử chuyển Chờ tất toán + thông báo.
+     *
+     * @return số đơn đã chuyển sang {@link OrderState#AWAITING_SETTLEMENT}
+     */
+    public int reconcileInProductionPreorders() {
+        List<SalesOrder> stuck = salesOrderRepository.findInProductionPreorders();
+        if (stuck.isEmpty()) {
+            return 0;
+        }
+        log.info(
+                "Reconciling {} IN_PRODUCTION preorder(s): {}",
+                stuck.size(),
+                stuck.stream().map(SalesOrder::getCode).toList());
+        // Bắt buộc REQUIRES_NEW: gọi từ afterCommit nhập TP thì @Transactional thường
+        // dính session đã đóng → "no transaction is in progress", hàng nằm khả dụng không hold.
+        try {
+            Integer held = requiresNewTx.execute(status ->
+                    orderAllocationService.allocateOutstandingAfterReceipt(null));
+            log.info(
+                    "Reconcile allocateOutstandingAfterReceipt held {} tray(s)",
+                    held == null ? 0 : held);
+        } catch (RuntimeException ex) {
+            log.warn(
+                    "reconcile allocateOutstandingAfterReceipt failed: {}",
+                    ex.getMessage(),
+                    ex);
+        }
+        int advanced = 0;
+        for (SalesOrder order : stuck) {
+            Long orderId = order.getId();
+            String code = order.getCode();
+            try {
+                requiresNewTx.executeWithoutResult(status -> {
+                    SalesOrder fresh = salesOrderRepository
+                            .findWithDetailsById(orderId)
+                            .orElse(null);
+                    if (fresh != null) {
+                        orderAllocationService.syncOutstandingFromHolds(fresh);
+                        salesOrderRepository.save(fresh);
+                    }
+                    advanceToSettlement(orderId, null);
+                });
+            } catch (RuntimeException ex) {
+                log.warn("reconcile tryAdvanceToSettlement {} failed: {}", code, ex.getMessage());
+                continue;
+            }
+            SalesOrder fresh = salesOrderRepository.findWithDetailsById(orderId).orElse(null);
+            if (fresh != null && fresh.getState() == OrderState.AWAITING_SETTLEMENT) {
+                advanced++;
+                log.info("Reconciled preorder {} → AWAITING_SETTLEMENT", fresh.getCode());
+            } else if (fresh != null) {
+                int outstanding = fresh.getLines().stream().mapToInt(SalesOrderLine::getOutstandingQty).sum();
+                log.warn(
+                        "Preorder {} still {} after reconcile (outstandingQty={})",
+                        fresh.getCode(),
+                        fresh.getState(),
+                        outstanding);
+            }
+        }
+        return advanced;
+    }
+
+    /**
+     * Đơn đã tất toán đủ nhưng còn kẹt {@link OrderState#AWAITING_SETTLEMENT} (trước khi có auto PREPARING).
+     *
+     * @return số đơn chuyển sang {@link OrderState#PREPARING}
+     */
+    public int reconcileFullyPaidAwaitingPreparing() {
+        List<SalesOrder> stuck = salesOrderRepository.findAwaitingSettlementFullyPaidPreorders();
+        int advanced = 0;
+        for (SalesOrder order : stuck) {
+            try {
+                requiresNewTx.executeWithoutResult(status -> onFullyPaid(order.getId(), null));
+            } catch (RuntimeException ex) {
+                log.warn("reconcile onFullyPaid {} failed: {}", order.getCode(), ex.getMessage());
+                continue;
+            }
+            SalesOrder fresh = salesOrderRepository.findById(order.getId()).orElse(null);
+            if (fresh != null && fresh.getState() == OrderState.PREPARING) {
+                advanced++;
+                log.info("Reconciled preorder {} → PREPARING after full payment", fresh.getCode());
+            }
+        }
+        return advanced;
     }
 
     private void advanceToSettlement(Long orderId, AppUser actor) {

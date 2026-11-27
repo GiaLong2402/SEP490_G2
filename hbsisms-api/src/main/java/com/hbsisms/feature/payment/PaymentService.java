@@ -249,6 +249,9 @@ public class PaymentService {
             if (purpose == PaymentPurpose.DEPOSIT && order.getPaymentStatus() == PaymentStatus.DEPOSITED) {
                 preorderFulfillmentService.onDepositReceived(order.getId(), receiver);
             }
+            if (purpose == PaymentPurpose.BALANCE && order.getPaymentStatus() == PaymentStatus.PAID) {
+                preorderFulfillmentService.onFullyPaid(order.getId(), receiver);
+            }
         }
 
         Map<String, Object> audit = new HashMap<>();

@@ -360,7 +360,7 @@ public class OrderAllocationService {
     }
 
     /**
-     * Sau nhập thành phẩm: ưu tiên đơn Paid còn outstanding, hold thêm theo FEFO.
+     * Sau nhập thành phẩm: ưu tiên đơn Paid/Deposited còn outstanding, hold thêm theo FEFO.
      *
      * @return số khay đã hold thêm
      */
@@ -370,11 +370,11 @@ public class OrderAllocationService {
         int total = 0;
         Long lastOrderId = null;
         SalesOrder current = null;
-        for (SalesOrderLine line : lines) {
-            SalesOrder order = line.getOrder();
+        for (SalesOrderLine queried : lines) {
+            SalesOrder order = queried.getOrder();
             if (!Objects.equals(lastOrderId, order.getId())) {
                 if (current != null) {
-                    refreshAllocationStatus(current);
+                    syncOutstandingFromHolds(current);
                     salesOrderRepository.save(current);
                 }
                 current = salesOrderRepository
@@ -382,19 +382,68 @@ public class OrderAllocationService {
                         .orElse(order);
                 lastOrderId = order.getId();
             }
-            int need = line.getOutstandingQty();
+            // Phải sửa dòng trên entity đã load với đơn — không ghi lên bản từ query (sẽ không được save).
+            SalesOrderLine managed = findManagedLine(current, queried);
+            int need = managed.getOutstandingQty();
             if (need <= 0) {
                 continue;
             }
-            int held = holdAdditionalForLine(current, line, need, actorId);
-            line.setOutstandingQty(need - held);
+            int held = holdAdditionalForLine(current, managed, need, actorId);
+            managed.setOutstandingQty(need - held);
             total += held;
         }
         if (current != null) {
-            refreshAllocationStatus(current);
+            syncOutstandingFromHolds(current);
             salesOrderRepository.save(current);
         }
         return total;
+    }
+
+    /**
+     * Đồng bộ {@code outstandingQty} theo HOLD thật trên ledger (chữa lệch khi hold thành công
+     * nhưng outstanding không được save).
+     */
+    @Transactional
+    public void syncOutstandingFromHolds(SalesOrder order) {
+        Objects.requireNonNull(order.getId(), "order id");
+        Map<Long, Integer> heldByVariant = new HashMap<>();
+        for (Map.Entry<HoldKey, Integer> e : netHeldByLot(order.getId()).entrySet()) {
+            heldByVariant.merge(e.getKey().variantId(), e.getValue(), Integer::sum);
+        }
+        for (SalesOrderLine line : order.getLines()) {
+            if (line.getVariant() == null) {
+                continue;
+            }
+            long variantId = line.getVariant().getId();
+            int pool = heldByVariant.getOrDefault(variantId, 0);
+            int cover = Math.min(line.getQtyKhay(), pool);
+            line.setOutstandingQty(Math.max(0, line.getQtyKhay() - cover));
+            heldByVariant.put(variantId, pool - cover);
+        }
+        refreshAllocationStatus(order);
+    }
+
+    private static SalesOrderLine findManagedLine(SalesOrder current, SalesOrderLine queried) {
+        if (current == null || queried == null) {
+            return queried;
+        }
+        if (queried.getId() != null) {
+            for (SalesOrderLine line : current.getLines()) {
+                if (Objects.equals(line.getId(), queried.getId())) {
+                    return line;
+                }
+            }
+        }
+        if (queried.getVariant() != null) {
+            for (SalesOrderLine line : current.getLines()) {
+                if (line.getVariant() != null
+                        && Objects.equals(line.getVariant().getId(), queried.getVariant().getId())
+                        && line.getOutstandingQty() > 0) {
+                    return line;
+                }
+            }
+        }
+        return queried;
     }
 
     private int holdAdditionalForLine(SalesOrder order, SalesOrderLine line, int need, Long actorId) {

@@ -1,0 +1,344 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.6.1 Chrome/142.0.7444.265 Electron/39.8.0 Safari/537.36" version="29.6.1">
+  <diagram id="BF-02" name="BF-02 Sales request &amp; quotation">
+    <mxGraphModel dx="1869" dy="1111" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="3400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontStyle=1;fontSize=18;fontColor=#000000;" value="BF-02 - Sales request &amp; quotation" vertex="1">
+          <mxGeometry height="30" width="600" x="40" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="lane-cust" parent="1" style="swimlane;horizontal=1;startSize=40;fillColor=#FFFFFF;strokeColor=#000000;fontStyle=1;fontSize=14;fontColor=#000000;swimlaneFillColor=#FFFFFF;" value="Customer" vertex="1">
+          <mxGeometry height="3100" width="300" x="40" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="start" parent="lane-cust" style="ellipse;html=1;aspect=fixed;fillColor=#000000;strokeColor=#000000;" value="" vertex="1">
+          <mxGeometry height="28" width="28" x="136" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c1" parent="lane-cust" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;arcSize=10;" value="Submit bulk / shortage request&#xa;(Yêu cầu đặt số lượng lớn / thiếu hàng)" vertex="1">
+          <mxGeometry height="70" width="220" x="40" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="c2" parent="lane-cust" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;arcSize=10;" value="Review quote on&#xa;request detail" vertex="1">
+          <mxGeometry height="60" width="220" x="30" y="750" as="geometry" />
+        </mxCell>
+        <mxCell id="d3" parent="lane-cust" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;align=center;" value="Accept&#xa;quote?" vertex="1">
+          <mxGeometry height="80" width="150" x="65" y="870" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" parent="lane-cust" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;align=center;arcSize=10;" value="Pay deposit via PayOS&#xa;(QR / resume payment)&#xa;Số tiền = tiền cọc (không phải full total)" vertex="1">
+          <mxGeometry height="80" width="240" x="30" y="1465" as="geometry" />
+        </mxCell>
+        <mxCell id="d5" parent="lane-cust" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;align=center;" value="Deposit paid&#xa;before due?" vertex="1">
+          <mxGeometry height="90" width="150" x="75" y="1570" as="geometry" />
+        </mxCell>
+        <mxCell id="c4" parent="lane-cust" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;align=center;arcSize=10;" value="Pay remaining balance&#xa;(PayOS tất toán / thu quầy)&#xa;amount = total − paid" vertex="1">
+          <mxGeometry height="80" width="240" x="20" y="2105" as="geometry" />
+        </mxCell>
+        <mxCell id="o3fc_Ede7NHOT7KiPE2k-7" parent="lane-cust" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#ff0000;" value="" vertex="1">
+          <mxGeometry height="30" width="30" x="125" y="1030" as="geometry" />
+        </mxCell>
+        <mxCell id="e-d3-end2" edge="1" parent="lane-cust" source="d3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="o3fc_Ede7NHOT7KiPE2k-7">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="150" y="1130" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="l-d3-no" connectable="0" parent="e-d3-end2" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;fontStyle=1;fontColor=#000000;" value="No / decline" vertex="1">
+          <mxGeometry relative="1" x="-0.1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lane-sys" parent="1" style="swimlane;horizontal=1;startSize=40;fillColor=#FFFFFF;strokeColor=#000000;fontStyle=1;fontSize=14;fontColor=#000000;swimlaneFillColor=#FFFFFF;" value="System" vertex="1">
+          <mxGeometry height="3100" width="320" x="340" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s1" parent="lane-sys" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;arcSize=10;" value="Create sales request&#xa;(status: NEW)" vertex="1">
+          <mxGeometry height="70" width="220" x="60" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="s2" parent="lane-sys" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;arcSize=10;" value="Mark feasible;&#xa;status → QUOTING" vertex="1">
+          <mxGeometry height="60" width="220" x="50" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="s3" parent="lane-sys" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;arcSize=10;" value="Notify customer&#xa;(type: quote-sent)" vertex="1">
+          <mxGeometry height="60" width="220" x="60" y="750" as="geometry" />
+        </mxCell>
+        <mxCell id="s4" parent="lane-sys" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;arcSize=10;" value="Check validUntil;&#xa;quote → APPROVED" vertex="1">
+          <mxGeometry height="60" width="220" x="50" y="880" as="geometry" />
+        </mxCell>
+        <mxCell id="d4" parent="lane-sys" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;align=center;" value="Still&#xa;valid?" vertex="1">
+          <mxGeometry height="80" width="150" x="85" y="980" as="geometry" />
+        </mxCell>
+        <mxCell id="s5" parent="lane-sys" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;arcSize=10;" value="Reject accept&#xa;(quote expired)" vertex="1">
+          <mxGeometry height="50" width="160" x="14" y="1120" as="geometry" />
+        </mxCell>
+        <mxCell id="sec-dep" parent="lane-sys" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontStyle=1;fontSize=13;fontColor=#000000;" value="▼ DEPOSIT (CỌC)" vertex="1">
+          <mxGeometry height="24" width="240" x="20" y="1300" as="geometry" />
+        </mxCell>
+        <mxCell id="s6" parent="lane-sys" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;align=center;arcSize=10;" value="Create preorder Sales Order&#xa;• isPreorder = true&#xa;• paymentStatus = UNPAID&#xa;• depositAmount / % / dueAt&#xa;• request → ORDERED" vertex="1">
+          <mxGeometry height="100" width="240" x="50" y="1340" as="geometry" />
+        </mxCell>
+        <mxCell id="s7" parent="lane-sys" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;align=center;arcSize=10;" value="Create PayOS deposit link&#xa;(amount = depositAmount)&#xa;+ notify / show pay CTA" vertex="1">
+          <mxGeometry height="70" width="240" x="50" y="1470" as="geometry" />
+        </mxCell>
+        <mxCell id="s8" parent="lane-sys" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;align=center;arcSize=10;" value="Expire / cancel order&#xa;(overdue deposit job)&#xa;release hold if any" vertex="1">
+          <mxGeometry height="70" width="240" x="40" y="1605" as="geometry" />
+        </mxCell>
+        <mxCell id="s9" parent="lane-sys" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;align=center;arcSize=10;" value="Mark payment SUCCESS&#xa;paymentStatus → DEPOSITED&#xa;purpose = DEPOSIT" vertex="1">
+          <mxGeometry height="70" width="240" x="40" y="1820" as="geometry" />
+        </mxCell>
+        <mxCell id="s10" parent="lane-sys" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;align=center;arcSize=10;" value="onDepositReceived:&#xa;• Hold available stock (FEFO)&#xa;• Create production draft(s) for shortage&#xa;• state → IN_PRODUCTION&#xa;• If already FULL → AWAITING_SETTLEMENT" vertex="1">
+          <mxGeometry height="100" width="260" x="30" y="1930" as="geometry" />
+        </mxCell>
+        <mxCell id="s11" parent="lane-sys" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;align=center;arcSize=10;" value="Goods ready (allocation FULL)&#xa;state → AWAITING_SETTLEMENT&#xa;Notify customer: settlement-ready&#xa;+ PayOS balance link" vertex="1">
+          <mxGeometry height="90" width="260" x="20" y="2100" as="geometry" />
+        </mxCell>
+        <mxCell id="s12" parent="lane-sys" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;align=center;arcSize=10;" value="Mark PAID (purpose=BALANCE)&#xa;→ PREPARING → ship / complete&#xa;(tiếp BF fulfillment / delivery)" vertex="1">
+          <mxGeometry height="80" width="240" x="40" y="2240" as="geometry" />
+        </mxCell>
+        <mxCell id="o3fc_Ede7NHOT7KiPE2k-8" parent="lane-sys" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#ff0000;" value="" vertex="1">
+          <mxGeometry height="30" width="30" x="79" y="1220" as="geometry" />
+        </mxCell>
+        <mxCell id="e-s5-end3" edge="1" parent="lane-sys" source="s5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="o3fc_Ede7NHOT7KiPE2k-8">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="160" y="1300" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="o3fc_Ede7NHOT7KiPE2k-9" parent="lane-sys" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#ff0000;" value="" vertex="1">
+          <mxGeometry height="30" width="30" x="144" y="1740" as="geometry" />
+        </mxCell>
+        <mxCell id="e-s8-end4" edge="1" parent="lane-sys" source="s8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="o3fc_Ede7NHOT7KiPE2k-9">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="160" y="1860" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lane-sales" parent="1" style="swimlane;horizontal=1;startSize=40;fillColor=#FFFFFF;strokeColor=#000000;fontStyle=1;fontSize=14;fontColor=#000000;swimlaneFillColor=#FFFFFF;" value="Sales Staff" vertex="1">
+          <mxGeometry height="3100" width="320" x="660" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="sa1" parent="lane-sales" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;arcSize=10;" value="Open request and&#xa;assess feasibility" vertex="1">
+          <mxGeometry height="60" width="220" x="60" y="85" as="geometry" />
+        </mxCell>
+        <mxCell id="d1" parent="lane-sales" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;align=center;" value="Can store&#xa;fulfill?" vertex="1">
+          <mxGeometry height="90" width="150" x="95" y="185" as="geometry" />
+        </mxCell>
+        <mxCell id="o3fc_Ede7NHOT7KiPE2k-5" edge="1" parent="lane-sales" source="sa2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="o3fc_Ede7NHOT7KiPE2k-3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="sa2" parent="lane-sales" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;arcSize=10;" value="Reject with reason&#xa;(status: REJECTED)" vertex="1">
+          <mxGeometry height="60" width="220" x="60" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="sa3" parent="lane-sales" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;arcSize=10;" value="Create quote draft&#xa;(lines, prices, validUntil)" vertex="1">
+          <mxGeometry height="60" width="220" x="50" y="470" as="geometry" />
+        </mxCell>
+        <mxCell id="d2" parent="lane-sales" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;align=center;" value="Special&#xa;price?" vertex="1">
+          <mxGeometry height="80" width="150" x="85" y="580" as="geometry" />
+        </mxCell>
+        <mxCell id="sa4" parent="lane-sales" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;arcSize=10;" value="Send quote to&#xa;customer portal" vertex="1">
+          <mxGeometry height="60" width="220" x="60" y="750" as="geometry" />
+        </mxCell>
+        <mxCell id="sa5" parent="lane-sales" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;align=center;arcSize=10;" value="Fulfill shortage:&#xa;produce / receive FG via&#xa;production order" vertex="1">
+          <mxGeometry height="70" width="220" x="50" y="1945" as="geometry" />
+        </mxCell>
+        <mxCell id="sa6" parent="lane-sales" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;align=center;arcSize=10;" value="Prepare &amp; deliver order&#xa;(PREPARING → TO_SHIP → …)" vertex="1">
+          <mxGeometry height="60" width="220" x="40" y="2250" as="geometry" />
+        </mxCell>
+        <mxCell id="o3fc_Ede7NHOT7KiPE2k-3" parent="lane-sales" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#ff0000;" value="" vertex="1">
+          <mxGeometry height="30" width="30" x="155" y="410" as="geometry" />
+        </mxCell>
+        <mxCell id="o3fc_Ede7NHOT7KiPE2k-10" parent="lane-sales" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#ff0000;" value="" vertex="1">
+          <mxGeometry height="30" width="30" x="135" y="2370" as="geometry" />
+        </mxCell>
+        <mxCell id="e-sa6-end5" edge="1" parent="lane-sales" source="sa6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="o3fc_Ede7NHOT7KiPE2k-10">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="150" y="2460" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lane-owner" parent="1" style="swimlane;horizontal=1;startSize=40;fillColor=#FFFFFF;strokeColor=#000000;fontStyle=1;fontSize=14;fontColor=#000000;swimlaneFillColor=#FFFFFF;" value="Store Owner" vertex="1">
+          <mxGeometry height="3100" width="300" x="980" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="o1" parent="lane-owner" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;arcSize=10;" value="Approve special price&#xa;(if required)" vertex="1">
+          <mxGeometry height="60" width="220" x="40" y="590" as="geometry" />
+        </mxCell>
+        <mxCell id="e-start-c1" edge="1" parent="1" source="start" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="c1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-c1-s1" edge="1" parent="1" source="c1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="s1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-s1-sa1" edge="1" parent="1" source="s1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="sa1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-sa1-d1" edge="1" parent="1" source="sa1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="d1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-d1-sa2" edge="1" parent="1" source="d1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="sa2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l-d1-no" connectable="0" parent="e-d1-sa2" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;fontStyle=1;fontColor=#000000;" value="No" vertex="1">
+          <mxGeometry relative="1" x="-0.1" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-d1-s2" edge="1" parent="1" source="d1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="s2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l-d1-yes" connectable="0" parent="e-d1-s2" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;fontStyle=1;fontColor=#000000;" value="Yes" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-s2-sa3" edge="1" parent="1" source="s2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="sa3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="520" y="560" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-sa3-d2" edge="1" parent="1" source="sa3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="d2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-d2-o1" edge="1" parent="1" source="d2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;dashed=1;" target="o1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l-d2-yes" connectable="0" parent="e-d2-o1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=2;fontColor=#000000;" value="Yes (optional)" vertex="1">
+          <mxGeometry relative="1" x="-0.1" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-d2-sa4" edge="1" parent="1" source="d2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="sa4">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="820" y="810" />
+              <mxPoint x="820" y="810" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="l-d2-no" connectable="0" parent="e-d2-sa4" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;fontStyle=1;fontColor=#000000;" value="No" vertex="1">
+          <mxGeometry relative="1" x="-0.2" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-o1-sa4" edge="1" parent="1" source="o1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;dashed=1;" target="sa4">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1130" y="780" />
+              <mxPoint x="890" y="780" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-sa4-s3" edge="1" parent="1" source="sa4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="s3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-s3-c2" edge="1" parent="1" source="s3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="c2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-c2-d3" edge="1" parent="1" source="c2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="d3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-d3-s4" edge="1" parent="1" source="d3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="s4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l-d3-yes" connectable="0" parent="e-d3-s4" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;fontStyle=1;fontColor=#000000;" value="Yes" vertex="1">
+          <mxGeometry relative="1" x="-0.2" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-s4-d4" edge="1" parent="1" source="s4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="d4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-d4-s5" edge="1" parent="1" source="d4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="s5">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="450" y="1130" />
+              <mxPoint x="450" y="1130" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="l-d4-no" connectable="0" parent="e-d4-s5" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;fontStyle=1;fontColor=#000000;" value="No" vertex="1">
+          <mxGeometry relative="1" x="-0.2" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-d4-s6" edge="1" parent="1" source="d4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;strokeWidth=2;" target="s6">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="550" y="1330" />
+              <mxPoint x="550" y="1330" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="l-d4-yes" connectable="0" parent="e-d4-s6" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;fontStyle=1;fontColor=#000000;" value="Yes" vertex="1">
+          <mxGeometry relative="1" x="-0.6" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-s6-s7" edge="1" parent="1" source="s6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="s7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-s7-c3" edge="1" parent="1" source="s7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="c3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-c3-d5" edge="1" parent="1" source="c3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="d5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-d5-s8" edge="1" parent="1" source="d5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;exitX=0.98;exitY=0.594;exitDx=0;exitDy=0;exitPerimeter=0;" target="s8">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="262" y="1710" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="l-d5-no" connectable="0" parent="e-d5-s8" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;fontStyle=1;fontColor=#000000;" value="No / timeout" vertex="1">
+          <mxGeometry relative="1" x="-0.2" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-d5-s9" edge="1" parent="1" source="d5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;strokeWidth=2;" target="s9">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="150" y="1915" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="l-d5-yes" connectable="0" parent="e-d5-s9" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;fontStyle=1;fontColor=#000000;" value="Yes" vertex="1">
+          <mxGeometry relative="1" x="-0.5" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-s9-s10" edge="1" parent="1" source="s9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="s10">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-s10-sa5" edge="1" parent="1" source="s10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="sa5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-sa5-s11" edge="1" parent="1" source="sa5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="s11">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="820" y="2200" />
+              <mxPoint x="500" y="2200" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-s10-s11" edge="1" parent="1" source="s10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;dashed=1;" target="s11">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="400" y="2160" />
+              <mxPoint x="400" y="2240" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="l-s10-s11" connectable="0" parent="e-s10-s11" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=2;fontColor=#000000;" value="if already full" vertex="1">
+          <mxGeometry relative="1" x="-0.1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-s11-c4" edge="1" parent="1" source="s11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="c4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-c4-s12" edge="1" parent="1" source="c4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="s12">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="180" y="2350" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-s12-sa6" edge="1" parent="1" source="s12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;" target="sa6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

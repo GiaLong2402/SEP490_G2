@@ -20,7 +20,6 @@ import com.hbsisms.feature.inventory.dto.ReceiptLineResponse;
 import com.hbsisms.feature.production.ProductionOrder;
 import com.hbsisms.feature.production.ProductionOrderRepository;
 import com.hbsisms.feature.production.ProductionOrderStatus;
-import com.hbsisms.feature.sales.OrderAllocationService;
 import com.hbsisms.feature.sales.PreorderFulfillmentService;
 import com.hbsisms.feature.system.AppConfigService;
 import com.hbsisms.feature.system.AuditLogService;
@@ -98,7 +97,6 @@ public class GoodsReceiptService {
     private final StockService stockService;
     private final ProductionOrderRepository productionOrderRepository;
     private final UserRepository userRepository;
-    private final OrderAllocationService orderAllocationService;
     private final PreorderFulfillmentService preorderFulfillmentService;
     private final AppConfigService appConfigService;
     private final AuditLogService auditLogService;
@@ -116,7 +114,6 @@ public class GoodsReceiptService {
             StockService stockService,
             ProductionOrderRepository productionOrderRepository,
             UserRepository userRepository,
-            OrderAllocationService orderAllocationService,
             PreorderFulfillmentService preorderFulfillmentService,
             AppConfigService appConfigService,
             AuditLogService auditLogService,
@@ -132,7 +129,6 @@ public class GoodsReceiptService {
         this.stockService = stockService;
         this.productionOrderRepository = productionOrderRepository;
         this.userRepository = userRepository;
-        this.orderAllocationService = orderAllocationService;
         this.preorderFulfillmentService = preorderFulfillmentService;
         this.appConfigService = appConfigService;
         this.auditLogService = auditLogService;
@@ -530,8 +526,6 @@ public class GoodsReceiptService {
         if (order.getStatus() != ProductionOrderStatus.AWAITING_RECEIPT) {
             throw ApiException.conflict("Lệnh sản xuất không ở trạng thái chờ nhập kho");
         }
-        final Long linkedSalesOrderIdEarly =
-                order.getSalesOrder() == null ? null : order.getSalesOrder().getId();
 
         // Một dòng: cho phép sửa SL nhập (giống cũ). Nhiều dòng (chia 1kg/0,5kg): giữ đúng qtyExpected.
         List<Integer> receiveQtys = new ArrayList<>();
@@ -645,32 +639,25 @@ public class GoodsReceiptService {
             throw ApiException.conflict("Lệnh sản xuất không còn ở trạng thái chờ nhập kho");
         }
 
-        // Phân bổ đơn outstanding sau commit — lỗi bước này không được rollback phiếu nhập TP.
-        final Long allocateActorId = actorId;
+        // Sau commit: giữ hàng cho mọi đơn còn thiếu + chuyển Chờ tất toán (không cần lệnh gắn đơn).
         final String receiptCode = receipt.getCode();
-        final Long linkedSalesOrderId = linkedSalesOrderIdEarly;
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
                     try {
-                        orderAllocationService.allocateOutstandingAfterReceipt(allocateActorId);
+                        int advanced = preorderFulfillmentService.reconcileInProductionPreorders();
+                        if (advanced > 0) {
+                            log.info(
+                                    "Post-receipt {}: advanced {} preorder(s) to AWAITING_SETTLEMENT",
+                                    receiptCode,
+                                    advanced);
+                        }
                     } catch (RuntimeException ex) {
                         log.warn(
-                                "allocateOutstandingAfterReceipt after {} failed: {}",
+                                "post-receipt settlement after {} failed: {}",
                                 receiptCode,
                                 ex.getMessage());
-                    }
-                    if (linkedSalesOrderId != null) {
-                        try {
-                            preorderFulfillmentService.tryAdvanceToSettlement(linkedSalesOrderId);
-                        } catch (RuntimeException ex) {
-                            log.warn(
-                                    "tryAdvanceToSettlement order {} after {} failed: {}",
-                                    linkedSalesOrderId,
-                                    receiptCode,
-                                    ex.getMessage());
-                        }
                     }
                 }
             });
