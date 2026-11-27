@@ -3,6 +3,7 @@ package com.hbsisms.feature.costing;
 import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.feature.costing.dto.CostItemBalanceResponse;
 import com.hbsisms.feature.costing.dto.CostPeriodResponse;
+import com.hbsisms.feature.costing.dto.CostRunningBalanceResponse;
 import com.hbsisms.feature.costing.dto.DiscardCostPeriodRequest;
 import com.hbsisms.feature.costing.dto.OpenCostPeriodRequest;
 import com.hbsisms.feature.costing.dto.ReopenCostPeriodRequest;
@@ -43,6 +44,13 @@ public class CostingController {
         return costingService
                 .findOpenPeriod()
                 .orElseThrow(() -> ApiException.notFound("Chưa có kỳ giá vốn đang mở"));
+    }
+
+    /** WAC liên hoàn hiện hành (NVL + TP) — số dư chạy, không cần kỳ OPEN. */
+    @GetMapping("/running-balances")
+    public List<CostRunningBalanceResponse> runningBalances(
+            @RequestParam(required = false) CostItemType itemType) {
+        return costingService.listRunningBalances(itemType);
     }
 
     @GetMapping("/{id}")

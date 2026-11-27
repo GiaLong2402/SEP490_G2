@@ -367,7 +367,14 @@ public class ProductionOrderService {
         }
         requireWholeTrays(request.actualQty());
         ProductVariant variant = resolveFinishedVariant(order, request.variantId());
-        return List.of(new GoodsReceiptService.FinishedPackLine(variant, request.actualQty()));
+        // actualQty = khay quy đổi 1 kg → quy đổi ra số khay vật lý (vd. 3 đạt × khay 0,5 kg = 6 khay).
+        BigDecimal trayKg = PackSizes.trayWeightKg(variant);
+        if (trayKg.signum() <= 0) {
+            throw ApiException.badRequest("Quy cách thành phẩm chưa có khối lượng khay hợp lệ");
+        }
+        BigDecimal physical = request.actualQty().divide(trayKg, 0, RoundingMode.UNNECESSARY);
+        requireWholeTrays(physical);
+        return List.of(new GoodsReceiptService.FinishedPackLine(variant, physical));
     }
 
     private void applyDefect(ProductionOrder order, ProductionOrderCompleteRequest request) {

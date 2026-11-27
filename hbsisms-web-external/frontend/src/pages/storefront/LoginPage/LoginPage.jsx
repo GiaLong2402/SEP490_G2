@@ -20,8 +20,6 @@ import waveTealSimple from '@/assets/decorations/wave-teal-simple.png'
 import PhoneLoginForm from './PhoneLoginForm'
 import OtpVerifyForm from './OtpVerifyForm'
 import CreateAccountPanel from './CreateAccountPanel'
-import LostPhonePanel from './LostPhonePanel'
-import ChangePhoneFlow from './ChangePhoneFlow'
 import CompleteProfileForm from './CompleteProfileForm'
 import './LoginPage.css'
 
@@ -31,8 +29,6 @@ const STEP = {
   OTP: 'otp',
   CREATE: 'create',
   PROFILE: 'profile',
-  LOST_PHONE: 'lost-phone',
-  CHANGE_PHONE: 'change-phone',
 }
 
 export default function LoginPage() {
@@ -57,7 +53,6 @@ export default function LoginPage() {
   const [otpResetKey, setOtpResetKey] = useState(0)
   const [pendingIdToken, setPendingIdToken] = useState(null)
   const [creating, setCreating] = useState(false)
-  const [infoMessage, setInfoMessage] = useState('')
 
   function focusPhoneInput() {
     phoneInputRef.current?.focus()
@@ -77,22 +72,10 @@ export default function LoginPage() {
     window.setTimeout(() => focusPhoneInput(), 0)
   }
 
-  function handleChangePhoneFinished(newPhoneDigits) {
-    clearPhoneAuthSession()
-    setPhone(newPhoneDigits)
-    setInfoMessage('Đã đổi số thành công. Hãy đăng nhập bằng số mới.')
-    setStep(STEP.PHONE)
-    setStatus('idle')
-    setError('')
-    setPendingIdToken(null)
-    window.setTimeout(() => focusPhoneInput(), 0)
-  }
-
   function handleChangePhone(e) {
     const digits = e.target.value.replace(/\D/g, '').slice(0, 10)
     setPhone(digits)
     if (error) setError('')
-    if (infoMessage) setInfoMessage('')
     if (status === 'error') setStatus('idle')
   }
 
@@ -285,16 +268,10 @@ export default function LoginPage() {
               phone={phone}
               keepLoggedIn={keepLoggedIn}
               error={error}
-              infoMessage={infoMessage}
               status={status}
               phoneInputRef={phoneInputRef}
               onChangePhone={handleChangePhone}
               onChangeKeepLoggedIn={(e) => setKeepLoggedIn(e.target.checked)}
-              onChangePhoneClick={() => {
-                setInfoMessage('')
-                setStep(STEP.CHANGE_PHONE)
-              }}
-              onLostPhoneClick={() => setStep(STEP.LOST_PHONE)}
               onSubmit={handleRequestOtp}
             />
           )}
@@ -326,18 +303,6 @@ export default function LoginPage() {
               phone={phone}
               submitting={creating}
               onComplete={handleCompleteProfile}
-            />
-          )}
-
-          {step === STEP.LOST_PHONE && (
-            <LostPhonePanel onBackToLogin={goBackToPhone} />
-          )}
-
-          {step === STEP.CHANGE_PHONE && (
-            <ChangePhoneFlow
-              onBackToLogin={goBackToPhone}
-              onLostPhone={() => setStep(STEP.LOST_PHONE)}
-              onFinished={handleChangePhoneFinished}
             />
           )}
         </section>

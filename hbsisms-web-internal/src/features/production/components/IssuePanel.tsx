@@ -24,7 +24,7 @@ interface Plan {
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /**
- * Chọn lô FEFO; định giá thành tiền theo WAC NVL (fallback giá lô nếu chưa có WAC).
+ * Chọn lô FEFO; định giá theo WAC liên hoàn NVL (fallback giá lô nếu chưa có WAC).
  * Danh sách lô từ API đã theo thứ tự FEFO.
  */
 function allocate(line: MaterialIssueLine, lots: RawMaterialLot[], wacUnitCost: number | null): Plan {
@@ -66,7 +66,7 @@ function MaterialBlock({ plan, no }: { plan: Plan; no: number }) {
         <span className="font-semibold">{plan.line.rawMaterialName}</span>
         <span className="font-mono text-small text-ink-faint">{plan.line.rawMaterialCode}</span>
         {plan.short > 0 ? <Chip tone="red">Thiếu {num(plan.short)} {unit}</Chip> : <Chip tone="green">Đã chọn đủ {num(plan.line.qtyRequired)} {unit}</Chip>}
-        {pricedByWac ? <Chip tone="neutral">Giá xuất WAC {money(plan.wacUnitCost)}</Chip> : <Chip tone="amber">Chưa có WAC · dùng giá lô</Chip>}
+        {pricedByWac ? <Chip tone="neutral">WAC liên hoàn {money(plan.wacUnitCost)}</Chip> : <Chip tone="amber">Chưa có WAC · dùng giá lô</Chip>}
         <span className="ml-auto text-small text-ink-muted">Thành tiền <b className="tabular-nums text-ink">{money(plan.total)}</b></span>
       </div>
       <div className="overflow-x-auto">
@@ -92,7 +92,7 @@ function MaterialBlock({ plan, no }: { plan: Plan; no: number }) {
                 <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{money(s.lot.unitPrice)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">
                   <div>{money(s.unitCost)}</div>
-                  <div className="text-micro text-ink-faint">{s.costSource === 'WAC' ? 'WAC' : 'giá lô'}</div>
+                  <div className="text-micro text-ink-faint">{s.costSource === 'WAC' ? 'WAC liên hoàn' : 'giá lô'}</div>
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{num(s.lot.qtyRemaining)} {unit}</td>
                 <td className="px-3 py-2 text-right font-semibold tabular-nums">{num(s.take)} {unit}</td>
@@ -107,7 +107,7 @@ function MaterialBlock({ plan, no }: { plan: Plan; no: number }) {
   );
 }
 
-/** Bước 02: xuất NVL — chọn lô FEFO, định giá theo WAC (fallback giá lô). */
+/** Bước 02: xuất NVL — FEFO chọn lô + WAC liên hoàn định giá (fallback giá lô). */
 export function IssuePanel({ order }: { order: ProductionOrder }) {
   const { user } = useAuth();
   const canConfirmExport = isOwnerOrAdmin(user?.roleCode);
@@ -180,9 +180,12 @@ export function IssuePanel({ order }: { order: ProductionOrder }) {
         subtitle={
           pending ? (
             <span className="inline-flex items-center gap-1">
-              Tự tạo lúc duyệt · chọn lô <b>FEFO</b> · định giá <b>WAC</b>
-              <InfoTip label="FEFO và WAC">
-                Lô sắp hết hạn lấy trước (FEFO); lô trả lại (-TL) ưu tiên. Thành tiền xuất kho tính theo ĐG bình quân NVL (WAC), không theo giá từng lô — giá nhập lô chỉ để đối chiếu. Chưa có WAC thì tạm dùng giá lô.
+              Tự tạo lúc duyệt · <b>FEFO</b> + <b>WAC liên hoàn</b>
+              <InfoTip label="FEFO và WAC liên hoàn">
+                FEFO: lô hạn gần lấy trước (lô trả lại -TL ưu tiên). WAC liên hoàn: ĐG =
+                (GT tồn trước + GT nhập) / (SL tồn trước + SL nhập), cập nhật mỗi nhập/xuất (không cần kỳ giá
+                vốn đang mở). Thành tiền xuất theo ĐG này, không theo giá từng lô. Chưa từng nhập thì tạm dùng
+                giá lô.
               </InfoTip>
             </span>
           ) : (

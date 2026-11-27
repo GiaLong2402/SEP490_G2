@@ -212,7 +212,7 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
         title="Thông tin lệnh"
         subtitle="Chọn thành phẩm và số lượng quy đổi khay 1 kg — chia 1 kg / 0,5 kg lúc báo hoàn thành"
       >
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="sm:col-span-2 lg:col-span-4">
             <div className="mb-1 text-small font-medium text-ink-muted">
               Thành phẩm <span className="text-red-fg">*</span>
@@ -244,10 +244,11 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
             tip="Đếm theo khay quy đổi 1 kg (vd. làm 2 kg chả → nhập 2). Chia bao nhiêu khay 1 kg / 0,5 kg chọn lúc hoàn thành."
           >
             <SuffixInput
-              suffix="khay 1 kg"
+              suffix="khay"
               type="number"
               min={1}
               step={1}
+              steppable
               aria-invalid={showQtyError && !!errors.qty ? true : undefined}
               className="text-right"
               value={qty}
@@ -259,12 +260,15 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
             <DateInput min={todayISO()} value={due} onChange={setDue} />
           </Field>
           <Field
-            label="Chi phí sản xuất dự tính (không bắt buộc)"
-            tip="Ước tiền công, điện, gas… để xem giá vốn tạm. Chi phí thực tế ghi lúc báo làm xong."
+            label="Chi phí SX dự tính"
+            tip="Không bắt buộc. Ước tiền công, điện, gas… để xem giá vốn tạm. Chi phí thực tế ghi lúc báo làm xong."
           >
             <SuffixInput
               suffix="₫"
               inputMode="numeric"
+              steppable
+              step={1000}
+              min={0}
               className="text-right"
               placeholder="0"
               value={formatThousands(cost)}
@@ -377,7 +381,7 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
             {rows.length} nguyên liệu · Tạm tính <b className="tabular-nums text-ink">{money(materialTotal)}</b>
             <InfoTip label="Ghi chú tạm tính">
               Chỉ NVL theo kg (cá, mực…). Khay xốp / màng bọc trừ khi báo hoàn thành theo số khay vật lý.
-              Tiền tạm theo WAC / giá lô; xuất kho (bước 2) tính lại theo WAC.
+              Tiền tạm theo WAC liên hoàn / giá lô; xuất kho (bước 2): FEFO chọn lô + WAC liên hoàn định giá.
             </InfoTip>
           </span>
         </div>

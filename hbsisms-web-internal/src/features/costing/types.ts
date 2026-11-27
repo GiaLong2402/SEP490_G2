@@ -31,3 +31,18 @@ export interface CostItemBalance {
   closingValue: number;
   avgUnitCost: number | null;
 }
+
+/** WAC liên hoàn hiện hành (số dư chạy). */
+export interface CostRunningBalance {
+  id: number;
+  itemType: CostItemType;
+  itemId: number;
+  itemCode: string;
+  itemName: string;
+  /** NVL: kg/cái…; TP: khay. */
+  unit: string | null;
+  qtyOnHand: number;
+  inventoryValue: number;
+  avgUnitCost: number | null;
+  updatedAt: string;
+}

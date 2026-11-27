@@ -38,19 +38,32 @@ export function useFinishedReceiptForm(receipt: ReceiptListItem | null | undefin
 
   const packItems = useMemo(() => receipt?.items ?? [], [receipt?.items]);
   const multiPack = packItems.length > 1;
+  /** Phiếu từ lệnh SX: số khay trên dòng = khay vật lý (đã quy đổi lúc báo xong). */
+  const fromProduction = packItems.length >= 1;
   const packTotal = packItems.reduce((s, i) => s + (i.qty ?? 0), 0);
-  const reported = context?.reportedQty ?? (packTotal > 0 ? packTotal : receipt?.items[0]?.qty ?? 0);
+  /** Số đạt quy đổi 1 kg (đối chiếu) — không dùng làm số khay xếp kho khi đóng 0,5 kg. */
+  const reported = context?.reportedQty ?? 0;
   const preferredZones = useMemo(
     () => preferredFinishedZones(context?.productCode, context?.productName ?? context?.productLabel),
     [context?.productCode, context?.productName, context?.productLabel],
   );
+
+  function trayWeightFromName(name: string | null | undefined) {
+    const n = (name ?? '').toLowerCase().replace(/\s+/g, '');
+    const half =
+      /0[,.]5|500g|1\/2|half|\/2kg/.test(n)
+      || /(?:^|[-_])05(?:$|[-_])/.test(n)
+      || /(?:^|[-_])500(?:g)?(?:$|[-_])/.test(n);
+    return half ? 0.5 : 1;
+  }
 
   useEffect(() => {
     if (!receipt) return;
     setLotCode('');
     setMfgDate(context?.mfgDate ?? todayISO());
     setExpDate(todayISO(14));
-    setQty(multiPack ? String(packTotal) : reported ? String(reported) : '');
+    // Luôn ưu tiên SL vật lý trên phiếu (vd. 6 khay 0,5 kg), không lấy actualQty quy đổi 1 kg.
+    setQty(packTotal > 0 ? String(packTotal) : reported > 0 ? String(reported) : '');
     setLocationId('');
     setTouched(false);
   }, [receipt?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -62,12 +75,12 @@ export function useFinishedReceiptForm(receipt: ReceiptListItem | null | undefin
   }
   const locationLabel = new Map(warehouses.flatMap((w) => w.locations.map((l) => [String(l.id), `${l.code} (${w.code})`] as const)));
   const n = Number(qty);
-  const qtyValid = Number.isInteger(n) && n > 0 && (!multiPack || n === packTotal);
+  const qtyValid = Number.isInteger(n) && n > 0 && (!fromProduction || n === packTotal);
   const room = Number(locationId) > 0 ? roomOf.get(Number(locationId)) ?? 0 : null;
   const errors = {
     qty: !qtyValid
-      ? multiPack
-        ? `Giữ đúng tổng đóng gói ${num(packTotal)} khay`
+      ? fromProduction
+        ? `Giữ đúng ${num(packTotal)} khay vật lý trên phiếu`
         : 'Nhập số khay nguyên > 0'
       : undefined,
     expDate: !expDate ? 'Chọn hạn sử dụng' : mfgDate && expDate < mfgDate ? 'Hạn sử dụng trước ngày sản xuất' : undefined,
@@ -75,18 +88,9 @@ export function useFinishedReceiptForm(receipt: ReceiptListItem | null | undefin
   };
   const valid = !errors.qty && !errors.expDate && !errors.location;
   /** Quy đổi khay 1 kg (0,5 kg = nửa) — dùng chia giá vốn; khác số khay vật lý xếp kho. */
-  const packWeightKg = multiPack
-    ? packItems.reduce((s, i) => {
-        const name = (i.name ?? '').toLowerCase().replace(/\s+/g, '');
-        // SKU kiểu …-05 / …05, nhãn 0,5 kg / 500g…
-        const half =
-          /0[,.]5|500g|1\/2|half|\/2kg/.test(name)
-          || /(?:^|[-_])05(?:$|[-_])/.test(name)
-          || /(?:^|[-_])500(?:g)?(?:$|[-_])/.test(name);
-        const w = half ? 0.5 : 1;
-        return s + (i.qty ?? 0) * w;
-      }, 0)
-    : n;
+  const packWeightKg = packItems.length > 0
+    ? packItems.reduce((s, i) => s + (i.qty ?? 0) * trayWeightFromName(i.name), 0)
+    : n * trayWeightFromName(context?.productLabel);
   const unitCost =
     context?.totalCost != null && qtyValid && packWeightKg > 0
       ? Math.round(context.totalCost / packWeightKg)
@@ -116,7 +120,7 @@ export function useFinishedReceiptForm(receipt: ReceiptListItem | null | undefin
 
   return {
     warehouses, roomOf, reported, n, qtyValid, room, errors, touched, unitCost, mutation, submit,
-    multiPack, packItems, packTotal, packWeightKg, preferredZones, locationOffPrefer,
+    multiPack, fromProduction, packItems, packTotal, packWeightKg, preferredZones, locationOffPrefer,
     locationText: locationLabel.get(locationId) ?? null,
     values: { lotCode, mfgDate, expDate, qty, locationId },
     set: { lotCode: setLotCode, mfgDate: setMfgDate, expDate: setExpDate, qty: setQty, locationId: setLocationId },
@@ -126,7 +130,7 @@ export type FinishedReceiptForm = ReturnType<typeof useFinishedReceiptForm>;
 
 /** Các ô của form nhập kho thành phẩm (theo bản thiết kế bước 04). */
 export function FinishedReceiptFields({ form, productLabel }: { form: FinishedReceiptForm; productLabel: string }) {
-  const { values: v, set, errors, touched, reported, room, qtyValid, n, multiPack, packItems, preferredZones, locationOffPrefer } = form;
+  const { values: v, set, errors, touched, reported, room, qtyValid, n, multiPack, fromProduction, packItems, preferredZones, locationOffPrefer } = form;
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-12">
       <Field label="Quy cách" className="lg:col-span-7" tip="Lấy theo lệnh đóng gói, không đổi được.">
@@ -153,14 +157,14 @@ export function FinishedReceiptFields({ form, productLabel }: { form: FinishedRe
         <DateInput value={v.expDate} onChange={set.expDate} />
       </Field>
       <Field
-        label={multiPack ? 'Số khay vật lý' : 'Số khay'}
+        label="Số khay vật lý"
         required
         className="lg:col-span-2"
         error={touched ? errors.qty : undefined}
         tip={
-          multiPack
-            ? `Tổng khay xếp kho (${num(form.packTotal)}). Khác số đạt quy đổi 1 kg (${num(form.packWeightKg)}) — dùng để chọn vị trí còn chỗ.`
-            : `Điền sẵn = số báo đạt (${num(reported)}). Sửa được nếu đếm lại thấy khác; giá vốn chia theo số này.`
+          fromProduction
+            ? `Xếp kho ${num(form.packTotal)} khay vật lý. Đạt quy đổi 1 kg: ${num(form.packWeightKg)}${reported > 0 && reported !== form.packWeightKg ? ` (báo ${num(reported)})` : ''}.`
+            : 'Số khay nguyên xếp vào vị trí.'
         }
       >
         <Input
@@ -168,7 +172,7 @@ export function FinishedReceiptFields({ form, productLabel }: { form: FinishedRe
           min={1}
           className="text-right"
           value={v.qty}
-          disabled={multiPack}
+          disabled={fromProduction}
           onChange={(e) => set.qty(e.target.value)}
         />
       </Field>
@@ -201,16 +205,17 @@ export function FinishedReceiptFields({ form, productLabel }: { form: FinishedRe
           </Alert>
         </div>
       )}
-      {!multiPack && qtyValid && reported > 0 && n !== reported && (
-        <div className="sm:col-span-2 lg:col-span-12">
-          <Alert tone="warning">Báo đạt {num(reported)} khay, nhập kho {num(n)} khay. Lệnh sẽ ghi lại "Báo {num(reported)} · Nhập kho {num(n)}".</Alert>
-        </div>
-      )}
-      {multiPack && (
+      {fromProduction && (
         <div className="sm:col-span-2 lg:col-span-12">
           <Alert tone="info">
-            Giá vốn chia theo {num(form.packWeightKg)} khay quy đổi 1 kg (xếp kho {num(form.packTotal)} khay vật lý).
+            Giá vốn chia theo {num(form.packWeightKg)} khay quy đổi 1 kg (xếp kho {num(form.packTotal)} khay vật lý
+            {form.packTotal !== form.packWeightKg ? ' — vd. khay 0,5 kg gấp đôi số đạt' : ''}).
           </Alert>
+        </div>
+      )}
+      {!fromProduction && qtyValid && reported > 0 && n !== reported && (
+        <div className="sm:col-span-2 lg:col-span-12">
+          <Alert tone="warning">Báo đạt {num(reported)} khay, nhập kho {num(n)} khay. Lệnh sẽ ghi lại "Báo {num(reported)} · Nhập kho {num(n)}".</Alert>
         </div>
       )}
     </div>

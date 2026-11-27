@@ -1,11 +1,38 @@
 import { ApiError } from '@/shared/api/client';
 import { mock } from '@/shared/api/mockServer';
-import type { CostItemBalance, CostPeriod } from './types';
+import type { CostItemBalance, CostPeriod, CostRunningBalance } from './types';
 
 const periods: CostPeriod[] = [];
 const balances = new Map<number, CostItemBalance[]>();
 let nextPeriodId = 1;
 let nextBalanceId = 1;
+
+const runningBalances: CostRunningBalance[] = [
+  {
+    id: 1,
+    itemType: 'RAW_MATERIAL',
+    itemId: 1,
+    itemCode: 'NVL-DEMO',
+    itemName: 'Nguyên liệu demo',
+    unit: 'kg',
+    qtyOnHand: 100,
+    inventoryValue: 5_000_000,
+    avgUnitCost: 50_000,
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 2,
+    itemType: 'FINISHED',
+    itemId: 1,
+    itemCode: 'SKU-DEMO',
+    itemName: 'Thành phẩm demo · Khay 1kg',
+    unit: 'khay',
+    qtyOnHand: 40,
+    inventoryValue: 4_000_000,
+    avgUnitCost: 100_000,
+    updatedAt: new Date().toISOString(),
+  },
+];
 
 mock('GET', '/cost-periods', () => [...periods].sort((a, b) => b.yearMonth.localeCompare(a.yearMonth)));
 
@@ -13,6 +40,11 @@ mock('GET', '/cost-periods/open', () => {
   const open = periods.find((p) => p.status === 'OPEN');
   if (!open) throw new ApiError(404, 'Chưa có kỳ giá vốn đang mở');
   return open;
+});
+
+mock('GET', '/cost-periods/running-balances', ({ query }) => {
+  if (!query.itemType) return [...runningBalances];
+  return runningBalances.filter((r) => r.itemType === query.itemType);
 });
 
 mock('GET', '/cost-periods/:id', ({ params }) => {

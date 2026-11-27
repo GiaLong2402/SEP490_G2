@@ -392,17 +392,20 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
           <div className="bg-card px-4 py-3"><div className="text-small text-ink-muted">Nguyên liệu đã xuất</div><div className="text-h1 tabular-nums">{money(issuedCost)}</div></div>
           <div className="bg-card px-4 py-3"><div className="text-small text-ink-muted">Bắt đầu làm</div><div className="text-h2 tabular-nums">{dateTimeFull(issue.data?.completedAt)}</div></div>
         </div>
-        <div className="grid gap-3 p-4 sm:grid-cols-3">
+        <div className="grid items-end gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field
-            label="Số khay đạt (quy đổi 1 kg)"
+            label="Số khay đạt"
             required
             error={touched && okError ? okError : undefined}
             tip={`Theo quy đổi khay 1 kg (BOM). Tối đa = kế hoạch ${num(plan)}. Ví dụ đạt 2 → có thể đóng 1×1kg + 2×0,5kg.`}
           >
-            <Input
+            <SuffixInput
+              suffix="khay"
               type="number"
               min={1}
               max={plan}
+              step={1}
+              steppable
               className="text-right"
               value={okQty}
               onChange={(e) => setOkCapped(e.target.value)}
@@ -413,10 +416,13 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
             error={touched && badError ? badError : undefined}
             tip={`Khay hỏng lúc đang làm, chưa vào kho. Đạt + hỏng ≤ kế hoạch (${num(plan)}).`}
           >
-            <Input
+            <SuffixInput
+              suffix="khay"
               type="number"
               min={0}
               max={okValid ? Math.max(0, plan - ok) : plan}
+              step={1}
+              steppable
               className="text-right"
               placeholder="0"
               value={defectQty}
@@ -427,17 +433,20 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
             <DateInput max={todayISO()} value={doneDate} onChange={setDoneDate} />
           </Field>
           <Field
-            label="Chi phí sản xuất thực tế"
+            label="Chi phí SX thực tế"
             tip={
               order.estimatedProductionCost
-                ? `Tiền công, điện, gas… cả lệnh. Dự tính lúc lập lệnh: ${money(order.estimatedProductionCost)}.`
-                : 'Tiền công, điện, gas… cả lệnh. Để trống = 0.'
+                ? `Không bắt buộc. Tiền công, điện, gas… cả lệnh. Dự tính lúc lập lệnh: ${money(order.estimatedProductionCost)}.`
+                : 'Không bắt buộc. Tiền công, điện, gas… cả lệnh. Để trống = 0.'
             }
             error={touched && prodCostError ? prodCostError : undefined}
           >
             <SuffixInput
               suffix="₫"
               inputMode="numeric"
+              steppable
+              step={1000}
+              min={0}
               className="text-right"
               placeholder="0"
               value={formatThousands(prodCost)}
@@ -519,10 +528,13 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
                 tip={oneKgVariant ? oneKgVariant.sku : undefined}
                 error={touched && packMode === 'SPLIT' && packError && !splitWeightOk ? packError : undefined}
               >
-                <Input
+                <SuffixInput
+                  suffix="khay"
                   type="number"
                   min={0}
                   max={okValid ? ok : undefined}
+                  step={1}
+                  steppable
                   disabled={!okValid}
                   className="text-right"
                   placeholder={okValid ? `0–${ok}` : '…'}
@@ -534,10 +546,13 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
                 label="Khay 0,5 kg (vật lý)"
                 tip={halfKgVariant ? `${halfKgVariant.sku} · tối đa ${okValid ? ok * 2 : '…'}` : undefined}
               >
-                <Input
+                <SuffixInput
+                  suffix="khay"
                   type="number"
                   min={0}
                   max={okValid ? ok * 2 : undefined}
+                  step={1}
+                  steppable
                   disabled={!okValid}
                   className="text-right"
                   placeholder={okValid ? `0–${ok * 2}` : '…'}
@@ -663,7 +678,20 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{num(r.issued)} {unitLabel(r.unit)}</td>
                     <td className="px-3 py-1.5">
-                      <SuffixInput suffix={unitLabel(r.unit)} aria-label={`Số dư ${r.name}`} aria-invalid={!!err || undefined} type="number" min={0} step="0.1" className={`text-right ${q > 0 ? '' : 'bg-rowalt'}`} placeholder="0" value={v.qty} onChange={(e) => patchLeft(r, { qty: e.target.value })} />
+                      <SuffixInput
+                        suffix={unitLabel(r.unit)}
+                        aria-label={`Số dư ${r.name}`}
+                        aria-invalid={!!err || undefined}
+                        type="number"
+                        min={0}
+                        max={r.issued}
+                        step={0.1}
+                        steppable
+                        className={`text-right ${q > 0 ? '' : 'bg-rowalt'}`}
+                        placeholder="0"
+                        value={v.qty}
+                        onChange={(e) => patchLeft(r, { qty: e.target.value })}
+                      />
                       {err && <p className="mt-0.5 text-small text-red-fg">{err}</p>}
                     </td>
                     <td className="px-3 py-1.5">

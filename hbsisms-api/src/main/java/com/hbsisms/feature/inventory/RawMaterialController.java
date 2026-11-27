@@ -58,7 +58,7 @@ public class RawMaterialController {
         return rawMaterialStockService.lots(id, availableOnly).stream().map(RawMaterialLotResponse::from).toList();
     }
 
-    /** ĐG WAC NVL hiện hành (xuất SX định giá theo số này; chưa có → avgUnitCost null). */
+    /** ĐG WAC liên hoàn NVL (xuất SX định giá theo số này; chưa có → avgUnitCost null). */
     @GetMapping("/{id}/avg-unit-cost")
     public RawMaterialAvgCostResponse avgUnitCost(@PathVariable Long id) {
         rawMaterialService.get(id); // 404 nếu không có
