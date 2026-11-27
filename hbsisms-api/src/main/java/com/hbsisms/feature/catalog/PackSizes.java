@@ -9,10 +9,17 @@ import java.util.Locale;
  */
 public final class PackSizes {
 
+    private static final BigDecimal HALF = new BigDecimal("0.5");
+    private static final BigDecimal ONE = BigDecimal.ONE;
     private static final BigDecimal GRAMS_PER_KG = new BigDecimal("1000");
     private static final BigDecimal THOUSAND = new BigDecimal("1000");
 
     private PackSizes() {}
+
+    /** Khối lượng quy đổi (kg) của một khay — dùng chia giá vốn khi đóng gói lẫn 1 kg / 0,5 kg. */
+    public static BigDecimal trayWeightKg(ProductVariant variant) {
+        return weightKg(variant);
+    }
 
     public static boolean isOneKg(ProductVariant variant) {
         if (variant == null) {
@@ -62,13 +69,13 @@ public final class PackSizes {
      */
     public static BigDecimal weightKg(ProductVariant variant) {
         if (variant == null) {
-            return BigDecimal.ONE;
+            return ONE;
         }
         Integer g = variant.getUnitWeightG();
         if (g != null && g > 0) {
             return BigDecimal.valueOf(g).divide(GRAMS_PER_KG, 4, RoundingMode.HALF_UP);
         }
-        return isHalfKg(variant) ? new BigDecimal("0.5") : BigDecimal.ONE;
+        return isHalfKg(variant) ? HALF : ONE;
     }
 
     /**

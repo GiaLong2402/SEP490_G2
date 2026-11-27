@@ -66,6 +66,8 @@ class ProductionOrderServiceTest {
     @Mock
     private RawMaterialStockService rawMaterialStockService;
     @Mock
+    private com.hbsisms.feature.costing.CostingService costingService;
+    @Mock
     private BusinessCodeService businessCodeService;
     @Mock
     private AppConfigService appConfigService;
@@ -89,12 +91,19 @@ class ProductionOrderServiceTest {
                 materialIssueService,
                 goodsReceiptService,
                 rawMaterialStockService,
+                costingService,
                 businessCodeService,
                 appConfigService,
                 auditLogService,
                 userRepository,
                 Clock.fixed(Instant.parse("2026-11-23T03:00:00Z"), ZoneOffset.UTC));
         lenient().when(leftoverRepository.findByProductionOrder_IdOrderByIdAsc(anyLong())).thenReturn(List.of());
+        lenient()
+                .when(costingService.resolveRawIssueUnitCost(any(), any()))
+                .thenAnswer(inv -> {
+                    java.math.BigDecimal lot = inv.getArgument(1);
+                    return lot == null ? java.math.BigDecimal.ZERO : lot;
+                });
         lenient().when(appConfigService.sellPriceMarkupPercent()).thenReturn(30);
     }
 

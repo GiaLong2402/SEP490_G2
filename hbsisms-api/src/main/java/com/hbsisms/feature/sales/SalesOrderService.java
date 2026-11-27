@@ -57,6 +57,7 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.text.NumberFormat;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -1171,15 +1172,49 @@ public class SalesOrderService {
         task.setTitle("Duyệt giảm giá / giá tay đơn " + order.getCode());
         task.setStatus(ApprovalStatus.PENDING);
         task.setRequestedBy(requestedBy);
-        task.setNote("discount="
-                + discountTotal
-                + "; subtotal="
-                + priced.subtotal()
-                + "; ngưỡng%="
-                + appConfigService.orderDiscountApprovePct());
+        task.setNote(priceOverrideApprovalNote(priced, discountTotal));
         approvalTaskRepository.save(task);
         addEvent(order, "awaiting_price_approval", "Chờ Chủ duyệt giảm giá / giá tay", requestedBy);
         salesOrderRepository.save(order);
+    }
+
+    /** Ghi chú phê duyệt dễ đọc (không dùng key=value kỹ thuật). */
+    private String priceOverrideApprovalNote(PricingResultResponse priced, BigDecimal discountTotal) {
+        BigDecimal subtotal = priced.subtotal() == null ? ZERO : priced.subtotal();
+        int thresholdPct = appConfigService.orderDiscountApprovePct();
+        long manualLines =
+                priced.lines().stream().filter(line -> line.priceBasis() == PriceBasis.MANUAL).count();
+        StringBuilder note = new StringBuilder();
+        if (discountTotal != null && discountTotal.signum() > 0 && subtotal.signum() > 0) {
+            BigDecimal pct = discountTotal
+                    .multiply(BigDecimal.valueOf(100))
+                    .divide(subtotal, 1, RoundingMode.HALF_UP);
+            note.append("Giảm ")
+                    .append(moneyVn(discountTotal))
+                    .append(" trên tạm tính ")
+                    .append(moneyVn(subtotal))
+                    .append(" (")
+                    .append(pct.stripTrailingZeros().toPlainString())
+                    .append("% — vượt ngưỡng ")
+                    .append(thresholdPct)
+                    .append("%)");
+        } else if (discountTotal != null && discountTotal.signum() > 0) {
+            note.append("Giảm ").append(moneyVn(discountTotal));
+        }
+        if (manualLines > 0) {
+            if (!note.isEmpty()) {
+                note.append(". ");
+            }
+            note.append("Có ").append(manualLines).append(" dòng giá nhập tay");
+        }
+        return note.isEmpty() ? "Cần duyệt giảm giá / giá tay" : note.toString();
+    }
+
+    private static String moneyVn(BigDecimal value) {
+        NumberFormat fmt = NumberFormat.getInstance(Locale.forLanguageTag("vi-VN"));
+        fmt.setMaximumFractionDigits(0);
+        fmt.setMinimumFractionDigits(0);
+        return fmt.format(value.setScale(0, RoundingMode.HALF_UP)) + " đ";
     }
 
     private void markPaymentsNeedRefund(SalesOrder order) {

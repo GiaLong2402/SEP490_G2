@@ -47,4 +47,8 @@ public class Category {
 
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
+
+    /** Task 59 — % lời mặc định của danh mục (null = dùng cấu hình chung). */
+    @Column(name = "sell_price_markup_percent")
+    private Integer sellPriceMarkupPercent;
 }

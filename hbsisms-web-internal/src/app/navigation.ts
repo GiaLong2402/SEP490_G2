@@ -1,4 +1,4 @@
-import { BarChart3, Boxes, ChefHat, ClipboardCheck, ClipboardList, ClipboardPen, CreditCard, FileText, HandCoins, History, LayoutDashboard, PackagePlus, PackageSearch, PackageX, Ruler, RotateCcw, Settings, ShieldCheck, ShoppingCart, Star, Store, Tags, TicketPercent, Truck, Users, UsersRound, Warehouse, type LucideIcon } from 'lucide-react';
+import { BarChart3, Boxes, Calculator, ChefHat, ClipboardCheck, ClipboardList, ClipboardPen, CreditCard, FileText, HandCoins, History, LayoutDashboard, PackagePlus, PackageSearch, PackageX, Ruler, RotateCcw, Settings, ShieldCheck, ShoppingCart, Star, Store, Tags, TicketPercent, Truck, Users, UsersRound, Warehouse, type LucideIcon } from 'lucide-react';
 import type { Permission } from '@/shared/domain/enums';
 
 export interface NavItem {
@@ -42,6 +42,7 @@ export const navigation: NavGroup[] = [
     items: [
       { to: '/payments', label: 'Thanh toán', icon: CreditCard, permission: ['orders', 'debt'] },
       { to: '/debt', label: 'Công nợ', icon: HandCoins, permission: 'debt' },
+      { to: '/costing', label: 'Giá vốn theo kỳ', icon: Calculator, permission: ['inventory', 'admin', 'reports'] },
     ],
   },
   {

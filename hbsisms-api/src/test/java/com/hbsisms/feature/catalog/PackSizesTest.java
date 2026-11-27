@@ -32,6 +32,13 @@ class PackSizesTest {
     }
 
     @Test
+    void trayWeightKg_fromGramsOrPackLabel() {
+        assertThat(PackSizes.trayWeightKg(variant(1000, "Khay"))).isEqualByComparingTo("1");
+        assertThat(PackSizes.trayWeightKg(variant(500, "Khay"))).isEqualByComparingTo("0.5");
+        assertThat(PackSizes.trayWeightKg(variant(null, "Khay 0,5 kg"))).isEqualByComparingTo("0.5");
+    }
+
+    @Test
     void trayPrice_oneKgKeepsPrice_halfKgHalvesRoundedToThousand() {
         BigDecimal oneKg = new BigDecimal("27000");
         assertThat(PackSizes.trayPrice(oneKg, variant(1000, "Khay"))).isEqualByComparingTo("27000");

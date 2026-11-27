@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Check } from 'lucide-react';
 import { useQueries } from '@tanstack/react-query';
 import { canWarehouseOps, useAuth } from '@/features/auth';
@@ -8,11 +8,26 @@ import { useAction } from '@/shared/api/useAction';
 import { date, dateTimeFull, money, num, todayISO } from '@/shared/lib/format';
 import { Alert, Button, Chip, DateInput, ErrorState, Field, InfoTip, Input, PageLoading } from '@/shared/ui';
 import { productionApi } from '../api';
-import { useMaterialIssue } from '../hooks';
+import { useMaterialIssue, useProductVariants } from '../hooks';
 import type { ProductionOrder } from '../types';
 import { ActionBar, HistoryCard, OverviewCard, Section, StepLayout, SuffixInput, orderHistory } from './OrderShell';
 
 const DEFECT_REASONS = ['Rách màng', 'Sai định lượng', 'Hỏng khi đóng gói'] as const;
+
+type PackMode = 'ONE_KG' | 'HALF_KG' | 'SPLIT';
+
+function isOneKgPack(label: string | null | undefined, weightG: number | null | undefined) {
+  if (weightG === 1000) return true;
+  if (weightG === 500) return false;
+  const t = (label ?? '').toLowerCase();
+  if (/0[,.]5|500g|1\/2/.test(t)) return false;
+  return /1\s*kg|1000g/.test(t);
+}
+function isHalfKgPack(label: string | null | undefined, weightG: number | null | undefined) {
+  if (weightG === 500) return true;
+  if (weightG === 1000) return false;
+  return /0[,.]5|500g|1\/2/.test((label ?? '').toLowerCase());
+}
 
 /** Một dòng đã xuất của nguyên liệu (theo thứ tự xuất). */
 interface IssuedSlice { lotCode: string; qty: number; price: number; exp: string | null }
@@ -84,6 +99,11 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
     };
   });
 
+  const variantsQ = useProductVariants(order.productId);
+  const oneKgVariant = (variantsQ.data ?? []).find((v) => isOneKgPack(v.packLabel, v.unitWeightG)) ?? null;
+  const halfKgVariant = (variantsQ.data ?? []).find((v) => isHalfKgPack(v.packLabel, v.unitWeightG)) ?? null;
+  const canSplit = !!oneKgVariant && !!halfKgVariant;
+
   const [okQty, setOkQty] = useState('');
   const [defectQty, setDefectQty] = useState('');
   const [doneDate, setDoneDate] = useState(todayISO());
@@ -91,6 +111,37 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
   const [otherReason, setOtherReason] = useState('');
   const [left, setLeft] = useState<Record<number, { qty: string; exp: string }>>({});
   const [touched, setTouched] = useState(false);
+  const [packMode, setPackMode] = useState<PackMode>('ONE_KG');
+  const [qtyOneKg, setQtyOneKg] = useState('');
+  const [qtyHalfKg, setQtyHalfKg] = useState('');
+
+  useEffect(() => {
+    if (oneKgVariant) setPackMode('ONE_KG');
+    else if (halfKgVariant) setPackMode('HALF_KG');
+  }, [oneKgVariant?.id, halfKgVariant?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Đổi số đạt → kéo đóng gói theo kg quy đổi (1×1kg + 2×0,5kg = 2 đạt). */
+  useEffect(() => {
+    if (packMode !== 'SPLIT') return;
+    const target = Number(okQty);
+    if (!Number.isInteger(target) || target <= 0) return;
+    let one = qtyOneKg.trim() === '' ? 0 : Number(qtyOneKg);
+    let half = qtyHalfKg.trim() === '' ? 0 : Number(qtyHalfKg);
+    if (!Number.isFinite(one) || !Number.isFinite(half)) return;
+    one = Math.max(0, Math.floor(one));
+    half = Math.max(0, Math.floor(half));
+    let weight = one + half * 0.5;
+    if (weight <= target) return;
+    if (one > target) {
+      one = target;
+      half = 0;
+    } else {
+      const maxHalf = Math.floor((target - one) * 2);
+      half = Math.min(half, maxHalf);
+    }
+    if (String(one) !== qtyOneKg) setQtyOneKg(String(one));
+    if (String(half) !== qtyHalfKg) setQtyHalfKg(String(half));
+  }, [okQty, packMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** "Đã rã đông": ngày mai (không quá hạn lô gốc). "Còn đông": đúng hạn lô gốc. */
   const defaultExp = (r: LeftoverRow) => (r.maxExp && r.maxExp < todayISO(1) ? r.maxExp : todayISO(1));
@@ -100,10 +151,91 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
   const leftOf = (r: LeftoverRow) => left[r.rawMaterialId] ?? { qty: '', exp: defaultExp(r) };
   const patchLeft = (r: LeftoverRow, p: Partial<{ qty: string; exp: string }>) => setLeft({ ...left, [r.rawMaterialId]: { ...leftOf(r), ...p } });
 
+  const plan = order.plannedQty;
   const ok = Number(okQty);
   const bad = defectQty.trim() === '' ? 0 : Number(defectQty);
-  const okValid = Number.isInteger(ok) && ok > 0;
+  const okValid = Number.isInteger(ok) && ok > 0 && ok <= plan;
   const badValid = Number.isInteger(bad) && bad >= 0;
+  const overPlan =
+    (Number.isInteger(ok) && ok > plan)
+    || (okValid && badValid && bad > 0 && ok + bad > plan);
+  const okError = !okQty.trim()
+    ? undefined
+    : !Number.isInteger(ok) || ok <= 0
+      ? 'Nhập số khay nguyên > 0'
+      : ok > plan
+        ? `Không vượt kế hoạch ${num(plan)} khay`
+        : undefined;
+  const badError = !badValid
+    ? 'Số nguyên ≥ 0'
+    : okValid && bad > 0 && ok + bad > plan
+      ? `Đạt ${num(ok)} + hỏng ${num(bad)} vượt kế hoạch ${num(plan)}`
+      : undefined;
+  const nOne = qtyOneKg.trim() === '' ? 0 : Number(qtyOneKg);
+  const nHalf = qtyHalfKg.trim() === '' ? 0 : Number(qtyHalfKg);
+  /** Quy đổi khay 1 kg: 1×1kg + 2×0,5kg = 2 (so sánh bằng số nguyên ×2 tránh lỗi float). */
+  const splitWeight2 = Number.isInteger(nOne) && Number.isInteger(nHalf) ? nOne * 2 + nHalf : NaN;
+  const splitWeight = Number.isFinite(splitWeight2) ? splitWeight2 / 2 : NaN;
+  const splitWeightOk = okValid && splitWeight2 === ok * 2;
+  const splitTyped = qtyOneKg.trim() !== '' || qtyHalfKg.trim() !== '';
+  const splitValid =
+    packMode !== 'SPLIT'
+    || (okValid
+      && Number.isInteger(nOne)
+      && nOne >= 0
+      && Number.isInteger(nHalf)
+      && nHalf >= 0
+      && splitWeightOk
+      && (nOne > 0 || nHalf > 0));
+  const packError =
+    packMode === 'SPLIT' && !okValid
+      ? 'Nhập số khay đạt (quy đổi 1 kg) trước, rồi chia đúng khối lượng'
+      : !okValid
+        ? undefined
+        : packMode === 'ONE_KG' && !oneKgVariant && !halfKgVariant
+          ? 'Sản phẩm chưa có quy cách đang bán'
+          : packMode === 'ONE_KG' && !oneKgVariant
+            ? 'Chưa có quy cách khay 1 kg'
+            : packMode === 'HALF_KG' && !halfKgVariant
+              ? 'Chưa có quy cách khay 0,5 kg'
+              : packMode === 'SPLIT' && !canSplit
+                ? 'Cần cả quy cách 1 kg và 0,5 kg để chia'
+                : packMode === 'SPLIT' && Number.isFinite(splitWeight) && splitWeight > ok
+                  ? `Quy đổi ${splitWeight} > đạt ${num(ok)} (1×1kg = 2×0,5kg)`
+                  : packMode === 'SPLIT' && !splitValid
+                    ? `1×n₁ + 0,5×n₀,₅ phải = đạt ${num(ok)} (hiện ${Number.isFinite(splitWeight) ? splitWeight : '—'})`
+                    : undefined;
+
+  const setSplitOne = (raw: string) => {
+    if (!okValid) {
+      setQtyOneKg(raw);
+      return;
+    }
+    const v = Number(raw);
+    if (raw.trim() === '' || !Number.isFinite(v)) {
+      setQtyOneKg(raw);
+      return;
+    }
+    const capped = Math.max(0, Math.min(Math.floor(v), ok));
+    setQtyOneKg(String(capped));
+    const halfMax = Math.floor((ok - capped) * 2);
+    if (nHalf > halfMax) setQtyHalfKg(halfMax > 0 ? String(halfMax) : '0');
+  };
+  const setSplitHalf = (raw: string) => {
+    if (!okValid) {
+      setQtyHalfKg(raw);
+      return;
+    }
+    const v = Number(raw);
+    if (raw.trim() === '' || !Number.isFinite(v)) {
+      setQtyHalfKg(raw);
+      return;
+    }
+    const capped = Math.max(0, Math.min(Math.floor(v), ok * 2));
+    setQtyHalfKg(String(capped));
+    const oneMax = Math.floor(ok - capped * 0.5);
+    if (nOne > oneMax) setQtyOneKg(oneMax > 0 ? String(oneMax) : '0');
+  };
   const leftErrors = new Map<number, string>();
   for (const r of rows) {
     const v = leftOf(r);
@@ -117,10 +249,60 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
   const hasDefect = badValid && bad > 0;
   const defectReason = hasDefect ? (reason === 'Khác' ? otherReason.trim() || null : reason || null) : null;
   const reasonError = hasDefect && !defectReason ? (reason === 'Khác' ? 'Ghi lý do khác' : 'Chọn lý do hỏng') : undefined;
-  const valid = okValid && badValid && !reasonError && leftErrors.size === 0 && !!doneDate;
+  const valid = okValid && badValid && !overPlan && !reasonError && !packError && leftErrors.size === 0 && !!doneDate;
+
+  const setOkCapped = (raw: string) => {
+    if (raw.trim() === '') {
+      setOkQty('');
+      return;
+    }
+    const v = Number(raw);
+    if (!Number.isFinite(v)) {
+      setOkQty(raw);
+      return;
+    }
+    const capped = Math.max(0, Math.min(Math.floor(v), plan));
+    setOkQty(String(capped));
+    const halfMax = Math.max(0, plan - capped);
+    if (defectQty.trim() !== '' && Number(defectQty) > halfMax) {
+      setDefectQty(halfMax > 0 ? String(halfMax) : '0');
+    }
+  };
+  const setBadCapped = (raw: string) => {
+    if (raw.trim() === '') {
+      setDefectQty('');
+      return;
+    }
+    const v = Number(raw);
+    if (!Number.isFinite(v)) {
+      setDefectQty(raw);
+      return;
+    }
+    const maxBad = okValid ? Math.max(0, plan - ok) : plan;
+    setDefectQty(String(Math.max(0, Math.min(Math.floor(v), maxBad))));
+  };
   const made = (okValid ? ok : 0) + (badValid ? bad : 0);
   const okPct = made > 0 ? Math.round(((okValid ? ok : 0) / Math.max(made, order.plannedQty)) * 100) : 0;
   const badPct = made > 0 ? Math.round(((badValid ? bad : 0) / Math.max(made, order.plannedQty)) * 100) : 0;
+
+  const buildPacks = () => {
+    if (packMode === 'SPLIT' && oneKgVariant && halfKgVariant) {
+      const packs = [];
+      if (nOne > 0) packs.push({ variantId: oneKgVariant.id, qty: nOne });
+      if (nHalf > 0) packs.push({ variantId: halfKgVariant.id, qty: nHalf });
+      return packs;
+    }
+    // Đạt theo quy đổi 1 kg → tất cả 0,5 kg = gấp đôi số khay vật lý.
+    if (packMode === 'HALF_KG' && halfKgVariant) {
+      return [{ variantId: halfKgVariant.id, qty: ok * 2 }];
+    }
+    const v = oneKgVariant ?? halfKgVariant ?? (variantsQ.data ?? [])[0];
+    if (!v) return null;
+    if (!oneKgVariant && halfKgVariant) {
+      return [{ variantId: halfKgVariant.id, qty: ok * 2 }];
+    }
+    return [{ variantId: v.id, qty: ok }];
+  };
 
   const complete = useAction(
     () =>
@@ -132,6 +314,7 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
         defectQty: bad || null,
         defectReason,
         leftovers: returned.map((r) => ({ rawMaterialId: r.rawMaterialId, qty: Number(leftOf(r).qty), expDate: r.cold ? leftOf(r).exp : null })),
+        packs: buildPacks(),
       }),
     { success: (r) => `Đã báo làm xong - tạo phiếu nhập ${r.finishedReceiptCode ?? ''} chờ nhập kho` },
   );
@@ -163,11 +346,35 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
           <div className="bg-card px-4 py-3"><div className="text-small text-ink-muted">Bắt đầu làm</div><div className="text-h2 tabular-nums">{dateTimeFull(issue.data?.completedAt)}</div></div>
         </div>
         <div className="grid gap-3 p-4 sm:grid-cols-3">
-          <Field label="Số khay đạt" required error={touched && !okValid ? 'Nhập số khay nguyên > 0' : undefined} tip="Điền sẵn vào phiếu nhập ở bước 4. Làm vượt kế hoạch vẫn lưu được, chỉ cảnh báo.">
-            <SuffixInput suffix="khay" type="number" min={1} className="text-right" value={okQty} onChange={(e) => setOkQty(e.target.value)} />
+          <Field
+            label="Số khay đạt (quy đổi 1 kg)"
+            required
+            error={touched && okError ? okError : undefined}
+            tip={`Theo quy đổi khay 1 kg (BOM). Tối đa = kế hoạch ${num(plan)}. Ví dụ đạt 2 → có thể đóng 1×1kg + 2×0,5kg.`}
+          >
+            <Input
+              type="number"
+              min={1}
+              max={plan}
+              className="text-right"
+              value={okQty}
+              onChange={(e) => setOkCapped(e.target.value)}
+            />
           </Field>
-          <Field label="Số khay hỏng (không bắt buộc)" error={touched && !badValid ? 'Số nguyên ≥ 0' : undefined} tip="Khay hỏng lúc đang làm, chưa vào kho nên ghi ở đây, không đi qua Báo hỏng. Giá vốn chia cho số khay thật nhập kho.">
-            <SuffixInput suffix="khay" type="number" min={0} className="text-right" placeholder="0" value={defectQty} onChange={(e) => setDefectQty(e.target.value)} />
+          <Field
+            label="Số khay hỏng (không bắt buộc)"
+            error={touched && badError ? badError : undefined}
+            tip={`Khay hỏng lúc đang làm, chưa vào kho. Đạt + hỏng ≤ kế hoạch (${num(plan)}).`}
+          >
+            <Input
+              type="number"
+              min={0}
+              max={okValid ? Math.max(0, plan - ok) : plan}
+              className="text-right"
+              placeholder="0"
+              value={defectQty}
+              onChange={(e) => setBadCapped(e.target.value)}
+            />
           </Field>
           <Field label="Ngày làm xong" required>
             <DateInput max={todayISO()} value={doneDate} onChange={setDoneDate} />
@@ -208,7 +415,106 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
             </div>
           </div>
         </div>
-        {okValid && ok > order.plannedQty && <div className="px-4 pb-4"><Alert tone="warning">Vượt kế hoạch {num(ok - order.plannedQty)} khay - vẫn lưu được.</Alert></div>}
+      </Section>
+
+      <Section
+        flush
+        title="Đóng gói thành phẩm"
+        subtitle="Số đạt = quy đổi khay 1 kg · 1 khay 1 kg = 2 khay 0,5 kg · giá vốn chia theo khối lượng"
+      >
+        <div className="space-y-3 p-4">
+          <div role="radiogroup" aria-label="Quy cách đóng gói" className="flex flex-wrap gap-2">
+            {(
+              [
+                ['ONE_KG', 'Tất cả khay 1 kg', !!oneKgVariant],
+                ['HALF_KG', 'Tất cả khay 0,5 kg', !!halfKgVariant],
+                ['SPLIT', 'Chia 1 kg và 0,5 kg', canSplit],
+              ] as const
+            ).map(([mode, label, enabled]) => (
+              <button
+                key={mode}
+                type="button"
+                role="radio"
+                aria-checked={packMode === mode}
+                disabled={!enabled}
+                onClick={() => setPackMode(mode)}
+                className={`inline-flex h-8 items-center gap-1 rounded-full border px-3 text-small disabled:cursor-not-allowed disabled:opacity-40 ${
+                  packMode === mode ? 'border-primary bg-primary/10 font-semibold text-primary' : 'border-line bg-card text-ink-muted hover:bg-rowalt'
+                }`}
+              >
+                {packMode === mode && <Check size={13} aria-hidden />}
+                {label}
+              </button>
+            ))}
+          </div>
+          {packMode === 'SPLIT' && (
+            <div className="space-y-2">
+              <p className="text-small text-ink-muted">
+                Công thức: <b className="text-ink">n₁×1 + n₀,₅×0,5 = số đạt</b>
+                {okValid ? ` (${num(ok)})` : ' — điền số đạt trước'}
+                {okValid && splitTyped ? (
+                  <>
+                    {' '}
+                    · quy đổi{' '}
+                    <b className={splitWeightOk ? 'text-green-fg' : 'text-amber-fg'}>
+                      {Number.isFinite(splitWeight) ? splitWeight : '—'}/{num(ok)}
+                    </b>
+                    {Number.isFinite(splitWeight) && splitWeight < ok ? ` · còn ${ok - splitWeight}` : null}
+                    {` · ${num(nOne + nHalf)} khay vật lý`}
+                  </>
+                ) : null}
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field
+                  label="Khay 1 kg (vật lý)"
+                  tip={oneKgVariant ? oneKgVariant.sku : undefined}
+                  error={touched && packMode === 'SPLIT' && packError && !splitWeightOk ? packError : undefined}
+                >
+                  <Input
+                    type="number"
+                    min={0}
+                    max={okValid ? ok : undefined}
+                    disabled={!okValid}
+                    className="text-right"
+                    placeholder={okValid ? `0–${ok}` : '…'}
+                    value={qtyOneKg}
+                    onChange={(e) => setSplitOne(e.target.value)}
+                  />
+                </Field>
+                <Field label="Khay 0,5 kg (vật lý)" tip={halfKgVariant ? `${halfKgVariant.sku} · tối đa ${okValid ? ok * 2 : '…'}` : undefined}>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={okValid ? ok * 2 : undefined}
+                    disabled={!okValid}
+                    className="text-right"
+                    placeholder={okValid ? `0–${ok * 2}` : '…'}
+                    value={qtyHalfKg}
+                    onChange={(e) => setSplitHalf(e.target.value)}
+                  />
+                </Field>
+              </div>
+            </div>
+          )}
+          {packMode === 'ONE_KG' && oneKgVariant && (
+            <p className="text-small text-ink-muted">
+              {okValid ? num(ok) : '…'} khay 1 kg → <span className="font-mono text-ink">{oneKgVariant.sku}</span>
+              {oneKgVariant.packLabel ? ` · ${oneKgVariant.packLabel}` : ''}
+            </p>
+          )}
+          {packMode === 'HALF_KG' && halfKgVariant && (
+            <p className="text-small text-ink-muted">
+              Đạt {okValid ? num(ok) : '…'} → nhập <b className="text-ink">{okValid ? num(ok * 2) : '…'} khay 0,5 kg</b>{' '}
+              (<span className="font-mono">{halfKgVariant.sku}</span>)
+            </p>
+          )}
+          {(touched || (packMode === 'SPLIT' && splitTyped)) && packError && (
+            <p className="text-small text-red-fg">{packError}</p>
+          )}
+          {!variantsQ.isLoading && !oneKgVariant && !halfKgVariant && (
+            <Alert tone="warning">Sản phẩm chưa có quy cách 1 kg / 0,5 kg đang bán — kiểm tra danh mục sản phẩm.</Alert>
+          )}
+        </div>
       </Section>
 
       <Section
@@ -315,7 +621,7 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
       >
         <span>
           {canComplete
-            ? `Báo xong: tự tạo phiếu nhập thành phẩm (Chờ nhập), điền sẵn ${okValid ? num(ok) : '…'} khay`
+            ? `Báo xong: tạo phiếu nhập TP theo đóng gói · đạt ${okValid ? num(ok) : '…'} (quy đổi 1 kg)`
             : 'Chỉ nhân viên kho / Chủ / Admin được báo làm xong.'}
         </span>
         <span>

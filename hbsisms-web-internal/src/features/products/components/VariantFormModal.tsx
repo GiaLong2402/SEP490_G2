@@ -98,7 +98,7 @@ export function VariantFormModal({
         <Field label="SKU" required error={touched && !sku.trim() ? 'Bắt buộc' : undefined}>
           <Input value={sku} onChange={(e) => setSku(e.target.value)} autoComplete="off" placeholder="VD: SP-CHA-CA-05" />
         </Field>
-        <Field label="Loại khay" required tip="Chỉ hai quy cách chuẩn; khối lượng dùng khi tính nguyên liệu và giá gợi ý sau SX.">
+        <Field label="Loại khay" required tip="Chỉ hai quy cách chuẩn; khối lượng dùng cho BOM và gợi ý giá bán theo WAC sau SX.">
           <Select value={packSize} onChange={(e) => setPackSize(e.target.value as PackSize)}>
             <option value="500">Khay 0,5 kg</option>
             <option value="1000">Khay 1 kg</option>

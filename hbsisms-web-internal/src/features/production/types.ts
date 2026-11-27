@@ -66,7 +66,7 @@ export interface ProductionOrder {
   unitCost?: number | null;
   /** % markup từ app_config `sell_price_markup_percent`. */
   markupPercent?: number | null;
-  /** Giá bán 1 kg = (unitCost ÷ cân nặng khay) × (1 + markup/100), tròn 1.000 ₫ — khay 0,5 kg = nửa. */
+  /** Gợi ý từ WAC + markup (không tự đổi listPrice). Khay 0,5 kg = nửa giá 1 kg. */
   suggestedSellPrice?: number | null;
   /** Giá niêm yết hiện tại của quy cách thành phẩm. */
   currentListPrice?: number | null;
@@ -146,16 +146,24 @@ export interface LeftoverInput {
   expDate: ISODate | null;
 }
 
-/** POST /production-orders/{id}/complete. `defectQty`, `defectReason`, `leftovers` đã chốt nhưng backend chưa nhận. */
+/** Một quy cách đóng gói khi báo làm xong (1 kg / 0,5 kg). */
+export interface FinishedPackInput {
+  variantId: ID;
+  qty: number;
+}
+
+/** POST /production-orders/{id}/complete. */
 export interface ProductionCompleteInput {
   actualQty: number;
   actualProductionCost: number | null;
   variantId: ID | null;
-  /** Ngày làm xong → ngày sản xuất của lô thành phẩm (đã chốt, backend chưa nhận). */
+  /** Ngày làm xong → ngày sản xuất của lô thành phẩm. */
   finishedDate: ISODate | null;
   defectQty: number | null;
   defectReason: string | null;
   leftovers: LeftoverInput[];
+  /** Chọn/chia quy cách; tổng qty = actualQty. */
+  packs: FinishedPackInput[] | null;
 }
 
 /** GET /production-orders/bom-products — quyền inventory. */

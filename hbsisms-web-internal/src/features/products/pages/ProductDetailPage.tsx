@@ -1,14 +1,17 @@
 import { useState } from 'react';
-import { Pencil, Plus } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { CircleDollarSign, Pencil, Plus } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { isOwnerOrAdmin, useAuth } from '@/features/auth';
-import { money, num } from '@/shared/lib/format';
+import { dateTime, money, num } from '@/shared/lib/format';
 import { Button, Card, Chip, DataTable, ErrorState, IconButton, InfoList, PageHeader, PageLoading, type Column } from '@/shared/ui';
+import { productsApi } from '../api';
 import { BomFormModal } from '../components/BomFormModal';
 import { ProductFormModal } from '../components/ProductFormModal';
+import { SellPriceSuggestModal } from '../components/SellPriceSuggestModal';
 import { VariantFormModal } from '../components/VariantFormModal';
 import { useProduct, useProductBom } from '../hooks';
-import type { BomLine, ProductLotRow, VariantWithTiers } from '../types';
+import type { BomLine, ProductLotRow, SellPriceHistoryRow, VariantWithTiers } from '../types';
 
 function ExpiryChip({ daysLeft }: { daysLeft: number | null }) {
   if (daysLeft === null) return <Chip>Không có HSD</Chip>;
@@ -24,8 +27,14 @@ export default function ProductDetailPage() {
   const canEditCatalog = isOwnerOrAdmin(user?.roleCode);
   const { data: product, isLoading, error, refetch } = useProduct(id);
   const bomQuery = useProductBom(id, Number.isFinite(id) && id > 0);
+  const priceHistoryQ = useQuery({
+    queryKey: ['sell-price-history', id],
+    queryFn: ({ signal }) => productsApi.sellPriceHistory(id, signal),
+    enabled: Number.isFinite(id) && id > 0,
+  });
   const [editing, setEditing] = useState(false);
   const [variantModal, setVariantModal] = useState<{ variant?: VariantWithTiers } | null>(null);
+  const [sellPriceVariant, setSellPriceVariant] = useState<VariantWithTiers | null>(null);
   const [bomOpen, setBomOpen] = useState(false);
 
   if (isLoading) return <PageLoading />;
@@ -46,9 +55,23 @@ export default function ProductDetailPage() {
         return <Chip tone={selling ? 'green' : 'neutral'}>{selling ? 'Đang bán' : 'Ngừng bán'}</Chip>;
       },
     },
-    ...(canEditCatalog
-      ? [{ key: 'edit', header: '', align: 'right' as const, cell: (v: VariantWithTiers) => <IconButton label={`Sửa ${v.sku}`} onClick={() => setVariantModal({ variant: v })}><Pencil size={14} /></IconButton> }]
-      : []),
+    {
+      key: 'actions',
+      header: '',
+      align: 'right' as const,
+      cell: (v: VariantWithTiers) => (
+        <div className="flex justify-end gap-1">
+          <IconButton label={`Gợi ý giá ${v.sku}`} onClick={() => setSellPriceVariant(v)}>
+            <CircleDollarSign size={14} />
+          </IconButton>
+          {canEditCatalog ? (
+            <IconButton label={`Sửa ${v.sku}`} onClick={() => setVariantModal({ variant: v })}>
+              <Pencil size={14} />
+            </IconButton>
+          ) : null}
+        </div>
+      ),
+    },
   ];
 
   const bomLines = bomQuery.data?.lines ?? [];
@@ -89,6 +112,53 @@ export default function ProductDetailPage() {
   ];
 
   const lots = product.lots ?? [];
+  const priceHistoryColumns: Column<SellPriceHistoryRow>[] = [
+    { key: 'sku', header: 'SKU', cell: (r) => <span className="num">{r.sku}</span> },
+    {
+      key: 'from',
+      header: 'Hiệu lực từ',
+      cell: (r) => <span className="num text-small">{dateTime(r.effectiveFrom)}</span>,
+    },
+    {
+      key: 'to',
+      header: 'Đến',
+      hideOnMobile: true,
+      cell: (r) =>
+        r.current ? (
+          <Chip tone="green">Đang dùng</Chip>
+        ) : (
+          <span className="num text-small">{dateTime(r.effectiveTo)}</span>
+        ),
+    },
+    {
+      key: 'old',
+      header: 'Giá trước',
+      align: 'right',
+      hideOnMobile: true,
+      cell: (r) => <span className="num">{r.previousListPrice == null ? '—' : money(r.previousListPrice)}</span>,
+    },
+    { key: 'price', header: 'Giá mới', align: 'right', cell: (r) => <span className="num font-medium">{money(r.listPrice)}</span> },
+    {
+      key: 'wac',
+      header: 'WAC',
+      align: 'right',
+      hideOnMobile: true,
+      cell: (r) => <span className="num">{r.unitCost == null ? '—' : money(r.unitCost)}</span>,
+    },
+    {
+      key: 'markup',
+      header: '% lời',
+      align: 'right',
+      hideOnMobile: true,
+      cell: (r) => <span className="num">{r.markupPercent}%</span>,
+    },
+    {
+      key: 'by',
+      header: 'Người chốt',
+      hideOnMobile: true,
+      cell: (r) => r.createdByName ?? '—',
+    },
+  ];
 
   return (
     <>
@@ -104,6 +174,22 @@ export default function ProductDetailPage() {
           </Card>
           <Card flush title="Lô hàng (chỉ xem)">
             <DataTable columns={lotColumns} rows={lots} rowKey={(l) => l.lotId} emptyText="Chưa có tồn theo lô" />
+          </Card>
+          <Card flush title="Lịch sử giá bán (theo giai đoạn)">
+            {priceHistoryQ.isLoading ? (
+              <p className="p-4 text-small text-ink-faint">Đang tải lịch sử giá…</p>
+            ) : priceHistoryQ.error ? (
+              <div className="p-4">
+                <ErrorState error={priceHistoryQ.error} onRetry={priceHistoryQ.refetch} />
+              </div>
+            ) : (
+              <DataTable
+                columns={priceHistoryColumns}
+                rows={priceHistoryQ.data ?? []}
+                rowKey={(r) => r.id}
+                emptyText="Chưa có lần Áp dụng giá — dùng icon ₫ trên quy cách để gợi ý và chốt"
+              />
+            )}
           </Card>
           <Card
             flush
@@ -165,6 +251,12 @@ export default function ProductDetailPage() {
         productActive={product.isActive}
         variant={variantModal?.variant}
         onClose={() => setVariantModal(null)}
+      />
+      <SellPriceSuggestModal
+        open={!!sellPriceVariant}
+        variant={sellPriceVariant ?? undefined}
+        canApply={canEditCatalog}
+        onClose={() => setSellPriceVariant(null)}
       />
       <BomFormModal
         open={bomOpen}

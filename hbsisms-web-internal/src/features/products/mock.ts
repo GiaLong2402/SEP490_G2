@@ -396,10 +396,128 @@ mock('PUT', '/variants/:id', ({ params, body, userId }) => {
   if (!variant) fail(404, 'Không tìm thấy quy cách');
   validateVariant(body, variant.id);
   const { tiers, listPrice: _ignored, ...rest } = body;
-  // Giá niêm yết chỉ cập nhật sau nhập TP từ LSX — không sửa tay qua form.
+  // Giá niêm yết chỉ đổi qua Task 59 Áp dụng — không sửa tay qua form.
   Object.assign(variant, rest, { updatedAt: new Date().toISOString() });
   saveTiers(variant.id, tiers);
   audit(userId, 'update', 'product_variant', variant.id);
+});
+
+type MockSellPriceHistory = {
+  id: number;
+  variantId: number;
+  sku: string;
+  packLabel: string;
+  listPrice: number;
+  previousListPrice: number | null;
+  unitCost: number | null;
+  costSource: 'WAC' | 'PRODUCTION';
+  markupPercent: number;
+  markupSource: string | null;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  current: boolean;
+  createdByUserId: number | null;
+  createdByName: string | null;
+};
+
+const sellPriceHistory: MockSellPriceHistory[] = [];
+let sellPriceHistorySeq = 1;
+
+function roundToThousand(n: number) {
+  return Math.round(n / 1000) * 1000;
+}
+
+function mockSuggest(variantId: number, costSource: string) {
+  const variant = db.variants.find((v) => v.id === variantId);
+  if (!variant) fail(404, 'Không tìm thấy quy cách');
+  const markupPercent = 30;
+  // Mock: WAC ≈ 70% giá niêm yết; PRODUCTION ≈ 65%.
+  const unitCost = Math.max(1000, Math.round((variant.listPrice || 100_000) * (costSource === 'PRODUCTION' ? 0.65 : 0.7)));
+  const suggestedListPrice = roundToThousand(unitCost * (1 + markupPercent / 100));
+  return {
+    variantId: variant.id,
+    sku: variant.sku,
+    packLabel: variant.packLabel,
+    currentListPrice: variant.listPrice,
+    costSource: costSource === 'PRODUCTION' ? 'PRODUCTION' : 'WAC',
+    unitCost,
+    costSourceLabel: costSource === 'PRODUCTION' ? 'Giá thành lệnh LSX-MOCK' : 'ĐG bình quân kỳ WAC hiện hành',
+    productionOrderId: costSource === 'PRODUCTION' ? 1 : null,
+    productionOrderCode: costSource === 'PRODUCTION' ? 'LSX-MOCK' : null,
+    markupPercent,
+    markupSource: 'cấu hình chung',
+    suggestedListPrice,
+  };
+}
+
+mock('GET', '/variants/:id/sell-price-suggestion', ({ params, query }) =>
+  mockSuggest(Number(params.id), String(query.costSource ?? 'WAC')));
+
+mock('POST', '/variants/:id/sell-price-suggestion/apply', ({ params, body, userId }) => {
+  const costSource = String((body as { costSource?: string })?.costSource ?? 'WAC');
+  const requested = db.variants.find((v) => v.id === Number(params.id));
+  if (!requested) fail(404, 'Không tìm thấy quy cách');
+  const isHalf = (v: typeof requested) =>
+    v.unitWeightG === 500 || /0[,.]5|500g|1\/2/i.test(v.packLabel ?? '');
+  const isOne = (v: typeof requested) =>
+    v.unitWeightG === 1000 || (/1\s*kg|1000g/i.test(v.packLabel ?? '') && !isHalf(v));
+  const siblings = db.variants.filter((v) => v.productId === requested.productId && v.isActive);
+  const oneKg = isOne(requested) ? requested : siblings.find(isOne) ?? requested;
+  const suggestion = mockSuggest(oneKg.id, costSource);
+  const now = new Date().toISOString();
+  const writePrice = (variant: typeof requested, price: number, unitCost: number) => {
+    const old = variant.listPrice;
+    for (const row of sellPriceHistory) {
+      if (row.variantId === variant.id && row.current) {
+        row.current = false;
+        row.effectiveTo = now;
+      }
+    }
+    sellPriceHistory.unshift({
+      id: sellPriceHistorySeq++,
+      variantId: variant.id,
+      sku: variant.sku,
+      packLabel: variant.packLabel,
+      listPrice: price,
+      previousListPrice: old,
+      unitCost,
+      costSource: suggestion.costSource as 'WAC' | 'PRODUCTION',
+      markupPercent: suggestion.markupPercent,
+      markupSource: suggestion.markupSource,
+      effectiveFrom: now,
+      effectiveTo: null,
+      current: true,
+      createdByUserId: userId ?? null,
+      createdByName: userId ? 'Mock user' : null,
+    });
+    variant.listPrice = price;
+    variant.updatedAt = now;
+    audit(userId, 'apply_sell_price', 'product_variant', variant.id, {
+      oldListPrice: old,
+      newListPrice: price,
+      costSource: suggestion.costSource,
+    });
+  };
+  writePrice(oneKg, suggestion.suggestedListPrice, suggestion.unitCost);
+  const half = isHalf(requested) ? requested : siblings.find(isHalf);
+  if (half && half.id !== oneKg.id) {
+    const halfPrice = Math.round(suggestion.suggestedListPrice / 2 / 1000) * 1000;
+    writePrice(half, halfPrice, Math.round(suggestion.unitCost / 2));
+  }
+  return { ...suggestion, variantId: oneKg.id, sku: oneKg.sku, currentListPrice: suggestion.suggestedListPrice };
+});
+
+mock('GET', '/variants/:id/sell-price-history', ({ params }) => {
+  const variantId = Number(params.id);
+  if (!db.variants.some((v) => v.id === variantId)) fail(404, 'Không tìm thấy quy cách');
+  return sellPriceHistory.filter((r) => r.variantId === variantId);
+});
+
+mock('GET', '/products/:id/sell-price-history', ({ params }) => {
+  const productId = Number(params.id);
+  if (!db.products.some((p) => p.id === productId)) fail(404, 'Không tìm thấy sản phẩm');
+  const variantIds = new Set(db.variants.filter((v) => v.productId === productId).map((v) => v.id));
+  return sellPriceHistory.filter((r) => variantIds.has(r.variantId));
 });
 
 mock('GET', '/products/:id/bom', ({ params }) => toBomResponse(Number(params.id)));

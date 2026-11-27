@@ -4,6 +4,7 @@ import { saveDb } from '@/shared/mock/db';
 import '@/features/admin/mock';
 import '@/features/approvals/mock';
 import '@/features/auth/mock';
+import '@/features/costing/mock';
 import '@/features/customers/mock';
 import '@/features/damage/mock';
 import '@/features/dashboard/mock';

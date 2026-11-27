@@ -1,6 +1,7 @@
 import { api, type ListQuery, type Page } from '@/shared/api/client';
 import type { ID } from '@/shared/domain/entities';
 import type {
+  ApplySellPriceInput,
   BomDetail,
   BomReplaceInput,
   CategoryInput,
@@ -8,6 +9,9 @@ import type {
   ProductDetail,
   ProductInput,
   ProductListItem,
+  SellPriceCostSource,
+  SellPriceHistoryRow,
+  SellPriceSuggestion,
   UnitInput,
   UnitOfMeasure,
   VariantInput,
@@ -48,4 +52,14 @@ export const productsApi = {
   replaceBom: (productId: ID, body: BomReplaceInput) => api.put<BomDetail>(`/products/${productId}/bom`, body),
   bomRawMaterials: (signal?: AbortSignal) =>
     api.get<BomRawMaterialOption[]>('/raw-materials', { activeOnly: true }, signal),
+  /** Task 59 — xem gợi ý (không đổi listPrice). */
+  sellPriceSuggestion: (variantId: ID, costSource: SellPriceCostSource = 'WAC') =>
+    api.get<SellPriceSuggestion>(`/variants/${variantId}/sell-price-suggestion`, { costSource }),
+  /** Task 59 — Chủ/Admin Áp dụng → cập nhật listPrice + lịch sử giai đoạn + audit. */
+  applySellPrice: (variantId: ID, body: ApplySellPriceInput) =>
+    api.post<SellPriceSuggestion>(`/variants/${variantId}/sell-price-suggestion/apply`, body),
+  sellPriceHistory: (productId: ID, signal?: AbortSignal) =>
+    api.get<SellPriceHistoryRow[]>(`/products/${productId}/sell-price-history`, undefined, signal),
+  variantSellPriceHistory: (variantId: ID, signal?: AbortSignal) =>
+    api.get<SellPriceHistoryRow[]>(`/variants/${variantId}/sell-price-history`, undefined, signal),
 };

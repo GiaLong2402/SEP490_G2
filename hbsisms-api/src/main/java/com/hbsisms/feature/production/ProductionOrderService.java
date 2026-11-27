@@ -9,12 +9,14 @@ import com.hbsisms.feature.catalog.Product;
 import com.hbsisms.feature.catalog.ProductRepository;
 import com.hbsisms.feature.catalog.ProductVariant;
 import com.hbsisms.feature.catalog.ProductVariantRepository;
+import com.hbsisms.feature.costing.CostingService;
 import com.hbsisms.feature.inventory.GoodsReceipt;
 import com.hbsisms.feature.inventory.GoodsReceiptService;
 import com.hbsisms.feature.inventory.RawMaterial;
 import com.hbsisms.feature.inventory.RawMaterialLot;
 import com.hbsisms.feature.inventory.RawMaterialStockService;
 import com.hbsisms.feature.inventory.dto.FinishedPutAwayResponse;
+import com.hbsisms.feature.production.dto.FinishedPackInput;
 import com.hbsisms.feature.production.dto.ProductionLeftoverInput;
 import com.hbsisms.feature.production.dto.ProductionLeftoverResponse;
 import com.hbsisms.feature.production.dto.ProductionOrderCompleteRequest;
@@ -36,9 +38,11 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -61,6 +65,7 @@ public class ProductionOrderService {
     private final MaterialIssueService materialIssueService;
     private final GoodsReceiptService goodsReceiptService;
     private final RawMaterialStockService rawMaterialStockService;
+    private final CostingService costingService;
     private final BusinessCodeService businessCodeService;
     private final AppConfigService appConfigService;
     private final AuditLogService auditLogService;
@@ -78,6 +83,7 @@ public class ProductionOrderService {
             MaterialIssueService materialIssueService,
             GoodsReceiptService goodsReceiptService,
             RawMaterialStockService rawMaterialStockService,
+            CostingService costingService,
             BusinessCodeService businessCodeService,
             AppConfigService appConfigService,
             AuditLogService auditLogService,
@@ -93,6 +99,7 @@ public class ProductionOrderService {
         this.materialIssueService = materialIssueService;
         this.goodsReceiptService = goodsReceiptService;
         this.rawMaterialStockService = rawMaterialStockService;
+        this.costingService = costingService;
         this.businessCodeService = businessCodeService;
         this.appConfigService = appConfigService;
         this.auditLogService = auditLogService;
@@ -264,21 +271,58 @@ public class ProductionOrderService {
             throw ApiException.conflict("Phiếu xuất NVL chưa hoàn thành — không thể báo hoàn thành");
         }
 
+        requireWholeTrays(request.actualQty());
+        BigDecimal planned = order.getPlannedQty();
+        if (planned != null && request.actualQty().compareTo(planned) > 0) {
+            throw ApiException.badRequest(
+                    "Số khay đạt không được vượt kế hoạch ("
+                            + planned.stripTrailingZeros().toPlainString()
+                            + " khay)");
+        }
+        BigDecimal defect = request.defectQty();
+        if (defect != null && defect.signum() > 0) {
+            requireWholeTrays(defect);
+            if (planned != null && request.actualQty().add(defect).compareTo(planned) > 0) {
+                throw ApiException.badRequest(
+                        "Tổng khay đạt + hỏng không được vượt kế hoạch ("
+                                + planned.stripTrailingZeros().toPlainString()
+                                + " khay)");
+            }
+        }
+
         LocalDate today = LocalDate.now(clock.withZone(VN));
         order.setFinishedDate(request.finishedDate() != null ? request.finishedDate() : today);
         applyDefect(order, request);
 
-        ProductVariant variant = resolveFinishedVariant(order, request.variantId());
+        List<GoodsReceiptService.FinishedPackLine> packs = resolveFinishedPacks(order, request);
+        // Số đạt = quy đổi khay 1 kg: 1×1kg + 2×0,5kg = 2 đạt (không đếm số khay vật lý).
+        BigDecimal packWeightKg = BigDecimal.ZERO;
+        for (GoodsReceiptService.FinishedPackLine pack : packs) {
+            packWeightKg = packWeightKg.add(PackSizes.trayWeightKg(pack.variant()).multiply(pack.qty()));
+        }
+        if (packWeightKg.compareTo(request.actualQty()) != 0) {
+            throw ApiException.badRequest(
+                    "Khối lượng đóng gói ("
+                            + packWeightKg.stripTrailingZeros().toPlainString()
+                            + " kg quy đổi) phải bằng số khay đạt ("
+                            + request.actualQty().stripTrailingZeros().toPlainString()
+                            + "). Ví dụ đạt 2 → 1 khay 1 kg + 2 khay 0,5 kg");
+        }
+        ProductVariant primary = packs.stream()
+                .map(GoodsReceiptService.FinishedPackLine::variant)
+                .filter(PackSizes::isOneKg)
+                .findFirst()
+                .orElse(packs.get(0).variant());
         order.setActualQty(request.actualQty());
         order.setActualProductionCost(
                 request.actualProductionCost() == null ? BigDecimal.ZERO : request.actualProductionCost());
-        order.setFinishedVariant(variant);
+        order.setFinishedVariant(primary);
 
         AppUser actor = actorId == null ? null : userRepository.findById(actorId).orElse(null);
         applyLeftovers(order, issue, request.leftovers(), actor, today);
 
         GoodsReceipt receipt = goodsReceiptService.createPendingFinishedFromProduction(
-                order.getId(), order.getCode(), variant, request.actualQty(), actorId);
+                order.getId(), order.getCode(), packs, actorId);
         order.setFinishedReceipt(receipt);
         order.setStatus(ProductionOrderStatus.AWAITING_RECEIPT);
         productionOrderRepository.save(order);
@@ -286,9 +330,41 @@ public class ProductionOrderService {
         detail.put("code", order.getCode());
         detail.put("status", ProductionOrderStatus.AWAITING_RECEIPT.code());
         detail.put("qty", request.actualQty());
+        detail.put("packCount", packs.size());
         detail.put("receiptCode", receipt.getCode());
         auditLogService.record(actorId, "complete", REF_TYPE, order.getId(), detail);
         return toResponse(requireOrder(id));
+    }
+
+    /**
+     * Đóng gói sau SX: nhiều quy cách (1 kg / 0,5 kg) hoặc một dòng theo {@code variantId}.
+     * Mỗi dòng = số khay vật lý nguyên; tổng khối lượng quy đổi phải = {@code actualQty}.
+     */
+    private List<GoodsReceiptService.FinishedPackLine> resolveFinishedPacks(
+            ProductionOrder order, ProductionOrderCompleteRequest request) {
+        List<FinishedPackInput> inputs = request.packs();
+        if (inputs != null && !inputs.isEmpty()) {
+            Set<Long> seen = new HashSet<>();
+            List<GoodsReceiptService.FinishedPackLine> packs = new ArrayList<>();
+            for (FinishedPackInput input : inputs) {
+                if (input == null || input.qty() == null || input.qty().signum() <= 0) {
+                    continue;
+                }
+                requireWholeTrays(input.qty());
+                if (!seen.add(input.variantId())) {
+                    throw ApiException.badRequest("Mỗi quy cách chỉ được khai báo một lần khi đóng gói");
+                }
+                ProductVariant variant = resolveFinishedVariant(order, input.variantId());
+                packs.add(new GoodsReceiptService.FinishedPackLine(variant, input.qty()));
+            }
+            if (packs.isEmpty()) {
+                throw ApiException.badRequest("Chưa chọn quy cách đóng gói");
+            }
+            return packs;
+        }
+        requireWholeTrays(request.actualQty());
+        ProductVariant variant = resolveFinishedVariant(order, request.variantId());
+        return List.of(new GoodsReceiptService.FinishedPackLine(variant, request.actualQty()));
     }
 
     private void applyDefect(ProductionOrder order, ProductionOrderCompleteRequest request) {
@@ -374,12 +450,13 @@ public class ProductionOrderService {
                     "Hạn dùng lô dư không được muộn hơn hạn lô đã xuất (" + agg.minExpDate + ")");
         }
         RawMaterialLot sourceLot = agg.lastLot;
-        BigDecimal unitPrice = sourceLot.getUnitPrice() == null ? BigDecimal.ZERO : sourceLot.getUnitPrice();
-        // Gốc-TL, đã có thì Gốc-TL2, TL3…; lô xuất ra là lô -TL thì vẫn lấy mã gốc (không thành -TL-TL).
+        // Lô -TL giữ giá nhập vật lý của lô gốc; trừ giá vốn mẻ theo WAC (khớp lúc xuất SX).
+        BigDecimal lotPrice = sourceLot.getUnitPrice() == null ? BigDecimal.ZERO : sourceLot.getUnitPrice();
+        BigDecimal creditPrice = costingService.resolveRawIssueUnitCost(agg.material.getId(), lotPrice);
         String lotCode = rawMaterialStockService.nextLeftoverLotCode(agg.material, sourceLot.getLotCode());
         RawMaterialLot returned = rawMaterialStockService.receive(
-                agg.material, lotCode, null, input.expDate(), unitPrice, input.qty(), null, actor, note);
-        return leftoverRow(order, agg.material, returned, input.qty(), input.expDate(), unitPrice);
+                agg.material, lotCode, null, input.expDate(), lotPrice, input.qty(), null, actor, note);
+        return leftoverRow(order, agg.material, returned, input.qty(), input.expDate(), creditPrice);
     }
 
     /**
@@ -410,8 +487,9 @@ public class ProductionOrderService {
                     actor,
                     note);
             returnedByLine.merge(line.getId(), back, BigDecimal::add);
-            BigDecimal unitPrice = lot.getUnitPrice() == null ? BigDecimal.ZERO : lot.getUnitPrice();
-            rows.add(leftoverRow(order, agg.material, lot, back, lot.getExpDate(), unitPrice));
+            BigDecimal lotPrice = lot.getUnitPrice() == null ? BigDecimal.ZERO : lot.getUnitPrice();
+            BigDecimal creditPrice = costingService.resolveRawIssueUnitCost(agg.material.getId(), lotPrice);
+            rows.add(leftoverRow(order, agg.material, lot, back, lot.getExpDate(), creditPrice));
             left = left.subtract(back);
         }
         return rows;
@@ -576,10 +654,10 @@ public class ProductionOrderService {
                 .toList();
     }
 
-    /** Lệnh sản xuất tính theo khay — không có 1,5 khay. */
+    /** Lệnh sản xuất / đóng gói tính theo khay — không có 1,5 khay. */
     private static void requireWholeTrays(BigDecimal qty) {
         if (qty == null || qty.signum() <= 0 || qty.stripTrailingZeros().scale() > 0) {
-            throw ApiException.badRequest("Số lượng kế hoạch phải là số khay nguyên lớn hơn 0");
+            throw ApiException.badRequest("Số lượng phải là số khay nguyên lớn hơn 0");
         }
     }
 

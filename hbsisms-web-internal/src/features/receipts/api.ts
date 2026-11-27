@@ -33,6 +33,13 @@ export const receiptsApi = {
   cancel: (id: ID, reason: string | null) => api.post<ReceiptListItem>(`/goods-receipts/${id}/cancel`, { reason }),
   rawMaterialLots: (id: ID, availableOnly = false, signal?: AbortSignal) =>
     api.get<RawMaterialLot[]>(`/raw-materials/${id}/lots`, { availableOnly }, signal),
+  /** ĐG bình quân NVL hiện hành (WAC) — dùng định giá xuất SX; chọn lô vẫn FEFO. */
+  rawMaterialAvgUnitCost: (id: ID, signal?: AbortSignal) =>
+    api.get<{ rawMaterialId: number; avgUnitCost: number | null; source: string }>(
+      `/raw-materials/${id}/avg-unit-cost`,
+      undefined,
+      signal,
+    ),
   /** Bỏ phần còn lại của lô NVL (hết hạn / hư) — đã chốt, backend chưa có. Thủ kho / Chủ, không cần duyệt. */
   discardRawLot: (lotId: ID, body: DiscardLotInput) => api.post<RawMaterialLot>(`/raw-material-lots/${lotId}/discard`, body),
   rawMaterials: (query: RawMaterialQuery = {}, signal?: AbortSignal) => api.get<RawMaterial[]>('/raw-materials', query, signal),

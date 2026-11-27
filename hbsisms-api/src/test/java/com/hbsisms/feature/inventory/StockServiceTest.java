@@ -15,6 +15,7 @@ import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.feature.catalog.Product;
 import com.hbsisms.feature.catalog.ProductVariant;
 import com.hbsisms.feature.catalog.ProductVariantRepository;
+import com.hbsisms.feature.costing.CostingMovementService;
 import com.hbsisms.feature.user.UserRepository;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +43,8 @@ class StockServiceTest {
     private WarehouseRepository warehouseRepository;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private CostingMovementService costingMovementService;
 
     private StockService stockService;
     private ProductVariant variant;
@@ -61,7 +64,9 @@ class StockServiceTest {
                 lotRepository,
                 locationRepository,
                 warehouseRepository,
-                userRepository);
+                userRepository,
+                costingMovementService);
+        lenient().when(lotRepository.findById(anyLong())).thenAnswer(inv -> Optional.of(lot));
         Product product = new Product();
         product.setName("Tôm sú");
         variant = new ProductVariant();

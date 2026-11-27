@@ -2,6 +2,9 @@ package com.hbsisms.feature.inventory;
 
 import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.common.text.Strings;
+import com.hbsisms.feature.costing.CostItemType;
+import com.hbsisms.feature.costing.CostingMovementService;
+import com.hbsisms.feature.costing.CostingService;
 import com.hbsisms.feature.user.AppUser;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -23,7 +26,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Một chỗ duy nhất thay đổi tồn nguyên vật liệu theo lô (Inter 1 dòng 47): tạo lô, cộng {@code qtyOnHand}
  * và ghi sổ kho NVL trong cùng transaction. Luôn giữ tổng {@code qtyRemaining} các lô = {@code qtyOnHand}.
- * Dòng 50 (xuất NVL cho xưởng) thêm phần trừ tồn theo FEFO tại đây.
+ * Dòng 50 (xuất NVL cho xưởng): FEFO chọn lô; định giá IssueSlice / sổ xuất theo WAC NVL
+ * (fallback giá lô nếu chưa có ĐG kỳ).
  */
 @Service
 public class RawMaterialStockService {
@@ -55,16 +59,22 @@ public class RawMaterialStockService {
     private final RawMaterialRepository rawMaterialRepository;
     private final RawMaterialLotRepository rawMaterialLotRepository;
     private final RawMaterialLedgerRepository rawMaterialLedgerRepository;
+    private final CostingMovementService costingMovementService;
+    private final CostingService costingService;
     private final Clock clock;
 
     public RawMaterialStockService(
             RawMaterialRepository rawMaterialRepository,
             RawMaterialLotRepository rawMaterialLotRepository,
             RawMaterialLedgerRepository rawMaterialLedgerRepository,
+            CostingMovementService costingMovementService,
+            CostingService costingService,
             Clock clock) {
         this.rawMaterialRepository = rawMaterialRepository;
         this.rawMaterialLotRepository = rawMaterialLotRepository;
         this.rawMaterialLedgerRepository = rawMaterialLedgerRepository;
+        this.costingMovementService = costingMovementService;
+        this.costingService = costingService;
         this.clock = clock;
     }
 
@@ -125,6 +135,13 @@ public class RawMaterialStockService {
         entry.setCreatedBy(actor);
         entry.setCreatedAt(now);
         rawMaterialLedgerRepository.save(entry);
+        costingMovementService.recordInbound(
+                CostItemType.RAW_MATERIAL,
+                material.getId(),
+                qty,
+                unitPrice,
+                receipt == null ? null : GoodsReceiptService.REF_TYPE,
+                receipt == null ? null : receipt.getId());
         return lot;
     }
 
@@ -161,6 +178,8 @@ public class RawMaterialStockService {
         rawMaterialRepository.save(material);
 
         writeLedger(material, lot, RawLedgerEntryType.IN, qty, balance, refType, refId, actor, note, now);
+        costingMovementService.recordInbound(
+                CostItemType.RAW_MATERIAL, material.getId(), qty, lot.getUnitPrice(), refType, refId);
         return lot;
     }
 
@@ -204,6 +223,8 @@ public class RawMaterialStockService {
 
         String ledgerNote = "Bỏ lô " + lot.getLotCode() + " · " + reason.label() + (cleanNote == null ? "" : " · " + cleanNote);
         writeLedger(material, lot, RawLedgerEntryType.DISCARD, qty.negate(), balance, REF_LOT_DISCARD, lot.getId(), actor, ledgerNote, now);
+        costingMovementService.recordOutbound(
+                CostItemType.RAW_MATERIAL, material.getId(), qty, REF_LOT_DISCARD, lot.getId());
         log.info("Discarded raw lot {} qty={} reason={}", lot.getLotCode(), qty, reason);
         return lot;
     }
@@ -282,7 +303,9 @@ public class RawMaterialStockService {
         material.setQtyOnHand(balance);
         rawMaterialRepository.save(material);
 
-        BigDecimal unitCost = lot.getUnitPrice() == null ? BigDecimal.ZERO : lot.getUnitPrice();
+        // FEFO đã chọn lô; tiền xuất SX / IssueSlice = WAC NVL (fallback giá lô).
+        BigDecimal lotPrice = lot.getUnitPrice() == null ? BigDecimal.ZERO : lot.getUnitPrice();
+        BigDecimal unitCost = costingService.resolveRawIssueUnitCost(material.getId(), lotPrice);
         RawMaterialLedger entry = new RawMaterialLedger();
         entry.setRawMaterial(material);
         entry.setLot(lot);
@@ -296,6 +319,9 @@ public class RawMaterialStockService {
         entry.setCreatedBy(actor);
         entry.setCreatedAt(now);
         rawMaterialLedgerRepository.save(entry);
+        // Task 56 — xuất ghi giá tạm WAC trên sổ kỳ.
+        costingMovementService.recordOutbound(
+                CostItemType.RAW_MATERIAL, material.getId(), qty, refType, refId);
         return new IssueSlice(lot, qty, unitCost);
     }
 

@@ -54,7 +54,14 @@ export function ReceiptPanel({ order }: { order: ProductionOrder }) {
   });
   const productLabel = `${order.productName}${order.finishedVariantSku ? ` · ${order.finishedVariantSku}` : ''}`;
   const total = actualTotalCost(order);
-  const form = useFinishedReceiptForm(receipt.data, { productLabel, reportedQty: order.actualQty ?? 0, totalCost: total, mfgDate: order.finishedDate ?? null });
+  const form = useFinishedReceiptForm(receipt.data, {
+    productLabel,
+    reportedQty: order.actualQty ?? 0,
+    totalCost: total,
+    mfgDate: order.finishedDate ?? null,
+    productCode: order.productCode,
+    productName: order.productName,
+  });
   const issue = useMaterialIssue(order.materialIssueId);
   const unitLabel = useUnitLabel();
   const leftover = leftoverTotal(order);
@@ -129,11 +136,15 @@ export function ReceiptPanel({ order }: { order: ProductionOrder }) {
           <Op>+</Op>
           <FormulaBox label="Chi phí sản xuất" value={money(order.actualProductionCost)} />
           <Op>÷</Op>
-          <FormulaBox label="Số khay nhập kho" value={form.qtyValid ? num(form.n) : '—'} />
+          <FormulaBox
+            label={form.multiPack ? 'Quy đổi khay 1 kg' : 'Số khay nhập kho'}
+            value={form.qtyValid ? num(form.multiPack ? form.packWeightKg : form.n) : '—'}
+            sub={form.multiPack ? `${num(form.packTotal)} khay vật lý xếp kho` : undefined}
+          />
           <Op>=</Op>
           <FormulaBox
             highlight
-            label="Giá vốn / khay"
+            label={form.multiPack ? 'Giá vốn / khay 1 kg' : 'Giá vốn / khay'}
             value={money(unit)}
             sub={est ? `Dự tính ${money(est)}${diffPct !== null ? ` (${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(1).replace('.', ',')}%${order.defectQty ? `: hỏng ${num(order.defectQty)} khay` : ''}${leftover ? ', đã trừ nguyên liệu dư' : ''})` : ''}` : undefined}
           />
@@ -145,8 +156,8 @@ export function ReceiptPanel({ order }: { order: ProductionOrder }) {
           actions={<Button variant="primary" icon={<PackageCheck size={15} />} loading={form.mutation.isPending} onClick={form.submit}>Nhập kho</Button>}
         >
           <span className="text-body">
-            Nhập xong: cộng {form.qtyValid ? num(form.n) : '…'} khay vào <b className="text-ink">{form.locationText ?? 'vị trí đã chọn'}</b>
-            {unit !== null && <>, giá vốn {money(unit)}/khay</>} · lệnh tự chuyển "Hoàn thành"
+            Nhập xong: cộng {form.qtyValid ? num(form.n) : '…'} khay vật lý vào <b className="text-ink">{form.locationText ?? 'vị trí đã chọn'}</b>
+            {unit !== null && <>, giá vốn quy đổi {money(unit)}/khay 1 kg</>} · lệnh tự chuyển "Hoàn thành"
           </span>
         </ActionBar>
       )}

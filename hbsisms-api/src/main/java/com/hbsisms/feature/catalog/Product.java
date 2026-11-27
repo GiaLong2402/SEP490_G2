@@ -74,6 +74,12 @@ public class Product extends AuditableEntity {
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 
+    /**
+     * Task 59 — % lời riêng SP (null = dùng danh mục / cấu hình chung).
+     */
+    @Column(name = "sell_price_markup_percent")
+    private Integer sellPriceMarkupPercent;
+
     /** Reserved for future dual-role; currently unused — NVL is managed separately. */
     @Column(name = "is_raw_material", nullable = false)
     private boolean rawMaterial;

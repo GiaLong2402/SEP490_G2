@@ -7,6 +7,7 @@ import { approvalStatusMeta, approvalTypeLabels } from '@/shared/domain/enums';
 import { dateTime } from '@/shared/lib/format';
 import { Button, Card, Chip, ConfirmDialog, DataTable, FilterBar, FilterSelect, PageHeader, Pagination, SearchBox, StatusChip, Tabs, enumOptions, useListParams, type Column } from '@/shared/ui';
 import { approvalsApi } from '../api';
+import { formatApprovalNote } from '../formatNote';
 import type { ApprovalDecision, ApprovalListItem } from '../types';
 
 type Tab = 'pending' | 'history';
@@ -41,7 +42,25 @@ export default function ApprovalsPage() {
         </Chip>
       ),
     },
-    { key: 'title', header: 'Nội dung', cell: (a) => <div className="min-w-[240px]">{a.refLink ? <Link to={a.refLink} className="font-medium text-primary hover:underline">{a.title}</Link> : <span className="font-medium">{a.title}</span>}{a.note && <div className="text-ink-muted">Ghi chú: {a.note}</div>}</div> },
+    {
+      key: 'title',
+      header: 'Nội dung',
+      cell: (a) => {
+        const note = formatApprovalNote(a.note, a.approvalType);
+        return (
+          <div className="min-w-[240px] max-w-[420px]">
+            {a.refLink ? (
+              <Link to={a.refLink} className="font-medium text-primary hover:underline">
+                {a.title}
+              </Link>
+            ) : (
+              <span className="font-medium">{a.title}</span>
+            )}
+            {note ? <div className="mt-0.5 text-small text-ink-muted">{note}</div> : null}
+          </div>
+        );
+      },
+    },
     { key: 'by', header: 'Người gửi', hideOnMobile: true, cell: (a) => a.requesterName ?? '—' },
     { key: 'at', header: 'Gửi lúc', hideOnMobile: true, cell: (a) => <span className="whitespace-nowrap">{dateTime(a.createdAt)}</span> },
     ...(tab === 'history'

@@ -11,13 +11,23 @@ import { useMaterialIssue } from '../hooks';
 import type { MaterialIssueLine, ProductionOrder } from '../types';
 import { ActionBar, HistoryCard, OverviewCard, Section, StepLayout, orderHistory } from './OrderShell';
 
-interface Slice { lot: RawMaterialLot; take: number; amount: number }
-interface Plan { line: MaterialIssueLine; slices: Slice[]; expired: RawMaterialLot[]; short: number; total: number }
+interface Slice { lot: RawMaterialLot; take: number; amount: number; unitCost: number; costSource: 'WAC' | 'LOT' }
+interface Plan {
+  line: MaterialIssueLine;
+  slices: Slice[];
+  expired: RawMaterialLot[];
+  short: number;
+  total: number;
+  wacUnitCost: number | null;
+}
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
-/** Chia số cần theo FEFO trên các lô còn hàng, bỏ qua lô hết hạn (đã chốt). Danh sách lô từ API đã theo thứ tự FEFO. */
-function allocate(line: MaterialIssueLine, lots: RawMaterialLot[]): Plan {
+/**
+ * Chọn lô FEFO; định giá thành tiền theo WAC NVL (fallback giá lô nếu chưa có WAC).
+ * Danh sách lô từ API đã theo thứ tự FEFO.
+ */
+function allocate(line: MaterialIssueLine, lots: RawMaterialLot[], wacUnitCost: number | null): Plan {
   const usable = lots.filter((l) => l.qtyRemaining > 0 && !isLotExpired(l));
   const expired = lots.filter((l) => l.qtyRemaining > 0 && isLotExpired(l));
   const slices: Slice[] = [];
@@ -25,14 +35,30 @@ function allocate(line: MaterialIssueLine, lots: RawMaterialLot[]): Plan {
   for (const lot of usable) {
     if (left <= 0) break;
     const take = round3(Math.min(left, lot.qtyRemaining));
-    slices.push({ lot, take, amount: Math.round(take * (lot.unitPrice ?? 0)) });
+    const useWac = wacUnitCost != null && Number.isFinite(wacUnitCost);
+    const unitCost = useWac ? wacUnitCost : (lot.unitPrice ?? 0);
+    slices.push({
+      lot,
+      take,
+      unitCost,
+      costSource: useWac ? 'WAC' : 'LOT',
+      amount: Math.round(take * unitCost),
+    });
     left -= take;
   }
-  return { line, slices, expired, short: Math.max(0, round3(left)), total: slices.reduce((s, x) => s + x.amount, 0) };
+  return {
+    line,
+    slices,
+    expired,
+    short: Math.max(0, round3(left)),
+    total: slices.reduce((s, x) => s + x.amount, 0),
+    wacUnitCost,
+  };
 }
 
 function MaterialBlock({ plan, no }: { plan: Plan; no: number }) {
   const unit = useUnitLabel()(plan.line.unit);
+  const pricedByWac = plan.wacUnitCost != null;
   return (
     <article className="rounded-md border border-line">
       <div className="flex flex-wrap items-center gap-2.5 rounded-t-md border-b border-line bg-rowalt/60 px-3 py-2">
@@ -40,15 +66,17 @@ function MaterialBlock({ plan, no }: { plan: Plan; no: number }) {
         <span className="font-semibold">{plan.line.rawMaterialName}</span>
         <span className="font-mono text-small text-ink-faint">{plan.line.rawMaterialCode}</span>
         {plan.short > 0 ? <Chip tone="red">Thiếu {num(plan.short)} {unit}</Chip> : <Chip tone="green">Đã chọn đủ {num(plan.line.qtyRequired)} {unit}</Chip>}
+        {pricedByWac ? <Chip tone="neutral">Giá xuất WAC {money(plan.wacUnitCost)}</Chip> : <Chip tone="amber">Chưa có WAC · dùng giá lô</Chip>}
         <span className="ml-auto text-small text-ink-muted">Thành tiền <b className="tabular-nums text-ink">{money(plan.total)}</b></span>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[680px] border-collapse text-small">
+        <table className="w-full min-w-[720px] border-collapse text-small">
           <thead>
             <tr className="text-left text-micro uppercase tracking-wide text-ink-muted">
-              <th className="px-3 py-2 font-semibold">Mã lô</th>
+              <th className="px-3 py-2 font-semibold">Mã lô (FEFO)</th>
               <th className="px-3 py-2 font-semibold">Hạn sử dụng</th>
-              <th className="px-3 py-2 text-right font-semibold">Đơn giá nhập</th>
+              <th className="px-3 py-2 text-right font-semibold">Giá nhập lô</th>
+              <th className="px-3 py-2 text-right font-semibold">ĐG xuất</th>
               <th className="px-3 py-2 text-right font-semibold">Còn trong lô</th>
               <th className="px-3 py-2 text-right font-semibold">Lấy</th>
               <th className="px-3 py-2 text-right font-semibold">Thành tiền</th>
@@ -61,13 +89,17 @@ function MaterialBlock({ plan, no }: { plan: Plan; no: number }) {
                 <td className="px-3 py-2">
                   {s.lot.expDate ? <><div>{date(s.lot.expDate)}</div><div className="text-ink-faint">Còn {daysUntil(s.lot.expDate)} ngày</div></> : <><div>Không ghi</div><div className="text-ink-faint">Vật tư đóng gói</div></>}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums">{money(s.lot.unitPrice)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{money(s.lot.unitPrice)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  <div>{money(s.unitCost)}</div>
+                  <div className="text-micro text-ink-faint">{s.costSource === 'WAC' ? 'WAC' : 'giá lô'}</div>
+                </td>
                 <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{num(s.lot.qtyRemaining)} {unit}</td>
                 <td className="px-3 py-2 text-right font-semibold tabular-nums">{num(s.take)} {unit}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{money(s.amount)}</td>
               </tr>
             ))}
-            {plan.slices.length === 0 && <tr><td colSpan={6} className="px-3 py-4 text-center text-ink-muted">Không còn lô dùng được</td></tr>}
+            {plan.slices.length === 0 && <tr><td colSpan={7} className="px-3 py-4 text-center text-ink-muted">Không còn lô dùng được</td></tr>}
           </tbody>
         </table>
       </div>
@@ -75,7 +107,7 @@ function MaterialBlock({ plan, no }: { plan: Plan; no: number }) {
   );
 }
 
-/** Bước 02 (Cường, dòng 50): xuất nguyên liệu theo FEFO, giá riêng từng lô, thủ kho không đổi lô. */
+/** Bước 02: xuất NVL — chọn lô FEFO, định giá theo WAC (fallback giá lô). */
 export function IssuePanel({ order }: { order: ProductionOrder }) {
   const { user } = useAuth();
   const canConfirmExport = isOwnerOrAdmin(user?.roleCode);
@@ -87,7 +119,20 @@ export function IssuePanel({ order }: { order: ProductionOrder }) {
   const lines = issue.data?.lines ?? [];
   const pending = issue.data?.status === 'pending';
   const lotQueries = useQueries({
-    queries: pending ? lines.map((l) => ({ queryKey: ['raw-material-lots', l.rawMaterialId], queryFn: ({ signal }: { signal: AbortSignal }) => receiptsApi.rawMaterialLots(l.rawMaterialId, false, signal) })) : [],
+    queries: pending
+      ? lines.map((l) => ({
+          queryKey: ['raw-material-lots', l.rawMaterialId],
+          queryFn: ({ signal }: { signal: AbortSignal }) => receiptsApi.rawMaterialLots(l.rawMaterialId, false, signal),
+        }))
+      : [],
+  });
+  const wacQueries = useQueries({
+    queries: pending
+      ? lines.map((l) => ({
+          queryKey: ['raw-material-avg-unit-cost', l.rawMaterialId],
+          queryFn: ({ signal }: { signal: AbortSignal }) => receiptsApi.rawMaterialAvgUnitCost(l.rawMaterialId, signal),
+        }))
+      : [],
   });
   const confirm = useAction(() => productionApi.confirmIssue(order.materialIssueId!, note.trim() || null), { success: (r) => `Đã xuất kho ${r.code} - lệnh chuyển Đang sản xuất` });
 
@@ -107,10 +152,16 @@ export function IssuePanel({ order }: { order: ProductionOrder }) {
     </>
   );
   if (!order.materialIssueId) return <StepLayout aside={aside}><Section title="Phiếu xuất nguyên liệu"><p className="text-ink-muted">Lệnh chưa có phiếu xuất nguyên liệu.</p></Section></StepLayout>;
-  if (issue.isLoading || lotQueries.some((q) => q.isLoading)) return <PageLoading />;
+  if (issue.isLoading || lotQueries.some((q) => q.isLoading) || wacQueries.some((q) => q.isLoading)) return <PageLoading />;
   if (issue.error || !issue.data) return <ErrorState error={issue.error} onRetry={issue.refetch} />;
 
-  const plans = pending ? lines.map((l, i) => allocate(l, lotQueries[i]?.data ?? [])) : [];
+  const plans = pending
+    ? lines.map((l, i) => {
+        const wac = wacQueries[i]?.data;
+        const avg = wac?.source === 'WAC' && wac.avgUnitCost != null ? Number(wac.avgUnitCost) : null;
+        return allocate(l, lotQueries[i]?.data ?? [], avg);
+      })
+    : [];
   const expired = plans.flatMap((p) => p.expired.map((lot) => ({ lot, plan: p })));
   const total = plans.reduce((s, p) => s + p.total, 0);
   const anyShort = plans.some((p) => p.short > 0);
@@ -129,8 +180,10 @@ export function IssuePanel({ order }: { order: ProductionOrder }) {
         subtitle={
           pending ? (
             <span className="inline-flex items-center gap-1">
-              Tự tạo lúc duyệt lệnh · hệ thống chọn sẵn lô <b>sắp hết hạn lấy trước</b>
-              <InfoTip label="Ghi chú cách chọn lô">Lô sắp hết hạn được lấy trước, nên lô trả lại (-TL) từ mẻ hôm qua luôn được dùng trước. Lô đã quá hạn bị bỏ qua. Lô không ghi hạn (bao bì) lấy sau cùng.</InfoTip>
+              Tự tạo lúc duyệt · chọn lô <b>FEFO</b> · định giá <b>WAC</b>
+              <InfoTip label="FEFO và WAC">
+                Lô sắp hết hạn lấy trước (FEFO); lô trả lại (-TL) ưu tiên. Thành tiền xuất kho tính theo ĐG bình quân NVL (WAC), không theo giá từng lô — giá nhập lô chỉ để đối chiếu. Chưa có WAC thì tạm dùng giá lô.
+              </InfoTip>
             </span>
           ) : (
             `Xuất bởi ${issue.data.completerName ?? '—'} · ${dateTimeFull(issue.data.completedAt)}`
@@ -182,12 +235,12 @@ export function IssuePanel({ order }: { order: ProductionOrder }) {
           }
         >
           <span>
-            Tiền nguyên liệu thật: <b className="text-body tabular-nums text-ink">{money(total)}</b>{' '}
+            Tiền nguyên liệu (WAC): <b className="text-body tabular-nums text-ink">{money(total)}</b>{' '}
             {estimate > 0 && (total === estimate ? <span className="text-green-fg">(đúng như tạm tính)</span> : <span className="text-amber-fg">({total > estimate ? '+' : '−'}{money(Math.abs(total - estimate))} so với tạm tính)</span>)}
           </span>
           <span>
             {canConfirmExport
-              ? 'Xuất xong: trừ tồn từng lô, ghi sổ kho nguyên liệu, lệnh chuyển "Đang sản xuất".'
+              ? 'Xuất xong: trừ tồn từng lô (FEFO), ghi sổ theo WAC, lệnh chuyển "Đang sản xuất".'
               : 'Chỉ Chủ / Admin được xác nhận xuất kho — bạn có thể xem và in phiếu.'}
           </span>
         </ActionBar>
