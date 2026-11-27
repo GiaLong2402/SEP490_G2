@@ -10,6 +10,8 @@ import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.feature.catalog.Product;
 import com.hbsisms.feature.catalog.ProductBomLineRepository;
 import com.hbsisms.feature.catalog.ProductRepository;
+import com.hbsisms.feature.catalog.ProductVariant;
+import com.hbsisms.feature.catalog.ProductVariantRepository;
 import com.hbsisms.feature.inventory.RawMaterial;
 import com.hbsisms.feature.production.dto.ProductionBomProductResponse;
 import com.hbsisms.feature.production.dto.ProductionMaterialPreviewResponse;
@@ -33,12 +35,15 @@ class ProductionPlanningServiceTest {
     private ProductRepository productRepository;
     @Mock
     private BomExplosionService bomExplosionService;
+    @Mock
+    private ProductVariantRepository productVariantRepository;
 
     private ProductionPlanningService service;
 
     @BeforeEach
     void setUp() {
-        service = new ProductionPlanningService(bomLineRepository, productRepository, bomExplosionService);
+        service = new ProductionPlanningService(
+                bomLineRepository, productRepository, bomExplosionService, productVariantRepository);
     }
 
     @Test
@@ -75,7 +80,7 @@ class ProductionPlanningServiceTest {
         line.setSufficient(true);
         line.setLineEstimatedCost(new BigDecimal("500"));
 
-        when(bomExplosionService.explode(eq(10L), any()))
+        when(bomExplosionService.explode(eq(10L), any(), any()))
                 .thenReturn(new BomExplosionService.ExplosionResult(
                         List.of(line), new BigDecimal("500.00"), List.of(new BigDecimal("12"))));
 
@@ -90,6 +95,48 @@ class ProductionPlanningServiceTest {
     }
 
     @Test
+    void listBomProducts_listsActiveTraysOneKgFirst() {
+        Product p = product(10L, "TP-001", "Chả cá", true);
+        when(bomLineRepository.findActiveProductsWithRawBom()).thenReturn(List.of(p));
+        when(bomLineRepository.countRawLinesByProductId(10L)).thenReturn(3L);
+        ProductVariant half = variant(p, 21L, "CHA-05", 500, true);
+        ProductVariant stopped = variant(p, 22L, "CHA-02", 2000, false);
+        ProductVariant oneKg = variant(p, 23L, "CHA-10", 1000, true);
+        when(productVariantRepository.findByProduct_IdOrderByIdAsc(10L)).thenReturn(List.of(half, stopped, oneKg));
+
+        List<ProductionBomProductResponse.VariantOption> variants = service.listBomProducts().get(0).variants();
+
+        assertThat(variants).extracting(ProductionBomProductResponse.VariantOption::id).containsExactly(23L, 21L);
+        assertThat(variants.get(1).unitWeightG()).isEqualTo(500);
+    }
+
+    @Test
+    void previewMaterials_noVariant_usesSameDefaultTrayAsCreate() {
+        Product p = product(10L, "TP-001", "Mực Lá", true);
+        when(productRepository.findById(10L)).thenReturn(Optional.of(p));
+        ProductVariant half = variant(p, 21L, "MUC-05", 500, true);
+        when(productVariantRepository.findByProduct_IdOrderByIdAsc(10L)).thenReturn(List.of(half));
+        when(bomExplosionService.explode(10L, BigDecimal.ONE, half))
+                .thenReturn(new BomExplosionService.ExplosionResult(List.of(), BigDecimal.ZERO));
+
+        service.previewMaterials(10L, BigDecimal.ONE);
+
+        org.mockito.Mockito.verify(bomExplosionService).explode(10L, BigDecimal.ONE, half);
+    }
+
+    @Test
+    void previewMaterials_variantOfOtherProduct_returns400() {
+        Product p = product(10L, "TP-001", "Mực Lá", true);
+        Product other = product(11L, "TP-002", "Chả cá", true);
+        when(productRepository.findById(10L)).thenReturn(Optional.of(p));
+        when(productVariantRepository.findById(31L)).thenReturn(Optional.of(variant(other, 31L, "CHA-10", 1000, true)));
+
+        assertThatThrownBy(() -> service.previewMaterials(10L, BigDecimal.ONE, 31L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
     void previewMaterials_inactiveProduct_returns400() {
         Product p = product(10L, "TP-001", "Mực Lá", true);
         p.setActive(false);
@@ -98,6 +145,16 @@ class ProductionPlanningServiceTest {
         assertThatThrownBy(() -> service.previewMaterials(10L, BigDecimal.ONE))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    private static ProductVariant variant(Product product, Long id, String sku, int grams, boolean active) {
+        ProductVariant v = new ProductVariant();
+        ReflectionTestUtils.setField(v, "id", id);
+        v.setProduct(product);
+        v.setSku(sku);
+        v.setUnitWeightG(grams);
+        v.setActive(active);
+        return v;
     }
 
     private static Product product(Long id, String code, String name, boolean producible) {

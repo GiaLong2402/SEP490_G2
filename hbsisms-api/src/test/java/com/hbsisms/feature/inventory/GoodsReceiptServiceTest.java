@@ -499,6 +499,91 @@ class GoodsReceiptServiceTest {
         assertThat(items.get(1).unit()).isEqualTo("bao");
     }
 
+    // ---- Giá niêm yết sau nhập TP từ lệnh SX: chỉ gợi ý, không tự đổi giá đang bán ----
+
+    @Test
+    void completeFinished_traysAlreadyPriced_keepListPrices() {
+        Product product = new Product();
+        setId(product, 7L);
+        ProductVariant half = tray(product, 31L, 500);
+        ProductVariant oneKg = tray(product, 32L, 1000);
+        half.setListPrice(new BigDecimal("15000"));
+        oneKg.setListPrice(new BigDecimal("30000"));
+        stubFinishedReceipt(half, product, List.of(half, oneKg));
+
+        service.completeFinished(50L, finishedRequest(), null);
+
+        // Giá gợi ý 26.000 / 13.000 nhưng không ghi đè giá Chủ đang bán
+        assertThat(oneKg.getListPrice()).isEqualByComparingTo("30000");
+        assertThat(half.getListPrice()).isEqualByComparingTo("15000");
+        verify(productVariantRepository, never()).save(any(ProductVariant.class));
+    }
+
+    @Test
+    void completeFinished_trayWithoutPrice_staysUnpriced() {
+        Product product = new Product();
+        setId(product, 7L);
+        ProductVariant half = tray(product, 31L, 500);
+        ProductVariant oneKg = tray(product, 32L, 1000);
+        half.setListPrice(BigDecimal.ZERO);
+        stubFinishedReceipt(half, product, List.of(half, oneKg));
+
+        service.completeFinished(50L, finishedRequest(), null);
+
+        // Không tự ghi giá kể cả khay 0 ₫ / chưa có giá — Chủ áp dụng giá gợi ý (Inter 5 #6)
+        assertThat(half.getListPrice()).isEqualByComparingTo("0");
+        assertThat(oneKg.getListPrice()).isNull();
+        verify(productVariantRepository, never()).save(any(ProductVariant.class));
+    }
+
+    private void stubFinishedReceipt(ProductVariant received, Product product, List<ProductVariant> variants) {
+        GoodsReceipt receipt = pendingReceipt(50L);
+        receipt.setReceiptType(ReceiptType.FINISHED);
+        receipt.setProductionOrderId(70L);
+        GoodsReceiptLine line = new GoodsReceiptLine();
+        setId(line, 51L);
+        line.setReceipt(receipt);
+        line.setProductVariant(received);
+        line.setLineNo(1);
+        com.hbsisms.feature.production.ProductionOrder order = new com.hbsisms.feature.production.ProductionOrder();
+        setId(order, 70L);
+        order.setCode("LSX-2026-0070");
+        order.setStatus(com.hbsisms.feature.production.ProductionOrderStatus.AWAITING_RECEIPT);
+        order.setActualMaterialCost(new BigDecimal("70000"));
+        order.setActualProductionCost(new BigDecimal("30000"));
+
+        when(goodsReceiptRepository.findByIdForUpdate(50L)).thenReturn(Optional.of(receipt));
+        when(locationRepository.findById(10L)).thenReturn(Optional.of(location));
+        when(goodsReceiptLineRepository.findByReceipt_IdOrderByLineNoAsc(50L)).thenReturn(List.of(line));
+        when(productVariantRepository.findWithProductById(received.getId())).thenReturn(Optional.of(received));
+        when(productionOrderRepository.findById(70L)).thenReturn(Optional.of(order));
+        when(appConfigService.sellPriceFromUnitCost(
+                        org.mockito.ArgumentMatchers.argThat(c -> c != null && c.compareTo(new BigDecimal("20000")) == 0)))
+                .thenReturn(new BigDecimal("26000"));
+        when(lotRepository.findByLotCodeIgnoreCase("LO-TP-1")).thenReturn(Optional.empty());
+        when(lotRepository.saveAndFlush(any(Lot.class))).thenAnswer(inv -> {
+            Lot lot = inv.getArgument(0);
+            setId(lot, 90L);
+            return lot;
+        });
+        when(productionOrderRepository.markCompletedAfterFinishedReceipt(70L)).thenReturn(1);
+    }
+
+    private static com.hbsisms.feature.inventory.dto.FinishedReceiptCompleteRequest finishedRequest() {
+        return new com.hbsisms.feature.inventory.dto.FinishedReceiptCompleteRequest(
+                "LO-TP-1", null, LocalDate.of(2026, 11, 30), 10L, 10, null);
+    }
+
+    private static ProductVariant tray(Product product, long id, int grams) {
+        ProductVariant v = new ProductVariant();
+        setId(v, id);
+        v.setSku("SKU-" + id);
+        v.setProduct(product);
+        v.setUnitWeightG(grams);
+        v.setActive(true);
+        return v;
+    }
+
     // ---- helpers ----
 
     private void stubSaveAndFlush(long id) {

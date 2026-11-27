@@ -1,5 +1,6 @@
 package com.hbsisms.feature.production.dto;
 
+import com.hbsisms.feature.catalog.PackSizes;
 import com.hbsisms.feature.inventory.GoodsReceipt;
 import com.hbsisms.feature.inventory.dto.FinishedPutAwayResponse;
 import com.hbsisms.feature.production.MaterialIssue;
@@ -30,6 +31,8 @@ public record ProductionOrderResponse(
         String defectReason,
         Long finishedVariantId,
         String finishedVariantSku,
+        /** Cân nặng 1 khay thành phẩm (kg) — null nếu lệnh chưa chọn khay. */
+        BigDecimal finishedTrayKg,
         Long finishedReceiptId,
         String finishedReceiptCode,
         boolean allMaterialsSufficient,
@@ -45,10 +48,12 @@ public record ProductionOrderResponse(
         BigDecimal unitCost,
         /** % markup cấu hình (app_config sell_price_markup_percent). */
         Integer markupPercent,
-        /** Giá bán = unitCost × (1 + markup/100); lúc nhập TP đã ghi vào listPrice quy cách. */
+        /** Giá bán 1 kg = (unitCost ÷ cân nặng khay) × (1 + markup/100), tròn 1.000; khay 0,5 kg = nửa. */
         BigDecimal suggestedSellPrice,
-        /** Giá niêm yết quy cách thành phẩm (sau nhập TP = suggestedSellPrice). */
+        /** Giá niêm yết hiện tại của quy cách thành phẩm. */
         BigDecimal currentListPrice,
+        /** Giá đang bán / giá gợi ý của từng khay (chỉ khi lệnh đã hoàn thành). */
+        List<TrayPriceResponse> trayPrices,
         /** Lô / HSD / vị trí thành phẩm đã nhập kho (null nếu chưa nhập). */
         FinishedPutAwayResponse finishedPutAway,
         List<ProductionOrderMaterialLineResponse> materials,
@@ -58,7 +63,7 @@ public record ProductionOrderResponse(
             ProductionOrder order,
             List<ProductionOrderMaterialLineResponse> materials,
             List<ProductionLeftoverResponse> leftovers) {
-        return from(order, materials, leftovers, null, null, null, null, null);
+        return from(order, materials, leftovers, null, null, null, null, null, List.of());
     }
 
     public static ProductionOrderResponse from(
@@ -69,7 +74,8 @@ public record ProductionOrderResponse(
             Integer markupPercent,
             BigDecimal suggestedSellPrice,
             BigDecimal currentListPrice,
-            FinishedPutAwayResponse finishedPutAway) {
+            FinishedPutAwayResponse finishedPutAway,
+            List<TrayPriceResponse> trayPrices) {
         MaterialIssue issue = order.getMaterialIssue();
         GoodsReceipt finished = order.getFinishedReceipt();
         var variant = order.getFinishedVariant();
@@ -96,6 +102,7 @@ public record ProductionOrderResponse(
                 order.getDefectReason(),
                 variant == null ? null : variant.getId(),
                 variant == null ? null : variant.getSku(),
+                variant == null ? null : PackSizes.weightKg(variant),
                 finished == null ? null : finished.getId(),
                 finished == null ? null : finished.getCode(),
                 order.allMaterialsSufficient(),
@@ -113,6 +120,7 @@ public record ProductionOrderResponse(
                 currentListPrice != null
                         ? currentListPrice
                         : (variant == null ? null : variant.getListPrice()),
+                trayPrices == null ? List.of() : trayPrices,
                 finishedPutAway,
                 materials,
                 leftovers == null ? List.of() : leftovers);

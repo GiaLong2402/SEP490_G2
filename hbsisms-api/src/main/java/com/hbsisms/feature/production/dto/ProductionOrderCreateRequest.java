@@ -11,4 +11,6 @@ public record ProductionOrderCreateRequest(
                 BigDecimal plannedQty,
         LocalDate plannedDueDate,
         String note,
-        BigDecimal estimatedProductionCost) {}
+        BigDecimal estimatedProductionCost,
+        /** Loại khay làm ra (0,5 kg / 1 kg). Bỏ trống → khay 1 kg (hoặc quy cách đầu tiên đang bán). */
+        Long variantId) {}

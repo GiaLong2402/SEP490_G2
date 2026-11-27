@@ -18,6 +18,7 @@ import java.text.NumberFormat;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -189,9 +190,10 @@ public class PreorderFulfillmentService {
     }
 
     private int createProductionDraftsForShortage(SalesOrder order, AppUser actor) {
-        // Gom shortage theo product (plannedQty = tổng outstanding khay của cùng product).
-        Map<Long, BigDecimal> shortageByProduct = new HashMap<>();
-        Map<Long, Product> productById = new HashMap<>();
+        // Gom phần thiếu theo loại khay (quy cách): mỗi loại khay một lệnh — BOM 1 kg nhân theo cân nặng khay,
+        // nhập kho đúng khay khách đặt.
+        Map<Long, BigDecimal> shortageByVariant = new LinkedHashMap<>();
+        Map<Long, ProductVariant> variantById = new HashMap<>();
         for (SalesOrderLine line : order.getLines()) {
             int shortQty = line.getOutstandingQty();
             if (shortQty <= 0) {
@@ -201,34 +203,38 @@ public class PreorderFulfillmentService {
             if (variant == null || variant.getProduct() == null) {
                 continue;
             }
-            Product product = variant.getProduct();
-            productById.put(product.getId(), product);
-            shortageByProduct.merge(
-                    product.getId(),
+            variantById.put(variant.getId(), variant);
+            shortageByVariant.merge(
+                    variant.getId(),
                     BigDecimal.valueOf(shortQty).setScale(4, RoundingMode.HALF_UP),
                     BigDecimal::add);
         }
 
+        List<ProductionOrder> existing = productionOrderRepository.findBySalesOrder_Id(order.getId());
         int created = 0;
-        for (Map.Entry<Long, BigDecimal> entry : shortageByProduct.entrySet()) {
+        for (Map.Entry<Long, BigDecimal> entry : shortageByVariant.entrySet()) {
             if (entry.getValue().signum() <= 0) {
                 continue;
             }
-            // Tránh tạo trùng nếu đã có lệnh gắn đơn cho product này (chưa hủy).
-            boolean exists = productionOrderRepository.findBySalesOrder_Id(order.getId()).stream()
-                    .anyMatch(po -> po.getProduct() != null
-                            && entry.getKey().equals(po.getProduct().getId())
-                            && po.getStatus() != ProductionOrderStatus.CANCELLED);
+            ProductVariant variant = variantById.get(entry.getKey());
+            Product product = variant.getProduct();
+            // Tránh tạo trùng nếu đã có lệnh gắn đơn cho khay này (chưa hủy). Lệnh cũ chưa ghi khay → coi như trùng.
+            boolean exists = existing.stream()
+                    .anyMatch(po -> po.getStatus() != ProductionOrderStatus.CANCELLED
+                            && po.getProduct() != null
+                            && product.getId().equals(po.getProduct().getId())
+                            && (po.getFinishedVariant() == null
+                                    || variant.getId().equals(po.getFinishedVariant().getId())));
             if (exists) {
                 continue;
             }
-            Product product = productById.get(entry.getKey());
             try {
                 BomExplosionService.ExplosionResult explosion =
-                        bomExplosionService.explode(product.getId(), entry.getValue());
+                        bomExplosionService.explode(product.getId(), entry.getValue(), variant);
                 ProductionOrder po = new ProductionOrder();
                 po.setCode(businessCodeService.nextProductionOrderCode());
                 po.setProduct(product);
+                po.setFinishedVariant(variant);
                 po.setPlannedQty(entry.getValue());
                 po.setNote("Tự tạo từ đơn đặt trước " + order.getCode());
                 po.setEstimatedMaterialCost(explosion.estimatedMaterialCost());
@@ -240,8 +246,8 @@ public class PreorderFulfillmentService {
                 created++;
             } catch (RuntimeException ex) {
                 log.warn(
-                        "Không tạo được lệnh SX cho product {} từ đơn {}: {}",
-                        entry.getKey(),
+                        "Không tạo được lệnh SX cho quy cách {} từ đơn {}: {}",
+                        variant.getSku(),
                         order.getCode(),
                         ex.getMessage());
             }

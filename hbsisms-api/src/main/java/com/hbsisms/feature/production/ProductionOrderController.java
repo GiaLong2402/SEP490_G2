@@ -58,8 +58,10 @@ public class ProductionOrderController {
     /** Inter1 #48 note: xem trước NVL cần dùng + tồn dùng được (bỏ lô hết hạn). */
     @GetMapping("/material-preview")
     public ProductionMaterialPreviewResponse materialPreview(
-            @RequestParam Long productId, @RequestParam BigDecimal plannedQty) {
-        return productionPlanningService.previewMaterials(productId, plannedQty);
+            @RequestParam Long productId,
+            @RequestParam BigDecimal plannedQty,
+            @RequestParam(required = false) Long variantId) {
+        return productionPlanningService.previewMaterials(productId, plannedQty, variantId);
     }
 
     @PostMapping

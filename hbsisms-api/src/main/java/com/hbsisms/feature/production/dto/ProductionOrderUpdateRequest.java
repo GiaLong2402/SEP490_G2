@@ -10,4 +10,6 @@ public record ProductionOrderUpdateRequest(
                 BigDecimal plannedQty,
         LocalDate plannedDueDate,
         String note,
-        BigDecimal estimatedProductionCost) {}
+        BigDecimal estimatedProductionCost,
+        /** Loại khay làm ra. Bỏ trống → giữ loại khay đã chọn. */
+        Long variantId) {}

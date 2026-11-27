@@ -9,6 +9,8 @@ import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.feature.catalog.Product;
 import com.hbsisms.feature.catalog.ProductBomLine;
 import com.hbsisms.feature.catalog.ProductBomLineRepository;
+import com.hbsisms.feature.catalog.ProductVariant;
+import com.hbsisms.feature.catalog.UnitOfMeasure;
 import com.hbsisms.feature.inventory.RawMaterial;
 import com.hbsisms.feature.inventory.RawMaterialLot;
 import com.hbsisms.feature.inventory.RawMaterialLotRepository;
@@ -55,15 +57,15 @@ class BomExplosionServiceTest {
         when(rawMaterialLotRepository.findFefoUsable(eq(5L), eq(TODAY)))
                 .thenReturn(List.of(lot(raw, "10", "85")));
 
-        // required = 0.4 * 100 * 1.05 = 42
+        // required = 0.4 * 100 / (1 - 0.05) = 42.1053
         BomExplosionService.ExplosionResult result = service.explode(10L, new BigDecimal("100"));
 
         assertThat(result.lines()).hasSize(1);
-        assertThat(result.lines().get(0).getRequiredQty()).isEqualByComparingTo("42.0000");
+        assertThat(result.lines().get(0).getRequiredQty()).isEqualByComparingTo("42.1053");
         assertThat(result.lines().get(0).getOnHandQty()).isEqualByComparingTo("85");
         assertThat(result.lines().get(0).isSufficient()).isTrue();
         assertThat(result.expiredQtys().get(0)).isEqualByComparingTo("115");
-        assertThat(result.estimatedMaterialCost()).isEqualByComparingTo("420.00");
+        assertThat(result.estimatedMaterialCost()).isEqualByComparingTo("421.05");
     }
 
     @Test
@@ -85,6 +87,64 @@ class BomExplosionServiceTest {
     }
 
     @Test
+    void explode_waste50Percent_needsDoubleRawMaterial() {
+        RawMaterial fish = raw(5L, "NL-CA-THU", new BigDecimal("100"));
+        ProductBomLine bom = bomLine(fish, null, BigDecimal.ONE, new BigDecimal("50"));
+        stubSingleLine(bom, fish, "100");
+
+        // Chả cá: 1 kg chả, hao hụt 50% → 10 khay 1 kg cần 20 kg cá
+        BomExplosionService.ExplosionResult result = service.explode(10L, BigDecimal.TEN, tray(1000));
+
+        assertThat(result.lines().get(0).getRequiredQty()).isEqualByComparingTo("20");
+        assertThat(result.lines().get(0).getBomQtyPerUnit()).isEqualByComparingTo("1");
+    }
+
+    @Test
+    void explode_halfKgTray_halvesWeightLinesOnly() {
+        RawMaterial fish = raw(5L, "NL-CA-THU", new BigDecimal("100"));
+        RawMaterial tray = raw(6L, "NL-KHAY", new BigDecimal("100"));
+        tray.setUnit("cai");
+        ProductBomLine fishLine = bomLine(fish, null, BigDecimal.ONE, new BigDecimal("40"));
+        ProductBomLine trayLine = bomLine(tray, null, BigDecimal.ONE, null);
+        trayLine.setUnit(unit("cai"));
+        when(bomLineRepository.findByProduct_IdOrderBySortOrderAscIdAsc(10L)).thenReturn(List.of(fishLine, trayLine));
+        when(rawMaterialLotRepository.sumUsableRemaining(eq(5L), eq(TODAY))).thenReturn(new BigDecimal("100"));
+        when(rawMaterialLotRepository.sumUsableRemaining(eq(6L), eq(TODAY))).thenReturn(new BigDecimal("100"));
+        when(rawMaterialLotRepository.findFefoUsable(eq(5L), eq(TODAY))).thenReturn(List.of());
+        when(rawMaterialLotRepository.findFefoUsable(eq(6L), eq(TODAY))).thenReturn(List.of());
+
+        // 6 khay 0,5 kg, hao hụt 40%: cá = 0,5 × 6 / 0,6 = 5 kg; khay xốp vẫn 6 cái
+        BomExplosionService.ExplosionResult result = service.explode(10L, new BigDecimal("6"), tray(500));
+
+        assertThat(result.lines().get(0).getBomQtyPerUnit()).isEqualByComparingTo("0.5");
+        assertThat(result.lines().get(0).getRequiredQty()).isEqualByComparingTo("5");
+        assertThat(result.lines().get(1).getBomQtyPerUnit()).isEqualByComparingTo("1");
+        assertThat(result.lines().get(1).getRequiredQty()).isEqualByComparingTo("6");
+    }
+
+    @Test
+    void explode_noVariant_treatsTrayAsOneKg() {
+        RawMaterial fish = raw(5L, "NL-CA-THU", new BigDecimal("100"));
+        stubSingleLine(bomLine(fish, null, new BigDecimal("2"), null), fish, "100");
+
+        BomExplosionService.ExplosionResult result = service.explode(10L, new BigDecimal("3"));
+
+        assertThat(result.lines().get(0).getRequiredQty()).isEqualByComparingTo("6");
+    }
+
+    @Test
+    void explode_waste100Percent_returns400() {
+        RawMaterial fish = raw(5L, "NL-CA-THU", new BigDecimal("100"));
+        ProductBomLine bom = bomLine(fish, null, BigDecimal.ONE, new BigDecimal("100"));
+        when(bomLineRepository.findByProduct_IdOrderBySortOrderAscIdAsc(10L)).thenReturn(List.of(bom));
+
+        assertThatThrownBy(() -> service.explode(10L, BigDecimal.ONE))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST))
+                .hasMessageContaining("nhỏ hơn 100%");
+    }
+
+    @Test
     void explode_rejectsComponentProduct() {
         Product component = new Product();
         ReflectionTestUtils.setField(component, "id", 99L);
@@ -103,6 +163,25 @@ class BomExplosionServiceTest {
         assertThatThrownBy(() -> service.explode(10L, BigDecimal.ONE))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("BOM");
+    }
+
+    private void stubSingleLine(ProductBomLine bom, RawMaterial raw, String usable) {
+        when(bomLineRepository.findByProduct_IdOrderBySortOrderAscIdAsc(10L)).thenReturn(List.of(bom));
+        when(rawMaterialLotRepository.sumUsableRemaining(eq(raw.getId()), eq(TODAY))).thenReturn(new BigDecimal(usable));
+        when(rawMaterialLotRepository.findFefoUsable(eq(raw.getId()), eq(TODAY))).thenReturn(List.of());
+    }
+
+    private static ProductVariant tray(int grams) {
+        ProductVariant v = new ProductVariant();
+        v.setUnitWeightG(grams);
+        return v;
+    }
+
+    private static UnitOfMeasure unit(String code) {
+        UnitOfMeasure u = new UnitOfMeasure();
+        u.setCode(code);
+        u.setName(code);
+        return u;
     }
 
     private static ProductBomLine bomLine(
