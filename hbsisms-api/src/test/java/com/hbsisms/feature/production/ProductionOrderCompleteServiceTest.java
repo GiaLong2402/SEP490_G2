@@ -110,6 +110,9 @@ class ProductionOrderCompleteServiceTest {
                     java.math.BigDecimal lot = inv.getArgument(1);
                     return lot == null ? java.math.BigDecimal.ZERO : lot;
                 });
+        org.mockito.Mockito.lenient()
+                .when(bomExplosionService.explodePackaging(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new BomExplosionService.ExplosionResult(java.util.List.of(), java.math.BigDecimal.ZERO));
     }
 
     @Test

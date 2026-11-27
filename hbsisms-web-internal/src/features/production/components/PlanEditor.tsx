@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { isOwnerOrAdmin, useAuth } from '@/features/auth';
 import { useAction } from '@/shared/api/useAction';
 import { date, dateTimeFull, formatThousands, money, num, parseThousands, todayISO } from '@/shared/lib/format';
-import { Button, Chip, ConfirmDialog, DateInput, Field, InfoTip, Select, Textarea } from '@/shared/ui';
+import { Button, Chip, ConfirmDialog, DateInput, Field, InfoTip, Textarea } from '@/shared/ui';
 import { useUnitLabel } from '@/features/receipts';
 import { productionApi } from '../api';
 import { useBomProducts, useMaterialPreview } from '../hooks';
@@ -34,8 +34,7 @@ export const trayName = (v: Pick<ProductionTrayOption, 'sku' | 'packLabel' | 'un
   v.unitWeightG ? `Khay ${num(v.unitWeightG / 1000)} kg` : (v.packLabel?.trim() || v.sku);
 
 /**
- * Bước 01 (Duy, dòng 48): thông tin lệnh + nguyên liệu cần dùng theo định mức, đối chiếu tồn dùng được.
- * Xem trước qua GET /production-orders/material-preview (quyền inventory); tồn không tính lô hết hạn.
+ * Bước 01: thành phẩm + SL quy đổi khay 1 kg + NVL theo kg (VT đóng gói trừ lúc hoàn thành).
  */
 export function PlanEditor({ order }: { order: ProductionOrder | null }) {
   const navigate = useNavigate();
@@ -44,7 +43,6 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
   const unitLabel = useUnitLabel();
   const bomProducts = useBomProducts();
   const [productId, setProductId] = useState(order ? String(order.productId) : '');
-  const [trayId, setTrayId] = useState(order?.finishedVariantId ? String(order.finishedVariantId) : '');
   const [qty, setQty] = useState(order ? String(order.plannedQty) : '');
   const [qtyBadInput, setQtyBadInput] = useState(false);
   const [due, setDue] = useState(order?.plannedDueDate ?? todayISO(3));
@@ -56,7 +54,6 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
   useEffect(() => {
     if (!order) return;
     setProductId(String(order.productId));
-    setTrayId(order.finishedVariantId ? String(order.finishedVariantId) : '');
     setQty(String(order.plannedQty));
     setDue(order.plannedDueDate ?? '');
     setCost(order.estimatedProductionCost ? String(order.estimatedProductionCost) : '');
@@ -75,27 +72,13 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
   const dirty =
     !order ||
     n !== order.plannedQty ||
-    (Number(trayId) || null) !== (order.finishedVariantId ?? null) ||
     (due || null) !== order.plannedDueDate ||
     (production || null) !== order.estimatedProductionCost ||
     (note.trim() || null) !== (order.note ?? null);
   const product = bomProducts.items.find((p) => String(p.id) === productId);
   const pid = Number(productId) || 0;
-  const trays = product?.variants ?? [];
-  const tray = trays.find((v) => String(v.id) === trayId);
-  const variantId = Number(trayId) || null;
 
-  /** Đổi thành phẩm (hoặc loại khay cũ đã ngừng bán) → chọn sẵn khay 1 kg / loại đầu tiên. */
-  useEffect(() => {
-    if (!product) return;
-    if (trays.length === 0) {
-      if (trayId) setTrayId('');
-    } else if (!trays.some((v) => String(v.id) === trayId)) {
-      setTrayId(String(trays[0].id));
-    }
-  }, [product, trays, trayId]);
-
-  const preview = useMaterialPreview(pid > 0 ? pid : null, n > 0 ? n : 0, variantId);
+  const preview = useMaterialPreview(pid > 0 ? pid : null, n > 0 ? n : 0, null);
   const previewRows: PlanRow[] = (preview.data?.materials ?? []).map((m) => ({
     key: String(m.rawMaterialId),
     rawId: Number(m.rawMaterialId),
@@ -134,7 +117,11 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
 
   const errors = {
     product: !(pid > 0) ? 'Chọn thành phẩm' : noBom ? 'Sản phẩm chưa có định mức nguyên liệu (BOM)' : undefined,
-    qty: qtyWhole ? undefined : qtyText === '' && !qtyBadInput ? 'Nhập số khay' : 'Chỉ nhập số khay nguyên: 1, 2, 3…',
+    qty: qtyWhole
+      ? undefined
+      : qtyText === '' && !qtyBadInput
+        ? 'Nhập số khay quy đổi 1 kg'
+        : 'Chỉ nhập số nguyên: 1, 2, 3… (khay quy đổi 1 kg)',
   };
   const valid = !errors.product && !errors.qty;
   const body = {
@@ -142,7 +129,7 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
     plannedDueDate: due || null,
     note: note.trim() || null,
     estimatedProductionCost: production || null,
-    variantId,
+    variantId: null as number | null,
   };
   const persist = () =>
     order ? productionApi.update(order.id, body) : productionApi.create({ productId: pid, ...body });
@@ -202,17 +189,16 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
         items={[
           ['Trạng thái', order ? 'Nháp' : 'Nháp (chưa lưu)'],
           ['Thành phẩm', product?.name ?? order?.productName ?? '—'],
-          ['Loại khay', tray ? trayName(tray) : order?.finishedVariantSku ?? '—'],
-          ['Số lượng', n > 0 ? `${num(n)} khay` : '—'],
+          ['SL kế hoạch', n > 0 ? `${num(n)} khay quy đổi 1 kg` : '—'],
           ['Cần xong', date(due || null)],
-          ['Tiền nguyên liệu (tạm)', money(materialTotal)],
+          ['Tiền NVL theo kg (tạm)', money(materialTotal)],
           ['Chi phí sản xuất', money(production)],
         ]}
         footer={[
           'Giá vốn dự tính',
           <>
             <b className="text-h1 tabular-nums text-ink">{money(estUnit)}</b>
-            <span className="text-ink-muted"> / khay</span>
+            <span className="text-ink-muted"> / khay 1 kg</span>
           </>,
         ]}
       />
@@ -222,7 +208,10 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
 
   return (
     <StepLayout aside={aside}>
-      <Section title="Thông tin lệnh" subtitle="Chọn thành phẩm, loại khay, số lượng và ngày cần xong">
+      <Section
+        title="Thông tin lệnh"
+        subtitle="Chọn thành phẩm và số lượng quy đổi khay 1 kg — chia 1 kg / 0,5 kg lúc báo hoàn thành"
+      >
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="sm:col-span-2 lg:col-span-4">
             <div className="mb-1 text-small font-medium text-ink-muted">
@@ -249,26 +238,13 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
             {touched && errors.product && <p className="mt-1 text-small text-red-fg">{errors.product}</p>}
           </div>
           <Field
-            label="Loại khay"
-            tip="Định mức nguyên liệu tính cho 1 kg. Khay 0,5 kg dùng một nửa phần nguyên liệu cân ký; khay xốp, màng bọc vẫn tính theo từng khay."
+            label="Số lượng kế hoạch"
+            required
+            error={showQtyError ? errors.qty : undefined}
+            tip="Đếm theo khay quy đổi 1 kg (vd. làm 2 kg chả → nhập 2). Chia bao nhiêu khay 1 kg / 0,5 kg chọn lúc hoàn thành."
           >
-            <Select
-              aria-label="Loại khay"
-              value={trayId}
-              disabled={trays.length === 0}
-              onChange={(e) => setTrayId(e.target.value)}
-            >
-              {trays.length === 0 && <option value="">{productId ? 'Chưa có quy cách đang bán' : 'Chọn thành phẩm trước'}</option>}
-              {trays.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {trayName(v)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Số lượng kế hoạch" required error={showQtyError ? errors.qty : undefined}>
             <SuffixInput
-              suffix="khay"
+              suffix="khay 1 kg"
               type="number"
               min={1}
               step={1}
@@ -283,8 +259,8 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
             <DateInput min={todayISO()} value={due} onChange={setDue} />
           </Field>
           <Field
-            label="Chi phí sản xuất dự tính"
-            tip="Tiền công, điện, gas… cho cả lệnh. Cộng với tiền nguyên liệu để ra giá vốn."
+            label="Chi phí sản xuất dự tính (không bắt buộc)"
+            tip="Ước tiền công, điện, gas… để xem giá vốn tạm. Chi phí thực tế ghi lúc báo làm xong."
           >
             <SuffixInput
               suffix="₫"
@@ -310,11 +286,11 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
 
       <Section
         flush
-        title="Nguyên liệu cần dùng"
+        title="Nguyên liệu theo kg"
         subtitle={
           n > 0
-            ? `Theo định mức cho ${num(n)} ${tray ? trayName(tray).toLowerCase() : 'khay'}, đã cộng hao hụt`
-            : 'Nhập số lượng để tính nguyên liệu'
+            ? `Định mức cho ${num(n)} khay quy đổi 1 kg (đã cộng hao hụt). Khay xốp / màng trừ lúc đóng gói.`
+            : 'Nhập số lượng để tính nguyên liệu theo kg'
         }
         right={
           productId ? (
@@ -329,7 +305,7 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
             <thead>
               <tr className="bg-thead text-left text-micro uppercase tracking-wide text-ink-muted">
                 <th className="px-4 py-2.5 font-semibold">Nguyên liệu</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Định mức / khay</th>
+                <th className="px-3 py-2.5 text-right font-semibold">Định mức / kg</th>
                 <th className="px-3 py-2.5 text-right font-semibold">Hao hụt</th>
                 <th className="px-3 py-2.5 text-right font-semibold">Cần dùng</th>
                 <th className="w-[230px] px-3 py-2.5 font-semibold">Tồn kho</th>
@@ -400,8 +376,8 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
           <span className="inline-flex items-center gap-1">
             {rows.length} nguyên liệu · Tạm tính <b className="tabular-nums text-ink">{money(materialTotal)}</b>
             <InfoTip label="Ghi chú tạm tính">
-              Tiền nguyên liệu ở bước này là tạm tính theo giá nhập các lô còn dùng được. Sau khi xuất kho
-              (bước 2), hệ thống tính lại đúng theo lô được lấy.
+              Chỉ NVL theo kg (cá, mực…). Khay xốp / màng bọc trừ khi báo hoàn thành theo số khay vật lý.
+              Tiền tạm theo WAC / giá lô; xuất kho (bước 2) tính lại theo WAC.
             </InfoTip>
           </span>
         </div>
@@ -456,7 +432,7 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
         )}
         <span>
           {canApprove
-            ? 'Duyệt xong hệ thống tự tạo phiếu xuất nguyên liệu (chờ xuất).'
+            ? 'Duyệt xong tạo phiếu xuất NVL theo kg (chờ xuất). VT đóng gói trừ lúc hoàn thành.'
             : 'Chỉ Chủ / Admin được duyệt lệnh — nhân viên kho lưu lệnh và chờ duyệt.'}
         </span>
       </ActionBar>

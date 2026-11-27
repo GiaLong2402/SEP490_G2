@@ -32,6 +32,13 @@ export const productionApi = {
       variantId ? { productId, plannedQty, variantId } : { productId, plannedQty },
       signal,
     ),
+  /** VT đóng gói (xốp, túi…) theo số khay vật lý lúc báo hoàn thành. */
+  packagingPreview: (productId: ID, physicalTrayCount: number, signal?: AbortSignal) =>
+    api.get<ProductionMaterialPreview>(
+      '/production-orders/packaging-preview',
+      { productId, physicalTrayCount },
+      signal,
+    ),
 
   // Dòng 51 (Cường) — đã có; defectQty / defectReason / leftovers cần Cường nhận thêm.
   complete: (id: ID, body: ProductionCompleteInput) => api.post<ProductionOrder>(`/production-orders/${id}/complete`, body),

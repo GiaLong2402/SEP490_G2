@@ -56,6 +56,13 @@ export const useMaterialPreview = (productId: ID | null, plannedQty: number, var
     enabled: productId !== null && Number.isFinite(plannedQty) && plannedQty > 0,
   });
 
+export const usePackagingPreview = (productId: ID | null, physicalTrayCount: number) =>
+  useQuery({
+    queryKey: ['production-packaging-preview', productId, physicalTrayCount],
+    queryFn: ({ signal }) => productionApi.packagingPreview(productId as ID, physicalTrayCount, signal),
+    enabled: productId !== null && Number.isFinite(physicalTrayCount) && physicalTrayCount > 0,
+  });
+
 export const useProductVariants = (productId: ID | null) =>
   useQuery({
     queryKey: ['production-product', productId],

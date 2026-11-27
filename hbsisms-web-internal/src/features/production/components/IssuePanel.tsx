@@ -218,7 +218,24 @@ export function IssuePanel({ order }: { order: ProductionOrder }) {
             </div>
           </div>
         ) : (
-          <IssuedTable lines={lines} />
+          (() => {
+            const weightIds = new Set((order.materials ?? []).map((m) => Number(m.rawMaterialId)));
+            const weightLines = lines.filter((l) => weightIds.has(Number(l.rawMaterialId)));
+            const packLines = lines.filter((l) => !weightIds.has(Number(l.rawMaterialId)));
+            return (
+              <div className="space-y-1">
+                <IssuedTable lines={weightLines.length ? weightLines : lines} />
+                {packLines.length > 0 && (
+                  <>
+                    <div className="border-t border-line px-4 py-2.5 text-small font-semibold text-ink">
+                      VT đóng gói (trừ lúc báo làm xong)
+                    </div>
+                    <IssuedTable lines={packLines} />
+                  </>
+                )}
+              </div>
+            );
+          })()
         )}
       </Section>
 
