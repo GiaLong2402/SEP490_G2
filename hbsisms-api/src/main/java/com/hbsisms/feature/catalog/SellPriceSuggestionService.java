@@ -25,7 +25,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Task 59 — gợi ý giá bán từ WAC; Áp dụng đổi listPrice + ghi bảng lịch sử giai đoạn + audit.
+ * Task 59 — gợi ý giá bán từ <strong>WAC liên hoàn</strong> (số dư chạy, không cần kỳ OPEN); Áp dụng đổi listPrice + lịch sử + audit.
+ *
+ * <p>Công thức ĐG: {@code (GT tồn trước + GT nhập TP) / (SL tồn trước + SL nhập TP)} — SL/GT trước là
+ * tồn còn lại, không phải tổng lịch sử. Giá gợi ý neo <strong>chuẩn 1 kg</strong>; khay 0,5 kg = nửa giá.
+ * Chỉ có khay 0,5 kg thì WAC × 2 rồi mới × (1+% lời).
  */
 @Service
 @Transactional(readOnly = true)
@@ -59,28 +63,15 @@ public class SellPriceSuggestionService {
     }
 
     public SellPriceSuggestionResponse suggest(Long variantId, SellPriceCostSource source) {
-        ProductVariant variant = requireVariant(variantId);
+        ProductVariant requested = requireVariant(variantId);
         SellPriceCostSource costSource = source == null ? SellPriceCostSource.WAC : source;
-        CostSnapshot cost = resolveCost(variant, costSource);
-        Markup markup = resolveMarkup(variant.getProduct());
-        BigDecimal suggested = appConfigService.sellPriceFromUnitCost(cost.unitCost(), markup.percent());
+        PricePlan plan = buildPlan(requested, costSource);
+        BigDecimal suggested = appConfigService.sellPriceFromUnitCost(plan.oneKgCost().unitCost(), plan.markup().percent());
         if (suggested == null) {
             throw ApiException.badRequest(
                     "Không tính được giá gợi ý — thiếu giá vốn hợp lệ cho nguồn " + costSource);
         }
-        return new SellPriceSuggestionResponse(
-                variant.getId(),
-                variant.getSku(),
-                variant.getPackLabel(),
-                variant.getListPrice(),
-                costSource,
-                cost.unitCost(),
-                cost.label(),
-                cost.productionOrderId(),
-                cost.productionOrderCode(),
-                markup.percent(),
-                markup.source(),
-                suggested);
+        return toSuggestionResponse(plan, costSource, suggested);
     }
 
     public List<SellPriceHistoryResponse> historyForVariant(Long variantId) {
@@ -95,59 +86,114 @@ public class SellPriceSuggestionService {
     @Transactional
     public SellPriceSuggestionResponse apply(Long variantId, ApplySellPriceRequest request, Long actorId) {
         ProductVariant requested = requireVariant(variantId);
-        // Luôn neo giá theo khay 1 kg (WAC + % lời); khay 0,5 kg = nửa giá 1 kg.
-        ProductVariant oneKg = PackSizes.isOneKg(requested)
-                ? requested
-                : findSibling(requested, true).orElse(requested);
-        SellPriceSuggestionResponse suggestion = suggest(oneKg.getId(), request.costSource());
-        BigDecimal newOneKgPrice = suggestion.suggestedListPrice();
+        SellPriceCostSource costSource = request.costSource() == null ? SellPriceCostSource.WAC : request.costSource();
+        PricePlan plan = buildPlan(requested, costSource);
+        BigDecimal newOneKgPrice =
+                appConfigService.sellPriceFromUnitCost(plan.oneKgCost().unitCost(), plan.markup().percent());
+        if (newOneKgPrice == null) {
+            throw ApiException.badRequest(
+                    "Không tính được giá gợi ý — thiếu giá vốn hợp lệ cho nguồn " + costSource);
+        }
         Instant now = Instant.now();
+        SellPriceSuggestionResponse suggestion = toSuggestionResponse(plan, costSource, newOneKgPrice);
 
-        writeListPrice(oneKg, newOneKgPrice, suggestion, actorId, now);
+        // Chỉ ghi giá 1 kg lên quy cách 1 kg thật — không ghi nhầm lên khay 0,5 kg.
+        if (plan.oneKg() != null) {
+            writeListPrice(plan.oneKg(), newOneKgPrice, suggestion, actorId, now);
+        }
 
-        ProductVariant half = PackSizes.isHalfKg(requested)
-                ? requested
-                : findSibling(oneKg, false).orElse(null);
         BigDecimal halfPrice = appConfigService.halfKgSellPrice(newOneKgPrice);
-        if (half != null && halfPrice != null && !half.getId().equals(oneKg.getId())) {
+        if (plan.half() != null && halfPrice != null) {
             writeListPrice(
-                    half,
+                    plan.half(),
                     halfPrice,
                     new SellPriceSuggestionResponse(
-                            half.getId(),
-                            half.getSku(),
-                            half.getPackLabel(),
-                            half.getListPrice(),
-                            suggestion.costSource(),
-                            suggestion.unitCost() == null
-                                    ? null
-                                    : suggestion
-                                            .unitCost()
-                                            .multiply(new BigDecimal("0.5"))
-                                            .setScale(2, RoundingMode.HALF_UP),
-                            suggestion.costSourceLabel() + " · quy đổi 0,5 kg",
-                            suggestion.productionOrderId(),
-                            suggestion.productionOrderCode(),
-                            suggestion.markupPercent(),
-                            suggestion.markupSource(),
+                            plan.half().getId(),
+                            plan.half().getSku(),
+                            plan.half().getPackLabel(),
+                            plan.half().getListPrice(),
+                            costSource,
+                            plan.oneKgCost()
+                                    .unitCost()
+                                    .multiply(new BigDecimal("0.5"))
+                                    .setScale(2, RoundingMode.HALF_UP),
+                            plan.oneKgCost().label() + " · quy đổi 0,5 kg",
+                            plan.oneKgCost().productionOrderId(),
+                            plan.oneKgCost().productionOrderCode(),
+                            plan.markup().percent(),
+                            plan.markup().source(),
                             halfPrice),
                     actorId,
                     now);
         }
 
+        return suggestion;
+    }
+
+    /**
+     * Lập kế hoạch neo giá 1 kg:
+     * <ul>
+     *   <li>Có quy cách 1 kg → WAC/giá thành của quy cách đó
+     *   <li>Chỉ có 0,5 kg → WAC 0,5 kg × 2 (tương đương 1 kg), chỉ cập nhật khay 0,5 khi apply
+     * </ul>
+     */
+    private PricePlan buildPlan(ProductVariant requested, SellPriceCostSource costSource) {
+        ProductVariant oneKg = PackSizes.isOneKg(requested)
+                ? requested
+                : findSibling(requested, true).orElse(null);
+        ProductVariant half = PackSizes.isHalfKg(requested)
+                ? requested
+                : (oneKg != null ? findSibling(oneKg, false).orElse(null) : null);
+
+        if (oneKg == null && half == null) {
+            // Quy cách lạ: coi như chuẩn 1 khay / 1 kg để không chặn.
+            oneKg = requested;
+        }
+
+        CostSnapshot oneKgCost;
+        String displaySku;
+        String displayPack;
+        BigDecimal displayCurrent;
+
+        if (oneKg != null) {
+            oneKgCost = resolveCost(oneKg, costSource);
+            displaySku = oneKg.getSku();
+            displayPack = oneKg.getPackLabel();
+            displayCurrent = oneKg.getListPrice();
+        } else {
+            CostSnapshot halfCost = resolveCost(half, costSource);
+            oneKgCost = new CostSnapshot(
+                    halfCost.unitCost().multiply(new BigDecimal("2")).setScale(2, RoundingMode.HALF_UP),
+                    halfCost.label() + " · quy đổi ×2 từ khay 0,5 kg",
+                    halfCost.productionOrderId(),
+                    halfCost.productionOrderCode());
+            displaySku = half.getSku();
+            displayPack = "1 kg (quy đổi từ " + nullToEmpty(half.getPackLabel()) + ")";
+            displayCurrent = half.getListPrice() != null && half.getListPrice().signum() > 0
+                    ? AppConfigService.roundToThousand(half.getListPrice().multiply(new BigDecimal("2")))
+                    : null;
+        }
+
+        Markup markup = resolveMarkup(requested.getProduct());
+        return new PricePlan(oneKg, half, oneKgCost, markup, displaySku, displayPack, displayCurrent);
+    }
+
+    private SellPriceSuggestionResponse toSuggestionResponse(
+            PricePlan plan, SellPriceCostSource costSource, BigDecimal suggestedOneKg) {
+        Long id = plan.oneKg() != null ? plan.oneKg().getId() : plan.half().getId();
         return new SellPriceSuggestionResponse(
-                suggestion.variantId(),
-                suggestion.sku(),
-                suggestion.packLabel(),
-                newOneKgPrice,
-                suggestion.costSource(),
-                suggestion.unitCost(),
-                suggestion.costSourceLabel(),
-                suggestion.productionOrderId(),
-                suggestion.productionOrderCode(),
-                suggestion.markupPercent(),
-                suggestion.markupSource(),
-                newOneKgPrice);
+                id,
+                plan.displaySku(),
+                plan.displayPackLabel(),
+                plan.displayCurrentListPrice(),
+                costSource,
+                plan.oneKgCost().unitCost(),
+                plan.oneKgCost().label(),
+                plan.oneKgCost().productionOrderId(),
+                plan.oneKgCost().productionOrderCode(),
+                plan.markup().percent(),
+                plan.markup().source(),
+                suggestedOneKg);
     }
 
     private void writeListPrice(
@@ -229,10 +275,10 @@ public class SellPriceSuggestionService {
         }
         return costingService
                 .currentFinishedAvgUnitCost(variant.getId())
-                .map(c -> new CostSnapshot(c, "ĐG bình quân kỳ WAC hiện hành", null, null))
+                .map(c -> new CostSnapshot(c, "ĐG WAC liên hoàn (sau nhập / tồn hiện hành)", null, null))
                 .or(() -> productionCost(variant.getId()))
                 .orElseThrow(() -> ApiException.badRequest(
-                        "Chưa có ĐG WAC và chưa có lệnh SX hoàn thành cho quy cách này"));
+                        "Chưa có ĐG WAC liên hoàn và chưa có lệnh SX hoàn thành cho quy cách này"));
     }
 
     private Optional<CostSnapshot> productionCost(Long variantId) {
@@ -273,6 +319,19 @@ public class SellPriceSuggestionService {
                 .findWithProductAndCategoryById(id)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy quy cách"));
     }
+
+    private static String nullToEmpty(String s) {
+        return s == null ? "" : s;
+    }
+
+    private record PricePlan(
+            ProductVariant oneKg,
+            ProductVariant half,
+            CostSnapshot oneKgCost,
+            Markup markup,
+            String displaySku,
+            String displayPackLabel,
+            BigDecimal displayCurrentListPrice) {}
 
     private record CostSnapshot(
             BigDecimal unitCost, String label, Long productionOrderId, String productionOrderCode) {}

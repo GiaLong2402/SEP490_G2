@@ -1,4 +1,5 @@
-import type { InputHTMLAttributes, ReactNode } from 'react';
+import type { ChangeEvent, InputHTMLAttributes, ReactNode } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { ProductionOrderStatus } from '@/shared/domain/enums';
 import { date, dateTimeFull } from '@/shared/lib/format';
@@ -49,13 +50,44 @@ export function ActionBar({ children, actions, stacked }: { children: ReactNode;
   );
 }
 
-/** Ô nhập + đơn vị tách cột (không đè số). */
+function clampStep(n: number, min?: number, max?: number) {
+  let v = n;
+  if (min != null && Number.isFinite(min) && v < min) v = min;
+  if (max != null && Number.isFinite(max) && v > max) v = max;
+  return v;
+}
+
+/** Hỗ trợ cả số thường và chuỗi có dấu chấm nghìn (vd. 20.000). */
+function parseStepperValue(value: string | number | readonly string[] | undefined): number {
+  if (value == null || value === '') return Number.NaN;
+  return Number(String(Array.isArray(value) ? value[0] : value).replace(/\./g, '').replace(',', '.'));
+}
+
+/** Ô nhập + đơn vị tách cột (không đè số). `steppable` = nút ± bên phải trước đơn vị. */
 export function SuffixInput({
   suffix,
   className = '',
   disabled,
+  steppable = false,
+  step = 1,
+  min,
+  max,
+  value,
+  onChange,
   ...rest
-}: InputHTMLAttributes<HTMLInputElement> & { suffix: string }) {
+}: InputHTMLAttributes<HTMLInputElement> & { suffix: string; steppable?: boolean }) {
+  const minN = min != null && min !== '' ? Number(min) : undefined;
+  const maxN = max != null && max !== '' ? Number(max) : undefined;
+  const stepN = Number(step) > 0 ? Number(step) : 1;
+
+  const current = parseStepperValue(value);
+  const bump = (dir: 1 | -1) => {
+    if (disabled || !onChange) return;
+    const base = Number.isFinite(current) ? current : (minN ?? 0);
+    const next = clampStep(Math.round((base + dir * stepN) * 1000) / 1000, minN, maxN);
+    onChange({ target: { value: String(next) } } as ChangeEvent<HTMLInputElement>);
+  };
+
   return (
     <div
       className={`flex h-[34px] w-full overflow-hidden rounded-sm border border-field bg-card focus-within:border-primary focus-within:outline-none focus-within:ring-2 focus-within:ring-primary/20 ${
@@ -66,7 +98,36 @@ export function SuffixInput({
         disabled={disabled}
         className={`h-full min-w-0 flex-1 border-0 bg-transparent px-2.5 text-body tabular-nums text-ink outline-none placeholder:text-ink-faint disabled:text-ink-faint [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${className}`}
         {...rest}
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={onChange}
       />
+      {steppable && (
+        <div className="flex shrink-0 flex-col border-l border-line">
+          <button
+            type="button"
+            tabIndex={-1}
+            disabled={disabled || (maxN != null && Number.isFinite(current) && current >= maxN)}
+            aria-label="Tăng"
+            className="flex h-[17px] w-7 items-center justify-center text-ink-muted hover:bg-rowalt hover:text-ink disabled:opacity-40"
+            onClick={() => bump(1)}
+          >
+            <ChevronUp size={12} aria-hidden />
+          </button>
+          <button
+            type="button"
+            tabIndex={-1}
+            disabled={disabled || (minN != null && (Number.isFinite(current) ? current : 0) <= minN)}
+            aria-label="Giảm"
+            className="flex h-[17px] w-7 items-center justify-center border-t border-line text-ink-muted hover:bg-rowalt hover:text-ink disabled:opacity-40"
+            onClick={() => bump(-1)}
+          >
+            <ChevronDown size={12} aria-hidden />
+          </button>
+        </div>
+      )}
       <span
         aria-hidden
         className="flex shrink-0 items-center border-l border-line bg-rowalt/70 px-2.5 text-small text-ink-muted whitespace-nowrap"

@@ -19,6 +19,7 @@ function readCollapsed() {
 
 function SidebarContent({ collapsed }: { collapsed: boolean }) {
   const { can } = useAuth();
+  const allTos = navigation.flatMap((g) => g.items.map((i) => i.to));
   return (
     <nav aria-label="Điều hướng chính" className="px-2 py-2">
       {navigation.map((group, index) => {
@@ -39,7 +40,8 @@ function SidebarContent({ collapsed }: { collapsed: boolean }) {
                 <li key={item.to}>
                   <NavLink
                     to={item.to}
-                    end={item.to === '/'}
+                    // Exact match when another nav item is nested under this path (vd. /costing vs /costing/wac).
+                    end={item.to === '/' || allTos.some((to) => to !== item.to && to.startsWith(`${item.to}/`))}
                     title={collapsed ? item.label : undefined}
                     aria-label={collapsed ? item.label : undefined}
                     className={({ isActive }) =>

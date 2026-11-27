@@ -5,6 +5,7 @@ import com.hbsisms.feature.catalog.ProductVariant;
 import com.hbsisms.feature.catalog.ProductVariantRepository;
 import com.hbsisms.feature.costing.dto.CostItemBalanceResponse;
 import com.hbsisms.feature.costing.dto.CostPeriodResponse;
+import com.hbsisms.feature.costing.dto.CostRunningBalanceResponse;
 import com.hbsisms.feature.costing.dto.DiscardCostPeriodRequest;
 import com.hbsisms.feature.costing.dto.OpenCostPeriodRequest;
 import com.hbsisms.feature.costing.dto.ReopenCostPeriodRequest;
@@ -46,6 +47,8 @@ public class CostingService {
 
     private final CostPeriodRepository periodRepository;
     private final CostItemBalanceRepository balanceRepository;
+    private final CostRunningBalanceRepository runningBalanceRepository;
+    private final CostRunningWacService runningWacService;
     private final RawMaterialLotRepository rawMaterialLotRepository;
     private final RawMaterialRepository rawMaterialRepository;
     private final StockRepository stockRepository;
@@ -55,6 +58,8 @@ public class CostingService {
     public CostingService(
             CostPeriodRepository periodRepository,
             CostItemBalanceRepository balanceRepository,
+            CostRunningBalanceRepository runningBalanceRepository,
+            CostRunningWacService runningWacService,
             RawMaterialLotRepository rawMaterialLotRepository,
             RawMaterialRepository rawMaterialRepository,
             StockRepository stockRepository,
@@ -62,6 +67,8 @@ public class CostingService {
             AuditLogService auditLogService) {
         this.periodRepository = periodRepository;
         this.balanceRepository = balanceRepository;
+        this.runningBalanceRepository = runningBalanceRepository;
+        this.runningWacService = runningWacService;
         this.rawMaterialLotRepository = rawMaterialLotRepository;
         this.rawMaterialRepository = rawMaterialRepository;
         this.stockRepository = stockRepository;
@@ -94,14 +101,45 @@ public class CostingService {
         return enrichBalances(rows);
     }
 
+    /** Bảng WAC liên hoàn hiện hành (NVL + TP), không phụ thuộc kỳ. */
+    public List<CostRunningBalanceResponse> listRunningBalances(CostItemType itemType) {
+        List<CostRunningBalance> rows = itemType == null
+                ? runningBalanceRepository.findAllByOrderByItemTypeAscItemIdAsc()
+                : runningBalanceRepository.findByItemTypeOrderByItemIdAsc(itemType);
+        return enrichRunningBalances(rows);
+    }
+
     private List<CostItemBalanceResponse> enrichBalances(List<CostItemBalance> rows) {
+        ItemLabels labels = resolveItemLabels(rows, CostItemBalance::getItemType, CostItemBalance::getItemId);
+        List<CostItemBalanceResponse> out = new ArrayList<>(rows.size());
+        for (CostItemBalance row : rows) {
+            String[] cn = labels.codeName(row.getItemType(), row.getItemId());
+            out.add(CostItemBalanceResponse.of(row, cn[0], cn[1]));
+        }
+        return out;
+    }
+
+    private List<CostRunningBalanceResponse> enrichRunningBalances(List<CostRunningBalance> rows) {
+        ItemLabels labels = resolveItemLabels(rows, CostRunningBalance::getItemType, CostRunningBalance::getItemId);
+        List<CostRunningBalanceResponse> out = new ArrayList<>(rows.size());
+        for (CostRunningBalance row : rows) {
+            String[] cn = labels.codeName(row.getItemType(), row.getItemId());
+            out.add(CostRunningBalanceResponse.of(row, cn[0], cn[1], labels.unit(row.getItemType(), row.getItemId())));
+        }
+        return out;
+    }
+
+    private <T> ItemLabels resolveItemLabels(
+            List<T> rows,
+            Function<T, CostItemType> typeFn,
+            Function<T, Long> idFn) {
         Set<Long> rawIds = new HashSet<>();
         Set<Long> variantIds = new HashSet<>();
-        for (CostItemBalance row : rows) {
-            if (row.getItemType() == CostItemType.RAW_MATERIAL) {
-                rawIds.add(row.getItemId());
+        for (T row : rows) {
+            if (typeFn.apply(row) == CostItemType.RAW_MATERIAL) {
+                rawIds.add(idFn.apply(row));
             } else {
-                variantIds.add(row.getItemId());
+                variantIds.add(idFn.apply(row));
             }
         }
         Map<Long, RawMaterial> rawById = rawIds.isEmpty()
@@ -112,28 +150,36 @@ public class CostingService {
                 ? Map.of()
                 : productVariantRepository.findWithProductByIdIn(variantIds).stream()
                         .collect(Collectors.toMap(ProductVariant::getId, Function.identity()));
+        return new ItemLabels(rawById, variantById);
+    }
 
-        List<CostItemBalanceResponse> out = new ArrayList<>(rows.size());
-        for (CostItemBalance row : rows) {
-            String code;
-            String name;
-            if (row.getItemType() == CostItemType.RAW_MATERIAL) {
-                RawMaterial m = rawById.get(row.getItemId());
-                code = m == null ? "#" + row.getItemId() : m.getCode();
-                name = m == null ? "NVL đã xóa" : m.getName();
-            } else {
-                ProductVariant v = variantById.get(row.getItemId());
-                if (v == null) {
-                    code = "#" + row.getItemId();
-                    name = "SKU đã xóa";
-                } else {
-                    code = v.getSku();
-                    name = v.getProduct().getName() + " · " + v.getPackLabel();
-                }
+    private record ItemLabels(Map<Long, RawMaterial> rawById, Map<Long, ProductVariant> variantById) {
+        String[] codeName(CostItemType type, Long itemId) {
+            if (type == CostItemType.RAW_MATERIAL) {
+                RawMaterial m = rawById.get(itemId);
+                return m == null
+                        ? new String[] {"#" + itemId, "NVL đã xóa"}
+                        : new String[] {m.getCode(), m.getName()};
             }
-            out.add(CostItemBalanceResponse.of(row, code, name));
+            ProductVariant v = variantById.get(itemId);
+            if (v == null) {
+                return new String[] {"#" + itemId, "SKU đã xóa"};
+            }
+            return new String[] {v.getSku(), v.getProduct().getName() + " · " + v.getPackLabel()};
         }
-        return out;
+
+        /** NVL theo đơn vị danh mục; TP theo khay vật lý trên sổ tồn. */
+        String unit(CostItemType type, Long itemId) {
+            if (type == CostItemType.RAW_MATERIAL) {
+                RawMaterial m = rawById.get(itemId);
+                if (m == null) {
+                    return "";
+                }
+                String u = m.getUnit();
+                return u == null ? "" : u;
+            }
+            return "khay";
+        }
     }
 
     /**
@@ -301,19 +347,21 @@ public class CostingService {
     }
 
     /**
-     * Task 59 — ĐG bình quân TP hiện hành: kỳ OPEN, không có thì kỳ CLOSED mới nhất.
+     * Task 59 — ĐG bình quân TP hiện hành từ WAC liên hoàn (số dư chạy; không phụ thuộc kỳ OPEN).
      */
     public Optional<BigDecimal> currentFinishedAvgUnitCost(Long variantId) {
         return currentAvgUnitCost(CostItemType.FINISHED, variantId);
     }
 
-    /** ĐG bình quân NVL hiện hành (kỳ OPEN, không có thì kỳ CLOSED mới nhất). */
+    /**
+     * WAC liên hoàn NVL hiện hành (số dư chạy sau mỗi nhập/xuất).
+     */
     public Optional<BigDecimal> currentRawAvgUnitCost(Long rawMaterialId) {
         return currentAvgUnitCost(CostItemType.RAW_MATERIAL, rawMaterialId);
     }
 
     /**
-     * Đơn giá xuất SX: ưu tiên WAC NVL; chưa có WAC → giá lô (fallback).
+     * Đơn giá xuất NVL cho SX: ưu tiên WAC liên hoàn; chưa có WAC → giá lô (fallback).
      */
     public BigDecimal resolveRawIssueUnitCost(Long rawMaterialId, BigDecimal lotUnitPrice) {
         return currentRawAvgUnitCost(rawMaterialId)
@@ -324,22 +372,36 @@ public class CostingService {
         if (itemId == null) {
             return Optional.empty();
         }
+        Optional<BigDecimal> fromRunning = runningWacService.currentAvgUnitCost(itemType, itemId);
+        if (fromRunning.isPresent()) {
+            return fromRunning;
+        }
+        // Fallback một lần từ sổ kỳ (migrate), rồi ghi vào running nếu có.
+        Optional<CostItemBalance> fromPeriod = Optional.empty();
         Optional<CostPeriod> open = periodRepository.findByStatus(CostPeriodStatus.OPEN);
         if (open.isPresent()) {
-            Optional<BigDecimal> fromOpen = balanceRepository
-                    .findByPeriod_IdAndItemTypeAndItemId(open.get().getId(), itemType, itemId)
-                    .map(CostItemBalance::getAvgUnitCost)
-                    .filter(c -> c != null && c.signum() > 0);
-            if (fromOpen.isPresent()) {
-                return fromOpen;
+            fromPeriod = balanceRepository.findByPeriod_IdAndItemTypeAndItemId(
+                    open.get().getId(), itemType, itemId);
+        }
+        if (fromPeriod.isEmpty()) {
+            fromPeriod = periodRepository
+                    .findFirstByStatusOrderByPeriodStartDesc(CostPeriodStatus.CLOSED)
+                    .flatMap(p -> balanceRepository.findByPeriod_IdAndItemTypeAndItemId(
+                            p.getId(), itemType, itemId));
+        }
+        if (fromPeriod.isPresent()) {
+            CostItemBalance bal = fromPeriod.get();
+            BigDecimal avg = bal.getAvgUnitCost();
+            if (avg != null && avg.signum() > 0) {
+                runningWacService.ensurePresent(
+                        itemType,
+                        itemId,
+                        bal.getClosingQty() != null ? bal.getClosingQty() : BigDecimal.ZERO,
+                        bal.getClosingValue() != null ? bal.getClosingValue() : BigDecimal.ZERO);
+                return Optional.of(avg);
             }
         }
-        return periodRepository
-                .findFirstByStatusOrderByPeriodStartDesc(CostPeriodStatus.CLOSED)
-                .flatMap(p -> balanceRepository.findByPeriod_IdAndItemTypeAndItemId(
-                        p.getId(), itemType, itemId))
-                .map(CostItemBalance::getAvgUnitCost)
-                .filter(c -> c != null && c.signum() > 0);
+        return Optional.empty();
     }
 
     public void assertPeriodMutable(CostPeriod period) {
@@ -368,12 +430,32 @@ public class CostingService {
         return type.name() + ":" + itemId;
     }
 
+    /**
+     * Ưu tiên seed từ WAC chạy; không có → carry-forward / snapshot lô, rồi đảm bảo running có dòng.
+     */
     private List<CostItemBalance> seedOpeningBalances(CostPeriod period, YearMonth yearMonth) {
-        Optional<CostPeriod> previous = periodRepository.findByPeriodStart(yearMonth.minusMonths(1).atDay(1));
-        if (previous.isPresent() && previous.get().getStatus() == CostPeriodStatus.CLOSED) {
-            return carryForward(period, previous.get());
+        List<CostRunningBalance> running = runningWacService.listWithStock();
+        if (!running.isEmpty()) {
+            List<CostItemBalance> fromRunning = new ArrayList<>(running.size());
+            for (CostRunningBalance r : running) {
+                fromRunning.add(CostItemBalance.opening(
+                        period, r.getItemType(), r.getItemId(), r.getQtyOnHand(), r.getInventoryValue()));
+            }
+            return fromRunning;
         }
-        return snapshotPhysicalStock(period);
+
+        Optional<CostPeriod> previous = periodRepository.findByPeriodStart(yearMonth.minusMonths(1).atDay(1));
+        List<CostItemBalance> seeded;
+        if (previous.isPresent() && previous.get().getStatus() == CostPeriodStatus.CLOSED) {
+            seeded = carryForward(period, previous.get());
+        } else {
+            seeded = snapshotPhysicalStock(period);
+        }
+        for (CostItemBalance row : seeded) {
+            runningWacService.ensurePresent(
+                    row.getItemType(), row.getItemId(), row.getOpeningQty(), row.getOpeningValue());
+        }
+        return seeded;
     }
 
     /** Tồn cuối kỳ trước → tồn đầu kỳ mới (sau khóa sổ). */

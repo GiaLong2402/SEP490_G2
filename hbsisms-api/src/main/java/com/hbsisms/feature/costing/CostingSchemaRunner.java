@@ -31,6 +31,34 @@ public class CostingSchemaRunner implements ApplicationRunner {
         ensureCostPeriodTable();
         ensureCostItemBalanceTable();
         ensureOneOpenPeriodIndex();
+        ensureCostRunningBalanceTable();
+    }
+
+    /** WAC liên hoàn ngoài sổ kỳ — nguồn sự thật ĐG/GT/SL. */
+    private void ensureCostRunningBalanceTable() {
+        try {
+            jdbc.execute(
+                    "create table if not exists "
+                            + T
+                            + "cost_running_balance ("
+                            + "id bigserial primary key, "
+                            + "item_type varchar(20) not null, "
+                            + "item_id bigint not null, "
+                            + "qty_on_hand numeric(14,3) not null default 0, "
+                            + "inventory_value numeric(14,2) not null default 0, "
+                            + "avg_unit_cost numeric(14,2), "
+                            + "updated_at timestamptz not null default now(), "
+                            + "constraint uk_cost_run_item unique (item_type, item_id), "
+                            + "constraint chk_cost_run_nonneg check ("
+                            + "qty_on_hand >= 0 and inventory_value >= 0))");
+            jdbc.execute(
+                    "create index if not exists idx_cost_run_item on "
+                            + T
+                            + "cost_running_balance (item_type, item_id)");
+            log.info("Ensured {}.cost_running_balance table", SCHEMA);
+        } catch (Exception ex) {
+            log.warn("Could not ensure cost_running_balance: {}", ex.getMessage());
+        }
     }
 
     private void ensureCostPeriodTable() {

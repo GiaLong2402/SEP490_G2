@@ -13,13 +13,10 @@ export default function PhoneLoginForm({
   phone,
   keepLoggedIn,
   error,
-  infoMessage,
   status,
   phoneInputRef,
   onChangePhone,
   onChangeKeepLoggedIn,
-  onChangePhoneClick,
-  onLostPhoneClick,
   onSubmit,
 }) {
   return (
@@ -28,12 +25,6 @@ export default function PhoneLoginForm({
       <p className="auth-card__lead">
         Nhập số điện thoại để tiếp tục mua hàng tại Hòa Bình.
       </p>
-
-      {infoMessage && (
-        <p className="auth-info" role="status">
-          {infoMessage}
-        </p>
-      )}
 
       <form className="auth-form" onSubmit={onSubmit} noValidate>
         <div className="auth-field">
@@ -93,10 +84,6 @@ export default function PhoneLoginForm({
               </span>
             </span>
           </label>
-
-          <button type="button" className="auth-change-phone" onClick={onChangePhoneClick}>
-            Đổi SĐT
-          </button>
         </div>
 
         <Button
@@ -110,10 +97,6 @@ export default function PhoneLoginForm({
           {status !== 'sending' && <ArrowRightIcon size={22} />}
         </Button>
       </form>
-
-      <button type="button" className="auth-recovery" onClick={onLostPhoneClick}>
-        Mất số điện thoại cũ?
-      </button>
 
       <p className="auth-terms">
         Bằng việc tiếp tục, bạn đồng ý với{' '}

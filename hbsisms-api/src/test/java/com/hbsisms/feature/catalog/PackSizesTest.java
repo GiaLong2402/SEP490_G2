@@ -23,6 +23,13 @@ class PackSizesTest {
     }
 
     @Test
+    void halfLabelWinsOverWrongThousandGrams() {
+        assertThat(PackSizes.isHalfKg(variant(1000, "Khay 0,5 Kg"))).isTrue();
+        assertThat(PackSizes.isOneKg(variant(1000, "Khay 0,5 Kg"))).isFalse();
+        assertThat(PackSizes.weightKg(variant(1000, "Khay 0,5 Kg"))).isEqualByComparingTo("0.5");
+    }
+
+    @Test
     void weightKg_fromGramsThenLabelElseOneKg() {
         assertThat(PackSizes.weightKg(variant(500, "Khay"))).isEqualByComparingTo("0.5");
         assertThat(PackSizes.weightKg(variant(2000, "Khay"))).isEqualByComparingTo("2");

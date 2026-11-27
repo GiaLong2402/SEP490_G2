@@ -117,14 +117,21 @@ public class BomExplosionService {
                 continue;
             }
 
-            // Kế hoạch: định mức / kg × số khay 1 kg quy đổi. Đóng gói: định mức / khay × số khay vật lý.
+            // Kế hoạch: định mức / kg × số khay 1 kg quy đổi (+ % hao). Đóng gói: định mức × khay vật lý.
             BigDecimal perUnit = bom.getQty();
             BigDecimal waste = bom.getWastePercent() == null ? BigDecimal.ZERO : bom.getWastePercent();
             if (waste.compareTo(HUNDRED) >= 0) {
                 throw ApiException.badRequest("Hao hụt của " + raw.getName() + " phải nhỏ hơn 100%");
             }
-            BigDecimal keep = BigDecimal.ONE.subtract(waste.divide(HUNDRED, 8, RoundingMode.HALF_UP));
-            BigDecimal required = perUnit.multiply(qty).divide(keep, QTY_SCALE, RoundingMode.HALF_UP);
+            BigDecimal base = perUnit.multiply(qty);
+            BigDecimal required;
+            if (kind == LineKind.COUNT) {
+                // VT cái/cuộn: trừ số nguyên (1 túi/khay…); không nhân % hao thành thập phân kiểu 2,020.
+                required = base.setScale(0, RoundingMode.CEILING);
+            } else {
+                BigDecimal keep = BigDecimal.ONE.subtract(waste.divide(HUNDRED, 8, RoundingMode.HALF_UP));
+                required = base.divide(keep, QTY_SCALE, RoundingMode.HALF_UP);
+            }
 
             BigDecimal usable = rawMaterialLotRepository.sumUsableRemaining(raw.getId(), today);
             if (usable == null) {
@@ -158,7 +165,7 @@ public class BomExplosionService {
         return unit != null && WEIGHT_UNITS.contains(unit.trim().toLowerCase(Locale.ROOT));
     }
 
-    /** Chi phí tạm tính: WAC NVL × SL cần; chưa có WAC → cộng theo giá lô FEFO. */
+    /** Chi phí tạm tính: WAC liên hoàn NVL × SL cần; chưa có WAC → cộng theo giá lô FEFO. */
     private BigDecimal estimateMaterialCost(Long rawMaterialId, BigDecimal requiredQty, LocalDate today) {
         var wac = costingService.currentRawAvgUnitCost(rawMaterialId);
         if (wac.isPresent()) {

@@ -284,11 +284,10 @@
   font-weight: 500;
 }
 
-/* ---------- Hàng "Duy trì đăng nhập (?)" ....... "Đổi SĐT" ---------- */
+/* ---------- Hàng "Duy trì đăng nhập (?)" ---------- */
 .auth-options {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
 }
@@ -378,20 +377,6 @@
   visibility: visible;
 }
 
-.auth-change-phone {
-  min-height: 32px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--color-accent);
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.auth-change-phone:hover {
-  text-decoration: underline;
-}
-
 /* ---------- Nút "Nhận mã OTP" ---------- */
 .auth-submit {
   min-height: 60px;
@@ -410,26 +395,9 @@
   transform: translateX(4px);
 }
 
-/* ---------- "Mất số điện thoại cũ?" + điều khoản (căn giữa) ---------- */
-.auth-recovery {
-  display: block;
-  width: fit-content;
-  margin: 22px auto 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--color-accent);
-  font-size: 17px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.auth-recovery:hover {
-  text-decoration: underline;
-}
-
+/* ---------- Điều khoản (căn giữa) ---------- */
 .auth-terms {
-  margin-top: 18px;
+  margin-top: 22px;
   color: var(--color-muted);
   font-size: 15px;
   line-height: 1.6;
@@ -576,198 +544,6 @@
   width: 100%;
   margin-top: 14px;
   margin-bottom: 0;
-}
-
-/* =========================================================
-   MẤT SỐ ĐIỆN THOẠI CŨ
-   ========================================================= */
-.auth-step--lost {
-  text-align: left;
-}
-
-.auth-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 18px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--color-accent);
-  font-size: 15px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.auth-back:hover {
-  text-decoration: underline;
-}
-
-.auth-back__arrow {
-  font-size: 18px;
-  line-height: 1;
-}
-
-.auth-lost__title {
-  margin-bottom: 10px !important;
-  text-align: left;
-}
-
-.auth-lost__lead {
-  margin: 0 0 22px;
-  color: var(--color-muted);
-  font-size: 15px;
-  line-height: 1.55;
-}
-
-.auth-lost__steps {
-  display: grid;
-  gap: 16px;
-  margin: 0 0 20px;
-  padding: 0;
-  list-style: none;
-}
-
-.auth-lost__step {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-}
-
-.auth-lost__badge {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--color-surface);
-  color: var(--color-brand);
-  font-size: 15px;
-  font-weight: 800;
-}
-
-.auth-lost__step-title {
-  margin: 0 0 4px;
-  color: var(--color-brand);
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1.35;
-}
-
-.auth-lost__step-desc {
-  margin: 0;
-  color: var(--color-muted);
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.auth-lost__store {
-  margin-bottom: 22px;
-  padding: 14px 16px;
-  border-radius: 8px;
-  background: var(--color-surface);
-}
-
-.auth-lost__store-name {
-  margin: 0 0 6px;
-  color: var(--color-brand);
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.auth-lost__store p {
-  margin: 0;
-  color: var(--color-text);
-  font-size: 14px;
-  line-height: 1.55;
-}
-
-.auth-lost__store p + p {
-  margin-top: 2px;
-}
-
-/* Thông báo sau khi đổi SĐT thành công */
-.auth-info {
-  margin: -8px 0 18px;
-  padding: 12px 14px;
-  border-radius: 8px;
-  background: var(--color-surface);
-  color: var(--color-brand);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.45;
-  text-align: center;
-}
-
-/* =========================================================
-   ĐỔI SĐT — progress + tiêu đề các bước
-   ========================================================= */
-.auth-step--change {
-  text-align: left;
-}
-
-.auth-step--change .auth-otp-form,
-.auth-step--change .auth-otp-resend {
-  text-align: center;
-}
-
-.auth-step--change .auth-step__link {
-  display: block;
-  width: fit-content;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.auth-step--change .auth-recovery {
-  margin-top: 18px;
-}
-
-.auth-progress {
-  margin-bottom: 22px;
-}
-
-.auth-progress__label {
-  margin: 0 0 10px;
-  color: var(--color-muted);
-  font-size: 14px;
-  font-weight: 600;
-  text-align: center;
-}
-
-.auth-progress__bars {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-}
-
-.auth-progress__bar {
-  height: 6px;
-  border-radius: 999px;
-  background: var(--color-border);
-}
-
-.auth-progress__bar.is-active {
-  background: var(--color-accent);
-}
-
-.auth-change__title {
-  margin-bottom: 8px !important;
-  text-align: left;
-  font-size: 28px !important;
-}
-
-.auth-change__lead {
-  margin: 0 0 20px;
-  color: var(--color-muted);
-  font-size: 15px;
-  line-height: 1.5;
-}
-
-.auth-change__lead strong {
-  color: var(--color-brand);
-  font-weight: 700;
 }
 
 /* =========================================================
@@ -963,7 +739,6 @@ select.auth-profile__input:disabled {
     font-size: 28px;
   }
 
-  .auth-change-phone,
   .auth-submit {
     font-size: 16px;
   }

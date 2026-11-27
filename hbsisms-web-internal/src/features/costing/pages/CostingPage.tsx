@@ -177,7 +177,7 @@ export default function CostingPage() {
     <>
       <PageHeader
         title="Giá vốn theo kỳ"
-        subtitle="Theo dõi tồn đầu / nhập / xuất / tồn cuối và đơn giá bình quân từng tháng"
+        subtitle="Báo cáo giá vốn theo tháng. Đơn giá vốn tồn kho cập nhật mỗi nhập/xuất (xem mục Giá vốn tồn kho)."
         actions={
           canOpen ? (
             <div className="flex flex-wrap gap-2">
@@ -330,7 +330,7 @@ export default function CostingPage() {
         <Field
           label="Tháng"
           required
-          hint="Tồn đầu lấy từ kỳ trước đã khóa, hoặc snapshot kho hiện tại nếu là kỳ đầu."
+          hint="Tồn đầu ưu tiên từ giá vốn tồn kho hiện hành; không có thì kỳ trước đã khóa hoặc snapshot kho."
         >
           <Input type="month" value={yearMonth} onChange={(e) => setYearMonth(e.target.value)} required />
         </Field>
@@ -382,7 +382,7 @@ export default function CostingPage() {
         }
       >
         <p className="mb-3 text-small text-ink-muted">
-          Xóa kỳ đang mở và toàn bộ số dư WAC của kỳ đó. Dùng khi mở nhầm tháng sau trong khi vẫn làm việc tháng trước.
+          Xóa kỳ đang mở và số dư mirror của kỳ đó (giá vốn tồn kho vẫn giữ). Dùng khi mở nhầm tháng sau trong khi vẫn làm việc tháng trước.
           Phiếu kho không bị xóa.
         </p>
         <Field label="Lý do hủy" required>

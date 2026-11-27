@@ -26,8 +26,10 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Một chỗ duy nhất thay đổi tồn nguyên vật liệu theo lô (Inter 1 dòng 47): tạo lô, cộng {@code qtyOnHand}
  * và ghi sổ kho NVL trong cùng transaction. Luôn giữ tổng {@code qtyRemaining} các lô = {@code qtyOnHand}.
- * Dòng 50 (xuất NVL cho xưởng): FEFO chọn lô; định giá IssueSlice / sổ xuất theo WAC NVL
- * (fallback giá lô nếu chưa có ĐG kỳ).
+ * Xuất NVL cho xưởng: <strong>FEFO</strong> chọn lô (HSD gần trước); định giá IssueSlice / sổ xuất theo
+ * <strong>WAC liên hoàn</strong> {@code (GT tồn trước + GT nhập) / (SL tồn trước + SL nhập)} trên số dư chạy
+ * (mirror kỳ OPEN nếu có)
+ * (fallback giá lô nếu chưa có ĐG).
  */
 @Service
 public class RawMaterialStockService {
@@ -303,7 +305,7 @@ public class RawMaterialStockService {
         material.setQtyOnHand(balance);
         rawMaterialRepository.save(material);
 
-        // FEFO đã chọn lô; tiền xuất SX / IssueSlice = WAC NVL (fallback giá lô).
+        // FEFO đã chọn lô; tiền xuất SX / IssueSlice = WAC liên hoàn NVL (fallback giá lô).
         BigDecimal lotPrice = lot.getUnitPrice() == null ? BigDecimal.ZERO : lot.getUnitPrice();
         BigDecimal unitCost = costingService.resolveRawIssueUnitCost(material.getId(), lotPrice);
         RawMaterialLedger entry = new RawMaterialLedger();

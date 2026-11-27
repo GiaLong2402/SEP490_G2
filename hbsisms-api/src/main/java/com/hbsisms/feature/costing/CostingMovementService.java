@@ -2,8 +2,6 @@ package com.hbsisms.feature.costing;
 
 import com.hbsisms.common.exception.ApiException;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.time.YearMonth;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,27 +9,32 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Task 56 — ghi nhận nhập/xuất vào số dư kỳ OPEN.
- * Nhập: giá trị thật (đơn giá nhập / giá vốn lệnh). Xuất: giá tạm = ĐG bình quân hiện hành
- * (hoặc ĐG kỳ trước nếu kỳ này chưa có đầu+nhập). Chuyển vị trí không gọi service này.
+ * Ghi nhận nhập/xuất vào WAC liên hoàn ({@link CostRunningWacService}) luôn;
+ * nếu có kỳ OPEN thì mirror sang {@link CostItemBalance} (báo cáo sổ kỳ).
+ * Nhập: giá trị thật → ĐG = (GT trước + GT nhập) / (SL trước + SL nhập).
+ * Xuất: giá tạm = ĐG WAC liên hoàn hiện hành trên số dư chạy.
+ * Chuyển vị trí không gọi service này.
  */
 @Service
 public class CostingMovementService {
 
     private static final Logger log = LoggerFactory.getLogger(CostingMovementService.class);
-    private static final int MONEY_SCALE = 2;
 
     private final CostPeriodRepository periodRepository;
     private final CostItemBalanceRepository balanceRepository;
+    private final CostRunningWacService runningWacService;
 
     public CostingMovementService(
-            CostPeriodRepository periodRepository, CostItemBalanceRepository balanceRepository) {
+            CostPeriodRepository periodRepository,
+            CostItemBalanceRepository balanceRepository,
+            CostRunningWacService runningWacService) {
         this.periodRepository = periodRepository;
         this.balanceRepository = balanceRepository;
+        this.runningWacService = runningWacService;
     }
 
     /**
-     * Cộng nhập. Không có kỳ mở → bỏ qua (kho vẫn chạy). Kỳ CLOSED không bao giờ là OPEN.
+     * Cộng nhập vào WAC chạy; mirror kỳ OPEN nếu có.
      */
     @Transactional
     public void recordInbound(
@@ -39,22 +42,24 @@ public class CostingMovementService {
         if (itemId == null || qty == null || qty.signum() <= 0) {
             return;
         }
+        runningWacService.applyInbound(itemType, itemId, qty, unitPrice);
+
         Optional<CostPeriod> open = periodRepository.findByStatus(CostPeriodStatus.OPEN);
         if (open.isEmpty()) {
-            log.debug("WAC skip inbound {} #{} — chưa có kỳ mở ({}/{})", itemType, itemId, refType, refId);
+            log.debug("WAC running ok, no OPEN period to mirror {} #{} ({}/{})", itemType, itemId, refType, refId);
             return;
         }
         CostPeriod period = open.get();
         assertMutable(period);
         CostItemBalance row = getOrCreateForUpdate(period, itemType, itemId);
         BigDecimal price = unitPrice == null ? BigDecimal.ZERO : unitPrice;
-        BigDecimal value = qty.multiply(price).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        BigDecimal value = qty.multiply(price).setScale(2, java.math.RoundingMode.HALF_UP);
         row.applyInbound(qty, value);
         balanceRepository.save(row);
     }
 
     /**
-     * Cộng xuất với đơn giá tạm (WAC hiện hành). Không dùng giá lô vật lý.
+     * Cộng xuất theo ĐG WAC chạy; mirror kỳ OPEN nếu có. Không dùng giá lô vật lý.
      */
     @Transactional
     public void recordOutbound(
@@ -62,15 +67,16 @@ public class CostingMovementService {
         if (itemId == null || qty == null || qty.signum() <= 0) {
             return;
         }
+        BigDecimal unit = runningWacService.applyOutbound(itemType, itemId, qty);
+
         Optional<CostPeriod> open = periodRepository.findByStatus(CostPeriodStatus.OPEN);
         if (open.isEmpty()) {
-            log.debug("WAC skip outbound {} #{} — chưa có kỳ mở ({}/{})", itemType, itemId, refType, refId);
+            log.debug("WAC running ok, no OPEN period to mirror {} #{} ({}/{})", itemType, itemId, refType, refId);
             return;
         }
         CostPeriod period = open.get();
         assertMutable(period);
         CostItemBalance row = getOrCreateForUpdate(period, itemType, itemId);
-        BigDecimal unit = resolveProvisionalUnitCost(row, period);
         row.applyOutbound(qty, unit);
         balanceRepository.save(row);
     }
@@ -86,23 +92,6 @@ public class CostingMovementService {
         return balanceRepository
                 .findForUpdate(period.getId(), type, itemId)
                 .orElse(created);
-    }
-
-    /** ĐG tạm = (đầu+nhập)/(SL đầu+SL nhập); nếu chưa có → ĐG kỳ trước đã khóa; không có → 0. */
-    private BigDecimal resolveProvisionalUnitCost(CostItemBalance row, CostPeriod period) {
-        row.refreshDerived();
-        if (row.getAvgUnitCost() != null) {
-            return row.getAvgUnitCost();
-        }
-        YearMonth ym = YearMonth.from(period.getPeriodStart());
-        Optional<CostPeriod> prev = periodRepository.findByPeriodStart(ym.minusMonths(1).atDay(1));
-        if (prev.isPresent() && prev.get().getStatus() == CostPeriodStatus.CLOSED) {
-            return balanceRepository
-                    .findByPeriod_IdAndItemTypeAndItemId(prev.get().getId(), row.getItemType(), row.getItemId())
-                    .map(CostItemBalance::getAvgUnitCost)
-                    .orElse(BigDecimal.ZERO);
-        }
-        return BigDecimal.ZERO;
     }
 
     private static void assertMutable(CostPeriod period) {

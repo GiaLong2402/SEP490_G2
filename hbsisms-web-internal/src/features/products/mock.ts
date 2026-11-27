@@ -427,43 +427,73 @@ function roundToThousand(n: number) {
   return Math.round(n / 1000) * 1000;
 }
 
+function isHalfPack(v: { unitWeightG: number | null; packLabel: string | null }) {
+  return /0[,.]5|500g|1\/2/i.test(v.packLabel ?? '') || v.unitWeightG === 500;
+}
+
+function isOneKgPack(v: { unitWeightG: number | null; packLabel: string | null }) {
+  if (isHalfPack(v)) return false;
+  return v.unitWeightG === 1000 || /1\s*kg|1000g/i.test(v.packLabel ?? '');
+}
+
+/** Mock giống API: neo giá 1 kg; chỉ có 0,5 kg thì WAC × 2. */
 function mockSuggest(variantId: number, costSource: string) {
-  const variant = db.variants.find((v) => v.id === variantId);
-  if (!variant) fail(404, 'Không tìm thấy quy cách');
+  const requested = db.variants.find((v) => v.id === variantId);
+  if (!requested) fail(404, 'Không tìm thấy quy cách');
+  const siblings = db.variants.filter((v) => v.productId === requested.productId && v.isActive);
+  const oneKg = isOneKgPack(requested) ? requested : siblings.find(isOneKgPack) ?? null;
+  const half = isHalfPack(requested) ? requested : oneKg ? siblings.find(isHalfPack) ?? null : null;
+  const costVariant = oneKg ?? half ?? requested;
   const markupPercent = 30;
-  // Mock: WAC ≈ 70% giá niêm yết; PRODUCTION ≈ 65%.
-  const unitCost = Math.max(1000, Math.round((variant.listPrice || 100_000) * (costSource === 'PRODUCTION' ? 0.65 : 0.7)));
+  let unitCost = Math.max(
+    1000,
+    Math.round((costVariant.listPrice || 100_000) * (costSource === 'PRODUCTION' ? 0.65 : 0.7)),
+  );
+  let costSourceLabel =
+    costSource === 'PRODUCTION' ? 'Giá thành lệnh LSX-MOCK' : 'ĐG WAC liên hoàn (sau nhập / tồn hiện hành)';
+  if (!oneKg && half) {
+    unitCost = Math.round(unitCost * 2);
+    costSourceLabel += ' · quy đổi ×2 từ khay 0,5 kg';
+  }
   const suggestedListPrice = roundToThousand(unitCost * (1 + markupPercent / 100));
   return {
-    variantId: variant.id,
-    sku: variant.sku,
-    packLabel: variant.packLabel,
-    currentListPrice: variant.listPrice,
+    variantId: (oneKg ?? half ?? requested).id,
+    sku: (oneKg ?? half ?? requested).sku,
+    packLabel: oneKg
+      ? oneKg.packLabel
+      : half
+        ? `1 kg (quy đổi từ ${half.packLabel})`
+        : requested.packLabel,
+    currentListPrice: oneKg
+      ? oneKg.listPrice
+      : half
+        ? roundToThousand(half.listPrice * 2)
+        : requested.listPrice,
     costSource: costSource === 'PRODUCTION' ? 'PRODUCTION' : 'WAC',
     unitCost,
-    costSourceLabel: costSource === 'PRODUCTION' ? 'Giá thành lệnh LSX-MOCK' : 'ĐG bình quân kỳ WAC hiện hành',
+    costSourceLabel,
     productionOrderId: costSource === 'PRODUCTION' ? 1 : null,
     productionOrderCode: costSource === 'PRODUCTION' ? 'LSX-MOCK' : null,
     markupPercent,
     markupSource: 'cấu hình chung',
     suggestedListPrice,
+    _oneKgId: oneKg?.id ?? null,
+    _halfId: half?.id ?? null,
   };
 }
 
-mock('GET', '/variants/:id/sell-price-suggestion', ({ params, query }) =>
-  mockSuggest(Number(params.id), String(query.costSource ?? 'WAC')));
+mock('GET', '/variants/:id/sell-price-suggestion', ({ params, query }) => {
+  const { _oneKgId, _halfId, ...rest } = mockSuggest(Number(params.id), String(query.costSource ?? 'WAC'));
+  void _oneKgId;
+  void _halfId;
+  return rest;
+});
 
 mock('POST', '/variants/:id/sell-price-suggestion/apply', ({ params, body, userId }) => {
   const costSource = String((body as { costSource?: string })?.costSource ?? 'WAC');
   const requested = db.variants.find((v) => v.id === Number(params.id));
   if (!requested) fail(404, 'Không tìm thấy quy cách');
-  const isHalf = (v: typeof requested) =>
-    v.unitWeightG === 500 || /0[,.]5|500g|1\/2/i.test(v.packLabel ?? '');
-  const isOne = (v: typeof requested) =>
-    v.unitWeightG === 1000 || (/1\s*kg|1000g/i.test(v.packLabel ?? '') && !isHalf(v));
-  const siblings = db.variants.filter((v) => v.productId === requested.productId && v.isActive);
-  const oneKg = isOne(requested) ? requested : siblings.find(isOne) ?? requested;
-  const suggestion = mockSuggest(oneKg.id, costSource);
+  const suggestion = mockSuggest(requested.id, costSource);
   const now = new Date().toISOString();
   const writePrice = (variant: typeof requested, price: number, unitCost: number) => {
     const old = variant.listPrice;
@@ -498,13 +528,19 @@ mock('POST', '/variants/:id/sell-price-suggestion/apply', ({ params, body, userI
       costSource: suggestion.costSource,
     });
   };
-  writePrice(oneKg, suggestion.suggestedListPrice, suggestion.unitCost);
-  const half = isHalf(requested) ? requested : siblings.find(isHalf);
-  if (half && half.id !== oneKg.id) {
-    const halfPrice = Math.round(suggestion.suggestedListPrice / 2 / 1000) * 1000;
+  if (suggestion._oneKgId != null) {
+    const oneKg = db.variants.find((v) => v.id === suggestion._oneKgId)!;
+    writePrice(oneKg, suggestion.suggestedListPrice, suggestion.unitCost);
+  }
+  if (suggestion._halfId != null) {
+    const half = db.variants.find((v) => v.id === suggestion._halfId)!;
+    const halfPrice = roundToThousand(suggestion.suggestedListPrice / 2);
     writePrice(half, halfPrice, Math.round(suggestion.unitCost / 2));
   }
-  return { ...suggestion, variantId: oneKg.id, sku: oneKg.sku, currentListPrice: suggestion.suggestedListPrice };
+  const { _oneKgId, _halfId, ...rest } = suggestion;
+  void _oneKgId;
+  void _halfId;
+  return rest;
 });
 
 mock('GET', '/variants/:id/sell-price-history', ({ params }) => {

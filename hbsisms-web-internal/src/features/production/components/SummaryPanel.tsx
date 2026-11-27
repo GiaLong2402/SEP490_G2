@@ -287,15 +287,20 @@ export function SummaryPanel({ order }: { order: ProductionOrder }) {
           <div className="flex items-start justify-between gap-2">
             <h2 className="text-h2 text-ink">Gợi ý giá bán</h2>
             <InfoTip label="Cách tính giá bán">
-              Lấy giá vốn bình quân trong kho (gộp hàng cũ + lô mới), cộng khoảng {markupPercent}% lời, làm tròn 1.000 ₫.
-              Không lấy đúng giá vốn lệnh này. Chỉ khi bấm Áp dụng mới đổi giá đang bán.
+              WAC liên hoàn sau nhập TP: (GT tồn trước + GT nhập) / (SL tồn trước + SL nhập), cập nhật mỗi lần
+              nhập (không cần kỳ giá vốn). Neo 1 kg (chỉ có khay 0,5 kg thì ×2), cộng ~{markupPercent}% lời, làm
+              tròn 1.000 ₫. Khay 0,5 kg = nửa giá. Không lấy đúng giá vốn lệnh này. Chỉ khi bấm Áp dụng mới đổi
+              giá đang bán.
             </InfoTip>
           </div>
           <p className="mt-1 text-small text-ink-muted">
-            Theo giá vốn bình quân kho, đã cộng ~{markupPercent}% lời
+            WAC liên hoàn (quy đổi 1 kg) + ~{markupPercent}% lời
           </p>
           {wacSuggest.error && (
-            <p className="mt-2 text-small text-amber-fg">Chưa lấy được giá gợi ý — mở màn sản phẩm để thử lại</p>
+            <p className="mt-2 text-small text-amber-fg">
+              {(wacSuggest.error as Error)?.message
+                || 'Chưa lấy được giá gợi ý — cần quy cách khay 1 kg hoặc mở màn sản phẩm để thử lại'}
+            </p>
           )}
           {wacSuggest.data?.currentListPrice != null && (
             <p className="mt-2 text-small text-ink-faint">
@@ -330,11 +335,14 @@ export function SummaryPanel({ order }: { order: ProductionOrder }) {
                 <div className="text-ink-faint">chỉ để đối chiếu</div>
               </div>
               <div>
-                <div className="text-ink-muted">Giá vốn bình quân kho</div>
+                <div className="text-ink-muted">WAC liên hoàn / 1 kg</div>
                 <div className="mt-0.5 font-semibold tabular-nums text-primary">
                   {wacSuggest.isLoading ? '…' : wacUnit != null ? money(wacUnit) : '—'}
                 </div>
-                <div className="text-ink-faint">+{markupPercent}% rồi làm tròn 1.000 ₫</div>
+                <div className="text-ink-faint">
+                  {wacSuggest.data?.costSourceLabel
+                    || `+${markupPercent}% rồi làm tròn 1.000 ₫`}
+                </div>
               </div>
             </div>
           )}

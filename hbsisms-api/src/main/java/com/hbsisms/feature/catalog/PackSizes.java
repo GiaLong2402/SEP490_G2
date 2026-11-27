@@ -25,6 +25,11 @@ public final class PackSizes {
         if (variant == null) {
             return false;
         }
+        // Nhãn 0,5 kg thắng gram sai (vd. unitWeightG=1000 nhưng pack "Khay 0,5 Kg").
+        String label = normalize(variant.getPackLabel());
+        if (isHalfLabel(label)) {
+            return false;
+        }
         Integer g = variant.getUnitWeightG();
         if (g != null) {
             if (g == 1000) {
@@ -34,11 +39,7 @@ public final class PackSizes {
                 return false;
             }
         }
-        String label = normalize(variant.getPackLabel());
         if (label.isEmpty()) {
-            return false;
-        }
-        if (isHalfLabel(label)) {
             return false;
         }
         return label.contains("1kg")
@@ -51,6 +52,10 @@ public final class PackSizes {
         if (variant == null) {
             return false;
         }
+        String label = normalize(variant.getPackLabel());
+        if (isHalfLabel(label)) {
+            return true;
+        }
         Integer g = variant.getUnitWeightG();
         if (g != null) {
             if (g == 500) {
@@ -60,22 +65,28 @@ public final class PackSizes {
                 return false;
             }
         }
-        return isHalfLabel(normalize(variant.getPackLabel()));
+        return false;
     }
 
     /**
-     * Cân nặng 1 khay (kg): theo {@code unitWeightG}; chưa nhập thì đoán theo nhãn (0,5 kg); còn lại coi là 1 kg
-     * (BOM và giá bán đều tính chuẩn cho 1 kg).
+     * Cân nặng 1 khay (kg): ưu tiên nhận diện 0,5 / 1 kg theo nhãn+gram; còn lại theo {@code unitWeightG};
+     * không rõ thì coi 1 kg (BOM / giá bán chuẩn 1 kg).
      */
     public static BigDecimal weightKg(ProductVariant variant) {
         if (variant == null) {
+            return ONE;
+        }
+        if (isHalfKg(variant)) {
+            return HALF;
+        }
+        if (isOneKg(variant)) {
             return ONE;
         }
         Integer g = variant.getUnitWeightG();
         if (g != null && g > 0) {
             return BigDecimal.valueOf(g).divide(GRAMS_PER_KG, 4, RoundingMode.HALF_UP);
         }
-        return isHalfKg(variant) ? HALF : ONE;
+        return ONE;
     }
 
     /**

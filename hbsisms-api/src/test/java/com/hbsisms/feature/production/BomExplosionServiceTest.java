@@ -130,6 +130,23 @@ class BomExplosionServiceTest {
     }
 
     @Test
+    void explodePackaging_ignoresWasteFraction_usesWholePieces() {
+        RawMaterial bag = raw(7L, "NL-TUI-HCK", new BigDecimal("100"));
+        bag.setUnit("cai");
+        ProductBomLine bagLine = bomLine(bag, null, BigDecimal.ONE, new BigDecimal("1")); // 1% hao trên BOM
+        bagLine.setUnit(unit("cai"));
+        when(bomLineRepository.findByProduct_IdOrderBySortOrderAscIdAsc(10L)).thenReturn(List.of(bagLine));
+        when(rawMaterialLotRepository.sumUsableRemaining(eq(7L), eq(TODAY))).thenReturn(new BigDecimal("100"));
+        when(rawMaterialLotRepository.findFefoUsable(eq(7L), eq(TODAY))).thenReturn(List.of());
+
+        // Trước đây: 2 / 0.99 = 2.0202… → tồn thập phân. Nay: 2 cái nguyên.
+        BomExplosionService.ExplosionResult pack = service.explodePackaging(10L, new BigDecimal("2"));
+        assertThat(pack.lines()).hasSize(1);
+        assertThat(pack.lines().get(0).getRequiredQty()).isEqualByComparingTo("2");
+        assertThat(pack.lines().get(0).getWastePercent()).isEqualByComparingTo("1");
+    }
+
+    @Test
     void explode_noVariant_treatsTrayAsOneKg() {
         RawMaterial fish = raw(5L, "NL-CA-THU", new BigDecimal("100"));
         stubSingleLine(bomLine(fish, null, new BigDecimal("2"), null), fish, "100");
