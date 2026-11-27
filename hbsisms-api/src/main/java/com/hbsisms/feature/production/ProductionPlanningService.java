@@ -77,20 +77,8 @@ public class ProductionPlanningService {
             throw ApiException.badRequest("Chỉ xem trước được thành phẩm, không phải nguyên liệu");
         }
 
-        ProductVariant variant = null;
-        if (variantId != null) {
-            variant = productVariantRepository
-                    .findById(variantId)
-                    .orElseThrow(() -> ApiException.notFound("Không tìm thấy quy cách sản phẩm"));
-            if (!variant.getProduct().getId().equals(productId)) {
-                throw ApiException.badRequest("Quy cách không thuộc sản phẩm đã chọn");
-            }
-        } else {
-            // Giống lúc tạo lệnh không chọn loại khay: khay 1 kg, không có thì quy cách đầu tiên đang bán.
-            variant = activeVariants(productId).stream().findFirst().orElse(null);
-        }
-
-        BomExplosionService.ExplosionResult explosion = bomExplosionService.explode(productId, plannedQty, variant);
+        // variantId bỏ qua — kế hoạch theo khay quy đổi 1 kg; chỉ NVL theo kg (VT đóng gói lúc pack).
+        BomExplosionService.ExplosionResult explosion = bomExplosionService.explode(productId, plannedQty);
         List<ProductionMaterialNeedResponse> materials = new ArrayList<>();
         List<ProductionOrderMaterialLine> lines = explosion.lines();
         List<BigDecimal> expired = explosion.expiredQtys();
@@ -108,6 +96,45 @@ public class ProductionPlanningService {
                 product.getCode(),
                 product.getName(),
                 plannedQty,
+                explosion.estimatedMaterialCost(),
+                allOk,
+                materials);
+    }
+
+    /** VT đóng gói (xốp, túi…) theo số khay vật lý lúc hoàn thành. */
+    public ProductionMaterialPreviewResponse previewPackaging(Long productId, BigDecimal physicalTrayCount) {
+        if (productId == null) {
+            throw ApiException.badRequest("Thiếu productId");
+        }
+        if (physicalTrayCount == null || physicalTrayCount.signum() <= 0) {
+            throw ApiException.badRequest("Số khay vật lý phải > 0");
+        }
+        Product product = productRepository
+                .findById(productId)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy sản phẩm"));
+        if (!product.isActive()) {
+            throw ApiException.badRequest("Sản phẩm đã ngừng kinh doanh");
+        }
+
+        BomExplosionService.ExplosionResult explosion =
+                bomExplosionService.explodePackaging(productId, physicalTrayCount);
+        List<ProductionMaterialNeedResponse> materials = new ArrayList<>();
+        List<ProductionOrderMaterialLine> lines = explosion.lines();
+        List<BigDecimal> expired = explosion.expiredQtys();
+        boolean allOk = true;
+        for (int i = 0; i < lines.size(); i++) {
+            ProductionOrderMaterialLine line = lines.get(i);
+            BigDecimal expiredQty = i < expired.size() ? expired.get(i) : BigDecimal.ZERO;
+            materials.add(ProductionMaterialNeedResponse.from(line, expiredQty));
+            if (!line.isSufficient()) {
+                allOk = false;
+            }
+        }
+        return new ProductionMaterialPreviewResponse(
+                product.getId(),
+                product.getCode(),
+                product.getName(),
+                physicalTrayCount,
                 explosion.estimatedMaterialCost(),
                 allOk,
                 materials);

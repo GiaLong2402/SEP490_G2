@@ -64,6 +64,13 @@ public class ProductionOrderController {
         return productionPlanningService.previewMaterials(productId, plannedQty, variantId);
     }
 
+    /** VT đóng gói theo số khay vật lý (xốp, túi…) — xem trước lúc báo hoàn thành. */
+    @GetMapping("/packaging-preview")
+    public ProductionMaterialPreviewResponse packagingPreview(
+            @RequestParam Long productId, @RequestParam BigDecimal physicalTrayCount) {
+        return productionPlanningService.previewPackaging(productId, physicalTrayCount);
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ProductionOrderResponse create(
