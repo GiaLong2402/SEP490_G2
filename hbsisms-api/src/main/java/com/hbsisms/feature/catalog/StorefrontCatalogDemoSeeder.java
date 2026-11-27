@@ -21,7 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Idempotent B2C demo catalog for Inter 2 #23 (Danh mục công khai):
- * categories, published product with tiers, draft product, stock on one variant only.
+ * category Tôm, published product with tiers, stock on one variant only.
  */
 @Slf4j
 @Component
@@ -29,11 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class StorefrontCatalogDemoSeeder implements ApplicationRunner {
 
     static final String CAT_TOM = "CAT-TOM";
-    static final String CAT_CA = "CAT-CA";
-    static final String CAT_MUC = "CAT-MUC";
-    static final String CAT_CHE = "CAT-CHEBIEN";
     static final String PRODUCT_LIVE = "TOM-SU-01";
-    static final String PRODUCT_DRAFT = "DRAFT-01";
     static final String SKU_IN_STOCK = "TOM-SU-500";
     static final String SKU_OUT = "TOM-SU-1000";
     static final String LOT_CODE = "LOT-TOM-SU-01";
@@ -71,9 +67,6 @@ public class StorefrontCatalogDemoSeeder implements ApplicationRunner {
     @Transactional
     public void run(ApplicationArguments args) {
         Category tom = ensureCategory(CAT_TOM, "Tôm", 1);
-        ensureCategory(CAT_CA, "Cá", 2);
-        ensureCategory(CAT_MUC, "Mực", 3);
-        ensureCategory(CAT_CHE, "Chế biến", 4);
 
         Product live = ensureLiveProduct(tom);
         ProductVariant inStock = ensureVariant(
@@ -82,8 +75,7 @@ public class StorefrontCatalogDemoSeeder implements ApplicationRunner {
         ensureTiers(inStock);
         ensureStock(inStock);
 
-        ensureDraftProduct(tom);
-        log.info("Storefront demo catalog ready: {} published, {} draft", PRODUCT_LIVE, PRODUCT_DRAFT);
+        log.info("Storefront demo catalog ready: {} published", PRODUCT_LIVE);
     }
 
     private Category ensureCategory(String code, String name, int sortOrder) {
@@ -110,21 +102,6 @@ public class StorefrontCatalogDemoSeeder implements ApplicationRunner {
             product.setImageUrl("/images/demo-products/product-tom-su.png");
             product.setGallery(List.of());
             product.setPublished(true);
-            product.setActive(true);
-            return productRepository.save(product);
-        });
-    }
-
-    private Product ensureDraftProduct(Category category) {
-        return productRepository.findByCodeIgnoreCase(PRODUCT_DRAFT).orElseGet(() -> {
-            Product product = new Product();
-            product.setCode(PRODUCT_DRAFT);
-            product.setName("Sản phẩm nháp (không public)");
-            product.setSlug("san-pham-nhap");
-            product.setCategory(category);
-            product.setDescription("Guest không được thấy sản phẩm này.");
-            product.setGallery(List.of());
-            product.setPublished(false);
             product.setActive(true);
             return productRepository.save(product);
         });
