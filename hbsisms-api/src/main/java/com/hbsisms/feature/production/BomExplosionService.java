@@ -1,7 +1,6 @@
 package com.hbsisms.feature.production;
 
 import com.hbsisms.common.exception.ApiException;
-import com.hbsisms.feature.catalog.PackSizes;
 import com.hbsisms.feature.catalog.ProductBomLine;
 import com.hbsisms.feature.catalog.ProductBomLineRepository;
 import com.hbsisms.feature.catalog.ProductVariant;
@@ -22,11 +21,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Đọc BOM × SL kế hoạch → snapshot NVL + đối chiếu tồn dùng được + chi phí tạm tính (WAC NVL).
+ * Đọc BOM × SL → snapshot NVL + tồn dùng được + chi phí tạm (WAC).
  *
- * <p>BOM ghi cho <b>1 kg thành phẩm</b>. Dòng tính theo cân nặng (kg, g…) nhân với cân nặng khay của quy cách
- * (khay 0,5 kg → một nửa); dòng đếm cái (khay xốp, màng bọc…) giữ nguyên mỗi khay. Hao hụt là phần mất đi
- * khi làm: cần = định mức ÷ (1 − hao hụt%) — hao hụt 50% thì cần gấp đôi.
+ * <p>BOM ghi cho <b>1 kg thành phẩm</b>. Kế hoạch / xuất đầu lệnh chỉ lấy dòng <b>theo kg</b>
+ * ({@code plannedQty} = số khay quy đổi 1 kg). Dòng đếm cái (khay xốp, màng…) trừ lúc đóng gói theo
+ * số khay vật lý ({@link #explodePackaging}).
  */
 @Service
 @Transactional(readOnly = true)
@@ -36,7 +35,7 @@ public class BomExplosionService {
     private static final BigDecimal HUNDRED = new BigDecimal("100");
     private static final int QTY_SCALE = 4;
     private static final int MONEY_SCALE = 2;
-    /** Đơn vị tính theo khối lượng / thể tích — nhân theo cân nặng khay. Còn lại (cái, cuộn…) tính theo khay. */
+    /** Đơn vị khối lượng / thể tích — xuất lúc bắt đầu SX. Còn lại (cái, cuộn…) = VT đóng gói. */
     private static final Set<String> WEIGHT_UNITS = Set.of("kg", "g", "gram", "l", "lit", "ml");
 
     private final ProductBomLineRepository bomLineRepository;
@@ -56,20 +55,39 @@ public class BomExplosionService {
     }
 
     /**
-     * Không chọn quy cách → coi là khay 1 kg.
+     * NVL theo kg cho kế hoạch / xuất đầu lệnh. {@code plannedQty} = khay quy đổi 1 kg.
      *
-     * <p>{@code noRollbackFor}: caller có thể catch khi thiếu BOM (vd. tạo lệnh từ đơn cọc)
-     * mà không làm TX ngoài thành rollback-only.
+     * <p>{@code noRollbackFor}: caller có thể catch khi thiếu BOM mà không làm TX ngoài rollback-only.
      */
     @Transactional(readOnly = true, noRollbackFor = ApiException.class)
     public ExplosionResult explode(Long productId, BigDecimal plannedQty) {
-        return explode(productId, plannedQty, null);
+        return explodeLines(productId, plannedQty, LineKind.WEIGHT);
     }
 
+    /**
+     * @deprecated Quy cách không còn chọn lúc lập kế hoạch — dùng {@link #explode(Long, BigDecimal)}.
+     *     Giữ để tương thích call site cũ; bỏ qua {@code variant}.
+     */
+    @Deprecated
     @Transactional(readOnly = true, noRollbackFor = ApiException.class)
     public ExplosionResult explode(Long productId, BigDecimal plannedQty, ProductVariant variant) {
-        if (plannedQty == null || plannedQty.compareTo(BigDecimal.ZERO) <= 0) {
-            throw ApiException.badRequest("Số lượng kế hoạch phải > 0");
+        return explode(productId, plannedQty);
+    }
+
+    /**
+     * VT đóng gói (khay xốp, màng…) theo số khay vật lý lúc hoàn thành / đóng gói.
+     */
+    @Transactional(readOnly = true, noRollbackFor = ApiException.class)
+    public ExplosionResult explodePackaging(Long productId, BigDecimal physicalTrayCount) {
+        return explodeLines(productId, physicalTrayCount, LineKind.COUNT);
+    }
+
+    private ExplosionResult explodeLines(Long productId, BigDecimal qty, LineKind kind) {
+        if (qty == null || qty.compareTo(BigDecimal.ZERO) <= 0) {
+            throw ApiException.badRequest(
+                    kind == LineKind.COUNT
+                            ? "Số khay đóng gói phải > 0"
+                            : "Số lượng kế hoạch phải > 0");
         }
         List<ProductBomLine> bomLines = bomLineRepository.findByProduct_IdOrderBySortOrderAscIdAsc(productId);
         if (bomLines.isEmpty()) {
@@ -77,7 +95,6 @@ public class BomExplosionService {
         }
 
         LocalDate today = LocalDate.now(clock.withZone(VN));
-        BigDecimal trayKg = PackSizes.weightKg(variant);
         List<ProductionOrderMaterialLine> lines = new ArrayList<>();
         List<BigDecimal> expiredQtys = new ArrayList<>();
         BigDecimal materialCost = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
@@ -92,19 +109,23 @@ public class BomExplosionService {
                 throw ApiException.badRequest("Dòng BOM thiếu nguyên liệu");
             }
 
-            BigDecimal perTray = isWeightLine(bom, raw)
-                    ? bom.getQty().multiply(trayKg).setScale(QTY_SCALE, RoundingMode.HALF_UP)
-                    : bom.getQty();
+            boolean weight = isWeightLine(bom, raw);
+            if (kind == LineKind.WEIGHT && !weight) {
+                continue;
+            }
+            if (kind == LineKind.COUNT && weight) {
+                continue;
+            }
+
+            // Kế hoạch: định mức / kg × số khay 1 kg quy đổi. Đóng gói: định mức / khay × số khay vật lý.
+            BigDecimal perUnit = bom.getQty();
             BigDecimal waste = bom.getWastePercent() == null ? BigDecimal.ZERO : bom.getWastePercent();
             if (waste.compareTo(HUNDRED) >= 0) {
                 throw ApiException.badRequest("Hao hụt của " + raw.getName() + " phải nhỏ hơn 100%");
             }
             BigDecimal keep = BigDecimal.ONE.subtract(waste.divide(HUNDRED, 8, RoundingMode.HALF_UP));
-            BigDecimal required = perTray
-                    .multiply(plannedQty)
-                    .divide(keep, QTY_SCALE, RoundingMode.HALF_UP);
+            BigDecimal required = perUnit.multiply(qty).divide(keep, QTY_SCALE, RoundingMode.HALF_UP);
 
-            // Inter1 #48 note: tồn dùng được không tính lô NVL đã hết hạn.
             BigDecimal usable = rawMaterialLotRepository.sumUsableRemaining(raw.getId(), today);
             if (usable == null) {
                 usable = BigDecimal.ZERO;
@@ -118,7 +139,7 @@ public class BomExplosionService {
 
             ProductionOrderMaterialLine line = new ProductionOrderMaterialLine();
             line.setRawMaterial(raw);
-            line.setBomQtyPerUnit(perTray);
+            line.setBomQtyPerUnit(perUnit);
             line.setWastePercent(bom.getWastePercent());
             line.setRequiredQty(required);
             line.setOnHandQty(usable);
@@ -132,7 +153,7 @@ public class BomExplosionService {
         return new ExplosionResult(lines, materialCost, expiredQtys);
     }
 
-    private static boolean isWeightLine(ProductBomLine bom, RawMaterial raw) {
+    static boolean isWeightLine(ProductBomLine bom, RawMaterial raw) {
         String unit = bom.getUnit() != null ? bom.getUnit().getCode() : raw.getUnit();
         return unit != null && WEIGHT_UNITS.contains(unit.trim().toLowerCase(Locale.ROOT));
     }
@@ -157,6 +178,11 @@ public class BomExplosionService {
             remaining = remaining.subtract(take);
         }
         return cost.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+    }
+
+    private enum LineKind {
+        WEIGHT,
+        COUNT
     }
 
     public record ExplosionResult(

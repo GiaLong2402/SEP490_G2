@@ -135,19 +135,16 @@ public class ProductionOrderService {
             throw ApiException.badRequest("Sản phẩm đã ngừng kinh doanh");
         }
         requireWholeTrays(request.plannedQty());
-        ProductVariant variant = request.variantId() != null
-                ? requireVariantOf(product.getId(), request.variantId())
-                : defaultVariant(product.getId()).orElse(null);
-
+        // Kế hoạch theo khay quy đổi 1 kg — chưa chọn loại khay; VT đóng gói trừ lúc hoàn thành.
         BomExplosionService.ExplosionResult explosion =
-                bomExplosionService.explode(product.getId(), request.plannedQty(), variant);
+                bomExplosionService.explode(product.getId(), request.plannedQty());
         AppUser actor = actorId == null ? null : userRepository.findById(actorId).orElse(null);
 
         ProductionOrder order = new ProductionOrder();
         order.setCode(businessCodeService.nextProductionOrderCode());
         order.setProduct(product);
         order.setPlannedQty(request.plannedQty());
-        order.setFinishedVariant(variant);
+        order.setFinishedVariant(null);
         order.setPlannedDueDate(request.plannedDueDate());
         order.setNote(blankToNull(request.note()));
         order.setEstimatedProductionCost(request.estimatedProductionCost());
@@ -173,14 +170,10 @@ public class ProductionOrderService {
             throw ApiException.conflict("Chỉ sửa được lệnh đang ở trạng thái bản nháp");
         }
         requireWholeTrays(request.plannedQty());
-        ProductVariant variant = request.variantId() != null
-                ? requireVariantOf(order.getProduct().getId(), request.variantId())
-                : order.getFinishedVariant();
-
         BomExplosionService.ExplosionResult explosion =
-                bomExplosionService.explode(order.getProduct().getId(), request.plannedQty(), variant);
+                bomExplosionService.explode(order.getProduct().getId(), request.plannedQty());
         order.setPlannedQty(request.plannedQty());
-        order.setFinishedVariant(variant);
+        order.setFinishedVariant(null);
         order.setPlannedDueDate(request.plannedDueDate());
         order.setNote(blankToNull(request.note()));
         order.setEstimatedProductionCost(request.estimatedProductionCost());
@@ -201,13 +194,17 @@ public class ProductionOrderService {
         if (order.getStatus() != ProductionOrderStatus.DRAFT) {
             throw ApiException.conflict("Chỉ duyệt được lệnh đang ở trạng thái bản nháp");
         }
-        BomExplosionService.ExplosionResult explosion = bomExplosionService.explode(
-                order.getProduct().getId(), order.getPlannedQty(), order.getFinishedVariant());
+        BomExplosionService.ExplosionResult explosion =
+                bomExplosionService.explode(order.getProduct().getId(), order.getPlannedQty());
         order.setEstimatedMaterialCost(explosion.estimatedMaterialCost());
         order.replaceMaterialLines(explosion.lines());
 
+        if (explosion.lines().isEmpty()) {
+            throw ApiException.badRequest(
+                    "BOM chưa có nguyên liệu theo kg — bổ sung định mức (cá, mực…) trước khi duyệt");
+        }
         if (!order.allMaterialsSufficient()) {
-            throw ApiException.conflict("Không đủ nguyên liệu để duyệt lệnh sản xuất");
+            throw ApiException.conflict("Không đủ nguyên liệu (theo kg) để duyệt lệnh sản xuất");
         }
 
         AppUser actor = actorId == null ? null : userRepository.findById(actorId).orElse(null);
@@ -320,6 +317,12 @@ public class ProductionOrderService {
 
         AppUser actor = actorId == null ? null : userRepository.findById(actorId).orElse(null);
         applyLeftovers(order, issue, request.leftovers(), actor, today);
+
+        BigDecimal physicalTrays = BigDecimal.ZERO;
+        for (GoodsReceiptService.FinishedPackLine pack : packs) {
+            physicalTrays = physicalTrays.add(pack.qty());
+        }
+        issuePackagingMaterials(order, issue, physicalTrays, actor);
 
         GoodsReceipt receipt = goodsReceiptService.createPendingFinishedFromProduction(
                 order.getId(), order.getCode(), packs, actorId);
@@ -536,8 +539,80 @@ public class ProductionOrderService {
     }
 
     /**
-     * Báo làm xong: chọn quy cách khác thì dùng quy cách đó, không chọn thì lấy loại khay đã chọn lúc lập lệnh
-     * (lệnh cũ chưa có → khay 1 kg).
+     * Trừ VT đóng gói (khay xốp, màng…) theo số khay vật lý lúc đóng gói; cộng vào chi phí NVL thực tế.
+     */
+    private void issuePackagingMaterials(
+            ProductionOrder order, MaterialIssue issue, BigDecimal physicalTrays, AppUser actor) {
+        if (physicalTrays == null || physicalTrays.signum() <= 0) {
+            return;
+        }
+        BomExplosionService.ExplosionResult pack =
+                bomExplosionService.explodePackaging(order.getProduct().getId(), physicalTrays);
+        if (pack.lines().isEmpty()) {
+            return;
+        }
+        for (ProductionOrderMaterialLine mol : pack.lines()) {
+            if (!mol.isSufficient()) {
+                throw ApiException.conflict(
+                        "Không đủ vật tư đóng gói "
+                                + mol.getRawMaterial().getName()
+                                + " (cần "
+                                + mol.getRequiredQty().stripTrailingZeros().toPlainString()
+                                + " cho "
+                                + physicalTrays.stripTrailingZeros().toPlainString()
+                                + " khay vật lý — còn dùng được "
+                                + mol.getOnHandQty().stripTrailingZeros().toPlainString()
+                                + ")");
+            }
+        }
+        Long refId = issue != null ? issue.getId() : order.getId();
+        String note = "VT đóng gói lệnh "
+                + order.getCode()
+                + " · "
+                + physicalTrays.stripTrailingZeros().toPlainString()
+                + " khay";
+        BigDecimal packCost = BigDecimal.ZERO;
+        int sort = 0;
+        if (issue != null) {
+            List<MaterialIssueLine> existing =
+                    materialIssueLineRepository.findByMaterialIssue_IdOrderBySortOrderAscIdAsc(issue.getId());
+            if (!existing.isEmpty()) {
+                sort = existing.get(existing.size() - 1).getSortOrder() + 1;
+            }
+        }
+        for (ProductionOrderMaterialLine mol : pack.lines()) {
+            List<RawMaterialStockService.IssueSlice> slices = rawMaterialStockService.issueFefo(
+                    mol.getRawMaterial(),
+                    mol.getRequiredQty(),
+                    RawMaterialStockService.REF_MATERIAL_ISSUE,
+                    refId,
+                    actor,
+                    note);
+            boolean first = true;
+            for (RawMaterialStockService.IssueSlice slice : slices) {
+                BigDecimal unit = slice.unitCost() == null ? BigDecimal.ZERO : slice.unitCost();
+                packCost = packCost.add(unit.multiply(slice.qty()).setScale(2, RoundingMode.HALF_UP));
+                if (issue != null) {
+                    MaterialIssueLine line = new MaterialIssueLine();
+                    line.setMaterialIssue(issue);
+                    line.setRawMaterial(mol.getRawMaterial());
+                    line.setQtyRequired(first ? mol.getRequiredQty() : BigDecimal.ZERO);
+                    line.setQtyIssued(slice.qty());
+                    line.setRawMaterialLot(slice.lot());
+                    line.setSortOrder(sort++);
+                    materialIssueLineRepository.save(line);
+                    first = false;
+                }
+            }
+        }
+        BigDecimal current =
+                order.getActualMaterialCost() == null ? BigDecimal.ZERO : order.getActualMaterialCost();
+        order.setActualMaterialCost(
+                current.add(packCost).setScale(2, RoundingMode.HALF_UP));
+    }
+
+    /**
+     * Báo làm xong: chọn quy cách khi đóng gói; không chọn thì khay 1 kg (hoặc quy cách đầu đang bán).
      */
     private ProductVariant resolveFinishedVariant(ProductionOrder order, Long variantId) {
         Long productId = order.getProduct().getId();
