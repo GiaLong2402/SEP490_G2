@@ -523,12 +523,12 @@ public class GoodsReceiptService {
         BigDecimal unitCost = material
                 .add(production)
                 .divide(BigDecimal.valueOf(request.qty()), 2, RoundingMode.HALF_UP);
-        // Giá bán chuẩn khay 1 kg; khay 0,5 kg = nửa (làm tròn 1.000) — không nhập tay.
+        // Giá bán gợi ý (Inter 1 #53, Inter 5 #6): giá vốn / khay quy về 1 kg (khay 0,5 kg: × 2) rồi cộng lời.
+        // Chỉ ghi vào nhật ký + hiện ở màn hoàn thành lệnh — KHÔNG ghi vào giá niêm yết (kể cả khay 0 ₫);
+        // áp dụng giá gợi ý do Chủ quyết (Inter 5 #6).
         int markupPercent = appConfigService.sellPriceMarkupPercent();
-        BigDecimal priceOneKg = appConfigService.sellPriceFromUnitCost(unitCost);
-        if (priceOneKg != null) {
-            applyListPricesAfterProduction(variant.getProduct().getId(), variant, priceOneKg);
-        }
+        BigDecimal costOneKg = unitCost.divide(PackSizes.weightKg(variant), 2, RoundingMode.HALF_UP);
+        BigDecimal priceOneKg = appConfigService.sellPriceFromUnitCost(costOneKg);
 
         String orderCode = order.getCode();
         LocalDate finishedDate = order.getFinishedDate();
@@ -643,34 +643,6 @@ public class GoodsReceiptService {
                 actor == null ? null : actor.getFullName(),
                 unitCost.multiply(BigDecimal.valueOf(request.qty())),
                 List.of());
-    }
-
-    /**
-     * Cập nhật niêm yết sau SX: khay 1 kg = {@code priceOneKg}; khay 0,5 kg = nửa (làm tròn 1.000).
-     * Chỉ có 0,5 kg → gán nguyên {@code priceOneKg} (SP một quy cách).
-     */
-    private void applyListPricesAfterProduction(
-            Long productId, ProductVariant receivedVariant, BigDecimal priceOneKg) {
-        BigDecimal priceHalfKg = appConfigService.halfKgSellPrice(priceOneKg);
-        List<ProductVariant> variants = productVariantRepository.findByProduct_IdOrderByIdAsc(productId);
-        boolean hasOneKg = variants.stream().anyMatch(PackSizes::isOneKg);
-        boolean hasHalfKg = variants.stream().anyMatch(PackSizes::isHalfKg);
-        for (ProductVariant v : variants) {
-            if (hasOneKg && PackSizes.isOneKg(v)) {
-                v.setListPrice(priceOneKg);
-                productVariantRepository.save(v);
-            } else if (hasOneKg && hasHalfKg && PackSizes.isHalfKg(v) && priceHalfKg != null) {
-                v.setListPrice(priceHalfKg);
-                productVariantRepository.save(v);
-            } else if (!hasOneKg && PackSizes.isHalfKg(v)) {
-                v.setListPrice(priceOneKg);
-                productVariantRepository.save(v);
-            }
-        }
-        if (!hasOneKg && !hasHalfKg) {
-            receivedVariant.setListPrice(priceOneKg);
-            productVariantRepository.save(receivedVariant);
-        }
     }
 
     /** Hủy phiếu còn chờ nhập (chưa cộng tồn nên không phải hoàn tồn). */

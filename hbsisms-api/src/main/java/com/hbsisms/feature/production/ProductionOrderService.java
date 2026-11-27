@@ -22,6 +22,7 @@ import com.hbsisms.feature.production.dto.ProductionOrderCreateRequest;
 import com.hbsisms.feature.production.dto.ProductionOrderMaterialLineResponse;
 import com.hbsisms.feature.production.dto.ProductionOrderResponse;
 import com.hbsisms.feature.production.dto.ProductionOrderUpdateRequest;
+import com.hbsisms.feature.production.dto.TrayPriceResponse;
 import com.hbsisms.feature.system.AppConfigService;
 import com.hbsisms.feature.system.AuditLogService;
 import com.hbsisms.feature.system.BusinessCodeService;
@@ -37,6 +38,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -126,15 +128,19 @@ public class ProductionOrderService {
             throw ApiException.badRequest("Sản phẩm đã ngừng kinh doanh");
         }
         requireWholeTrays(request.plannedQty());
+        ProductVariant variant = request.variantId() != null
+                ? requireVariantOf(product.getId(), request.variantId())
+                : defaultVariant(product.getId()).orElse(null);
 
         BomExplosionService.ExplosionResult explosion =
-                bomExplosionService.explode(product.getId(), request.plannedQty());
+                bomExplosionService.explode(product.getId(), request.plannedQty(), variant);
         AppUser actor = actorId == null ? null : userRepository.findById(actorId).orElse(null);
 
         ProductionOrder order = new ProductionOrder();
         order.setCode(businessCodeService.nextProductionOrderCode());
         order.setProduct(product);
         order.setPlannedQty(request.plannedQty());
+        order.setFinishedVariant(variant);
         order.setPlannedDueDate(request.plannedDueDate());
         order.setNote(blankToNull(request.note()));
         order.setEstimatedProductionCost(request.estimatedProductionCost());
@@ -160,10 +166,14 @@ public class ProductionOrderService {
             throw ApiException.conflict("Chỉ sửa được lệnh đang ở trạng thái bản nháp");
         }
         requireWholeTrays(request.plannedQty());
+        ProductVariant variant = request.variantId() != null
+                ? requireVariantOf(order.getProduct().getId(), request.variantId())
+                : order.getFinishedVariant();
 
         BomExplosionService.ExplosionResult explosion =
-                bomExplosionService.explode(order.getProduct().getId(), request.plannedQty());
+                bomExplosionService.explode(order.getProduct().getId(), request.plannedQty(), variant);
         order.setPlannedQty(request.plannedQty());
+        order.setFinishedVariant(variant);
         order.setPlannedDueDate(request.plannedDueDate());
         order.setNote(blankToNull(request.note()));
         order.setEstimatedProductionCost(request.estimatedProductionCost());
@@ -184,8 +194,8 @@ public class ProductionOrderService {
         if (order.getStatus() != ProductionOrderStatus.DRAFT) {
             throw ApiException.conflict("Chỉ duyệt được lệnh đang ở trạng thái bản nháp");
         }
-        BomExplosionService.ExplosionResult explosion =
-                bomExplosionService.explode(order.getProduct().getId(), order.getPlannedQty());
+        BomExplosionService.ExplosionResult explosion = bomExplosionService.explode(
+                order.getProduct().getId(), order.getPlannedQty(), order.getFinishedVariant());
         order.setEstimatedMaterialCost(explosion.estimatedMaterialCost());
         order.replaceMaterialLines(explosion.lines());
 
@@ -447,31 +457,46 @@ public class ProductionOrderService {
         return map;
     }
 
+    /**
+     * Báo làm xong: chọn quy cách khác thì dùng quy cách đó, không chọn thì lấy loại khay đã chọn lúc lập lệnh
+     * (lệnh cũ chưa có → khay 1 kg).
+     */
     private ProductVariant resolveFinishedVariant(ProductionOrder order, Long variantId) {
+        Long productId = order.getProduct().getId();
         if (variantId != null) {
-            ProductVariant variant = productVariantRepository
-                    .findById(variantId)
-                    .orElseThrow(() -> ApiException.notFound("Không tìm thấy quy cách sản phẩm"));
-            if (!variant.getProduct().getId().equals(order.getProduct().getId())) {
-                throw ApiException.badRequest("Quy cách không thuộc sản phẩm của lệnh");
-            }
-            if (!variant.isActive()) {
-                throw ApiException.conflict("Quy cách đã ngừng bán");
-            }
-            return variant;
+            return requireVariantOf(productId, variantId);
         }
-        // BOM chuẩn khay 1 kg — ưu tiên quy cách 1 kg khi không chọn variantId.
-        List<ProductVariant> active = productVariantRepository
-                .findByProduct_IdOrderByIdAsc(order.getProduct().getId())
-                .stream()
+        ProductVariant planned = order.getFinishedVariant();
+        if (planned != null && planned.isActive()) {
+            return planned;
+        }
+        return defaultVariant(productId)
+                .orElseThrow(() -> ApiException.conflict(
+                        "Sản phẩm chưa có quy cách đang bán — chọn variantId khi báo hoàn thành"));
+    }
+
+    private ProductVariant requireVariantOf(Long productId, Long variantId) {
+        ProductVariant variant = productVariantRepository
+                .findById(variantId)
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy quy cách sản phẩm"));
+        if (!variant.getProduct().getId().equals(productId)) {
+            throw ApiException.badRequest("Quy cách không thuộc sản phẩm của lệnh");
+        }
+        if (!variant.isActive()) {
+            throw ApiException.conflict("Quy cách đã ngừng bán");
+        }
+        return variant;
+    }
+
+    /** Không chọn loại khay → ưu tiên khay 1 kg, không có thì quy cách đầu tiên đang bán. */
+    private Optional<ProductVariant> defaultVariant(Long productId) {
+        List<ProductVariant> active = productVariantRepository.findByProduct_IdOrderByIdAsc(productId).stream()
                 .filter(ProductVariant::isActive)
                 .toList();
         return active.stream()
                 .filter(PackSizes::isOneKg)
                 .findFirst()
-                .or(() -> active.stream().findFirst())
-                .orElseThrow(() -> ApiException.conflict(
-                        "Sản phẩm chưa có quy cách đang bán — chọn variantId khi báo hoàn thành"));
+                .or(() -> active.stream().findFirst());
     }
 
     private ProductionOrder requireOrder(Long id) {
@@ -495,6 +520,7 @@ public class ProductionOrderService {
         BigDecimal unitCost = null;
         Integer markupPercent = null;
         BigDecimal suggestedSellPrice = null;
+        List<TrayPriceResponse> trayPrices = List.of();
         FinishedPutAwayResponse putAway = null;
         if (order.getStatus() == ProductionOrderStatus.COMPLETED) {
             GoodsReceipt finished = order.getFinishedReceipt();
@@ -507,11 +533,47 @@ public class ProductionOrderService {
             if (qty != null && qty.signum() > 0) {
                 unitCost = material.add(production).divide(qty, 0, RoundingMode.HALF_UP);
                 markupPercent = appConfigService.sellPriceMarkupPercent();
-                suggestedSellPrice = appConfigService.sellPriceFromUnitCost(unitCost);
+                suggestedSellPrice = sellPriceOneKg(unitCost, order.getFinishedVariant());
+                trayPrices = trayPrices(order, suggestedSellPrice);
             }
         }
         return ProductionOrderResponse.from(
-                order, materials, leftovers, unitCost, markupPercent, suggestedSellPrice, null, putAway);
+                order, materials, leftovers, unitCost, markupPercent, suggestedSellPrice, null, putAway, trayPrices);
+    }
+
+    /**
+     * Giá bán <b>1 kg</b>, khớp giá đã ghi lúc nhập TP: giá vốn / khay quy về 1 kg rồi cộng lời.
+     * Màn hoàn thành tự chia đôi ra khay 0,5 kg.
+     */
+    private BigDecimal sellPriceOneKg(BigDecimal unitCost, ProductVariant variant) {
+        BigDecimal trayKg = PackSizes.weightKg(variant);
+        return appConfigService.sellPriceFromUnitCost(unitCost.divide(trayKg, 2, RoundingMode.HALF_UP));
+    }
+
+    /**
+     * Giá đang bán và giá gợi ý của từng khay (khay 1 kg trước). Khay ngừng bán chỉ hiện khi là khay vừa làm.
+     */
+    private List<TrayPriceResponse> trayPrices(ProductionOrder order, BigDecimal priceOneKg) {
+        ProductVariant produced = order.getFinishedVariant();
+        Long producedId = produced == null ? null : produced.getId();
+        List<ProductVariant> shown = productVariantRepository
+                .findByProduct_IdOrderByIdAsc(order.getProduct().getId())
+                .stream()
+                .filter(v -> v.isActive() || v.getId().equals(producedId))
+                .toList();
+        List<ProductVariant> sorted = new ArrayList<>(shown.stream().filter(PackSizes::isOneKg).toList());
+        shown.stream().filter(v -> !PackSizes.isOneKg(v)).forEach(sorted::add);
+        return sorted.stream()
+                .map(v -> new TrayPriceResponse(
+                        v.getId(),
+                        v.getSku(),
+                        v.getPackLabel(),
+                        v.getUnitWeightG(),
+                        v.isActive(),
+                        v.getId().equals(producedId),
+                        v.getListPrice(),
+                        PackSizes.trayPrice(priceOneKg, v)))
+                .toList();
     }
 
     /** Lệnh sản xuất tính theo khay — không có 1,5 khay. */

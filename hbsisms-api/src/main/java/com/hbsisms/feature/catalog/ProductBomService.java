@@ -133,8 +133,9 @@ public class ProductBomService {
         if (wastePercent == null) {
             return null;
         }
-        if (wastePercent.compareTo(BigDecimal.ZERO) < 0 || wastePercent.compareTo(HUNDRED) > 0) {
-            throw ApiException.badRequest("% hao hụt phải từ 0 đến 100");
+        // Hao hụt 100% = mất hết, không làm ra được gì → chặn (cần = định mức ÷ (1 − hao hụt%)).
+        if (wastePercent.compareTo(BigDecimal.ZERO) < 0 || wastePercent.compareTo(HUNDRED) >= 0) {
+            throw ApiException.badRequest("% hao hụt phải từ 0 đến dưới 100");
         }
         return wastePercent;
     }

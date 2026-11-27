@@ -8,6 +8,7 @@ import { InfoTip, LinkButton } from '@/shared/ui';
 import { useMaterialIssue } from '../hooks';
 import type { ProductionOrder } from '../types';
 import { ActionBar, HistoryCard, Section, StepLayout, orderHistory } from './OrderShell';
+import { trayName } from './PlanEditor';
 import { actualTotalCost, estimatedUnitCost, leftoverTotal, reportedEvent } from './ReceiptPanel';
 
 const signed = (v: number, fmt: (n: number) => string) => (v === 0 ? '0' : `${v > 0 ? '+' : '−'}${fmt(Math.abs(v))}`);
@@ -62,11 +63,16 @@ export function SummaryPanel({ order }: { order: ProductionOrder }) {
   const unit = order.unitCost ?? (total !== null && received > 0 ? Math.round(total / received) : null);
   /** API trả sẵn; nếu chưa (API cũ / chưa restart) tự tính theo markup mặc định 30%. */
   const markupPercent = order.markupPercent ?? 30;
+  /** Giá vốn / khay quy về 1 kg (khay 0,5 kg → gấp đôi) — giá bán luôn tính cho 1 kg. */
+  const trayKg = order.finishedTrayKg && order.finishedTrayKg > 0 ? order.finishedTrayKg : 1;
+  const unitPerKg = unit != null ? Math.round(unit / trayKg) : null;
   const suggestedSellPrice =
     order.suggestedSellPrice
-    ?? (unit != null ? Math.round((unit * (1 + markupPercent / 100)) / 1000) * 1000 : null);
+    ?? (unitPerKg != null ? Math.round((unitPerKg * (1 + markupPercent / 100)) / 1000) * 1000 : null);
   const halfKgPrice =
     suggestedSellPrice != null ? Math.round(suggestedSellPrice / 2 / 1000) * 1000 : null;
+  /** API mới trả sẵn giá đang bán / gợi ý từng khay; API cũ không có → hiện 2 ô gợi ý như trước. */
+  const trayPrices = order.trayPrices ?? [];
   const unitDiff = unit !== null && est !== null ? unit - est : null;
   const leftover = leftoverTotal(order);
   const pct = order.plannedQty > 0 ? Math.round((received / order.plannedQty) * 100) : 0;
@@ -212,30 +218,59 @@ export function SummaryPanel({ order }: { order: ProductionOrder }) {
         </section>
         <section className="flex flex-col rounded-lg border border-line bg-card p-4 shadow-card">
           <div className="flex items-start justify-between gap-2">
-            <h2 className="text-h2 text-ink">Giá bán (đã cập nhật)</h2>
-            <InfoTip label="Cách tính giá bán">
-              Giá vốn / khay × (1 + {markupPercent}% lời), làm tròn 1.000 ₫ → khay 1 kg. Khay 0,5 kg = một nửa (cũng
-              tròn 1.000 ₫). Hệ thống ghi vào niêm yết quy cách — không nhập tay.
+            <h2 className="text-h2 text-ink">Giá bán gợi ý</h2>
+            <InfoTip label="Cách tính giá gợi ý">
+              Giá vốn quy về 1 kg × (1 + {markupPercent}% lời), làm tròn 1.000 ₫ → khay 1 kg. Khay 0,5 kg = một nửa
+              (cũng tròn 1.000 ₫). Lệnh làm khay 0,5 kg thì giá vốn 1 kg = giá vốn khay × 2. Hệ thống chỉ gợi ý,
+              không tự ghi vào giá niêm yết của sản phẩm.
             </InfoTip>
           </div>
           <p className="mt-1 text-small text-ink-muted">
-            {money(unit)} vốn → +{markupPercent}% → tròn 1.000 ₫
+            {trayKg !== 1
+              ? `${money(unit)} vốn/khay ${num(trayKg)} kg = ${money(unitPerKg)}/kg → +${markupPercent}% → tròn 1.000 ₫`
+              : `${money(unit)} vốn → +${markupPercent}% → tròn 1.000 ₫`}
           </p>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <div className="rounded-md border border-line bg-rowalt/60 px-3 py-3">
-              <div className="text-micro font-semibold uppercase tracking-wide text-ink-muted">Khay 1 kg</div>
-              <div className="mt-1 text-h2 tabular-nums text-primary">{money(suggestedSellPrice)}</div>
+          {trayPrices.length > 0 ? (
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              {trayPrices.map((t) => {
+                const diff = t.listPrice != null && t.suggestedPrice != null ? t.suggestedPrice - t.listPrice : null;
+                return (
+                  <div key={t.variantId} className="rounded-md border border-line bg-rowalt/60 px-3 py-3">
+                    <div className="flex items-center gap-1.5 text-micro font-semibold uppercase tracking-wide text-ink-muted">
+                      {trayName(t)}
+                      {t.produced && <span className="normal-case font-medium text-primary">· vừa làm</span>}
+                    </div>
+                    <div className="mt-1 text-small text-ink-muted">
+                      Đang bán <b className="tabular-nums text-ink">{money(t.listPrice)}</b>
+                    </div>
+                    <div className="mt-0.5 text-h2 tabular-nums text-primary">{money(t.suggestedPrice)}</div>
+                    <div className="mt-0.5 text-small text-ink-faint">
+                      {diff === null ? 'Gợi ý' : diff === 0 ? 'Gợi ý · bằng giá đang bán' : `Gợi ý · ${diff > 0 ? '+' : '−'}${money(Math.abs(diff))}`}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <div className="rounded-md border border-line bg-rowalt/60 px-3 py-3">
-              <div className="text-micro font-semibold uppercase tracking-wide text-ink-muted">Khay 0,5 kg</div>
-              <div className="mt-1 text-h2 tabular-nums text-ink">{money(halfKgPrice)}</div>
-              <div className="mt-0.5 text-small text-ink-faint">= ½ giá 1 kg</div>
+          ) : (
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="rounded-md border border-line bg-rowalt/60 px-3 py-3">
+                <div className="text-micro font-semibold uppercase tracking-wide text-ink-muted">Khay 1 kg</div>
+                <div className="mt-1 text-h2 tabular-nums text-primary">{money(suggestedSellPrice)}</div>
+              </div>
+              <div className="rounded-md border border-line bg-rowalt/60 px-3 py-3">
+                <div className="text-micro font-semibold uppercase tracking-wide text-ink-muted">Khay 0,5 kg</div>
+                <div className="mt-1 text-h2 tabular-nums text-ink">{money(halfKgPrice)}</div>
+                <div className="mt-0.5 text-small text-ink-faint">= ½ giá 1 kg</div>
+              </div>
             </div>
-          </div>
+          )}
+          <p className="mt-3 text-small text-ink-muted">
+            Chỉ là giá gợi ý, hệ thống không tự đổi giá niêm yết của sản phẩm.
+          </p>
           {order.productId != null && (
             <Link
               to={`/products/${order.productId}`}
-              className="mt-3 text-small font-medium text-primary hover:underline"
+              className="mt-1 text-small font-medium text-primary hover:underline"
             >
               Xem trên sản phẩm →
             </Link>

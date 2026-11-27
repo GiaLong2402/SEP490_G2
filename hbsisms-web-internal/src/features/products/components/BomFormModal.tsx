@@ -67,7 +67,7 @@ export function BomFormModal({
     if (!row.unitId) return 'Chọn ĐVT';
     if (row.wastePercent.trim() !== '') {
       const w = Number(row.wastePercent);
-      if (Number.isNaN(w) || w < 0 || w > 100) return '% hao hụt 0–100';
+      if (Number.isNaN(w) || w < 0 || w >= 100) return '% hao hụt từ 0 đến dưới 100';
     }
     const rawId = Number(row.rawMaterialId);
     if (rows.findIndex((r) => Number(r.rawMaterialId) === rawId) !== index) return 'Nguyên liệu trùng';
@@ -113,7 +113,9 @@ export function BomFormModal({
       }
     >
       <p className="mb-3 text-small text-ink-muted">
-        Số lượng NVL cho <strong>1 đơn vị thành phẩm</strong> (vd. 1 kg chả). Không chọn chính sản phẩm đang sửa làm nguyên liệu.
+        Số lượng NVL cho <strong>1 kg thành phẩm</strong> (vd. 1 kg chả). Khay 0,5 kg tự dùng một nửa phần NVL tính theo kg;
+        khay xốp, màng bọc (cái, cuộn) tính theo từng khay. Hao hụt là phần mất đi khi làm: hao hụt 50% thì cần gấp đôi
+        nguyên liệu. Không chọn chính sản phẩm đang sửa làm nguyên liệu.
       </p>
       <div className="space-y-3">
         {rows.map((row, index) => (

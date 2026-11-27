@@ -53,7 +53,7 @@ public class VariantService {
 
         String sku = requireSku(request.sku());
         String packLabel = requirePackLabel(request.packLabel());
-        // Giá niêm yết do lệnh SX ghi sau nhập TP; tạo mới cho phép 0 (chưa SX).
+        // Tạo mới cho phép 0 (chưa có giá); nhập TP từ LSX không tự ghi giá (Inter 5 #6).
         BigDecimal listPrice = normalizeListPrice(request.listPrice());
         short packPerCase = requirePackPerCase(request.packPerCase());
         assertSkuAvailable(sku, null);
@@ -73,7 +73,7 @@ public class VariantService {
 
         String sku = requireSku(request.sku());
         String packLabel = requirePackLabel(request.packLabel());
-        // Không cho sửa giá tay — giá do nhập thành phẩm từ LSX cập nhật.
+        // Không cho sửa giá tay; nhập TP từ LSX chỉ gợi ý giá, không tự ghi (Inter 5 #6: Chủ áp dụng).
         BigDecimal listPrice = variant.getListPrice() == null ? BigDecimal.ZERO : variant.getListPrice();
         short packPerCase = requirePackPerCase(request.packPerCase());
         assertSkuAvailable(sku, id);
