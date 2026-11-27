@@ -14,10 +14,10 @@ import { useProductionOrder } from '../hooks';
  * - Nháp (Duy): thiếu NVL thì khóa Duyệt + lối tắt tạo phiếu nhập NVL; tồn dùng được không tính lô hết hạn.
  * - Đã duyệt (Cường): POST /material-issues/{id}/confirm bỏ allocations chọn tay, lọc lô hết hạn (FEFO), nhận note.
  * - Đang sản xuất (Cường): /complete nhận thêm finishedDate, defectQty, defectReason, leftovers[] (tạo lô -TL, trừ giá vốn);
- *   lưu dòng hàng thật cho phiếu nhập chờ. Vượt kế hoạch: cho lưu, chỉ cảnh báo.
+ *   lưu dòng hàng thật cho phiếu nhập chờ. Đạt + hỏng không được vượt kế hoạch.
  * - Chờ nhập kho (Long): /goods-receipts/{id}/complete nhận phiếu thành phẩm; số khay sửa được;
  *   giá vốn / khay vào đơn giá dòng phiếu; nhập xong lệnh tự chuyển completed.
- * - Hoàn thành: giá vốn chia theo số khay nhập kho; nhập TP ghi listPrice = giá vốn × (1+markup%).
+ * - Hoàn thành: giá vốn chia theo số khay nhập kho; Task 59 — không tự đổi listPrice (Áp dụng ở màn SP).
  */
 
 /** Tạo lệnh mới: bước 01 với form trống. */

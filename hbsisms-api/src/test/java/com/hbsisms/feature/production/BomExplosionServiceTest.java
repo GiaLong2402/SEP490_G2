@@ -39,12 +39,17 @@ class BomExplosionServiceTest {
     private ProductBomLineRepository bomLineRepository;
     @Mock
     private RawMaterialLotRepository rawMaterialLotRepository;
+    @Mock
+    private com.hbsisms.feature.costing.CostingService costingService;
 
     private BomExplosionService service;
 
     @BeforeEach
     void setUp() {
-        service = new BomExplosionService(bomLineRepository, rawMaterialLotRepository, CLOCK);
+        service = new BomExplosionService(bomLineRepository, rawMaterialLotRepository, costingService, CLOCK);
+        org.mockito.Mockito.lenient()
+                .when(costingService.currentRawAvgUnitCost(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(java.util.Optional.empty());
     }
 
     @Test

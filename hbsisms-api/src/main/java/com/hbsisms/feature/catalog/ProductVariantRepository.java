@@ -14,6 +14,14 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     @EntityGraph(attributePaths = "product")
     Optional<ProductVariant> findWithProductById(Long id);
 
+    @Query("""
+            select v from ProductVariant v
+            join fetch v.product p
+            left join fetch p.category
+            where v.id = :id
+            """)
+    Optional<ProductVariant> findWithProductAndCategoryById(@Param("id") Long id);
+
     @Query("select v from ProductVariant v join fetch v.product where v.id in :ids")
     List<ProductVariant> findWithProductByIdIn(@Param("ids") Collection<Long> ids);
 

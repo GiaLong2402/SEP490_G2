@@ -4,6 +4,7 @@ import com.hbsisms.common.web.PageRequests;
 import com.hbsisms.common.web.PageResponse;
 import com.hbsisms.feature.catalog.dto.ProductRequest;
 import com.hbsisms.feature.catalog.dto.ProductResponse;
+import com.hbsisms.feature.catalog.dto.SellPriceHistoryResponse;
 import com.hbsisms.feature.media.CloudinaryStorageService;
 import com.hbsisms.feature.media.dto.ImageUploadResponse;
 import jakarta.validation.Valid;
@@ -23,8 +24,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
-import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/products")
@@ -32,10 +33,15 @@ public class ProductController {
 
     private final ProductService productService;
     private final CloudinaryStorageService cloudinaryStorageService;
+    private final SellPriceSuggestionService sellPriceSuggestionService;
 
-    public ProductController(ProductService productService, CloudinaryStorageService cloudinaryStorageService) {
+    public ProductController(
+            ProductService productService,
+            CloudinaryStorageService cloudinaryStorageService,
+            SellPriceSuggestionService sellPriceSuggestionService) {
         this.productService = productService;
         this.cloudinaryStorageService = cloudinaryStorageService;
+        this.sellPriceSuggestionService = sellPriceSuggestionService;
     }
 
     @GetMapping
@@ -64,6 +70,14 @@ public class ProductController {
             return productService.getPublic(id);
         }
         return productService.get(id);
+    }
+
+    /** Task 59 — lịch sử giá bán theo giai đoạn (mọi quy cách của SP). */
+    @GetMapping("/{id}/sell-price-history")
+    @PreAuthorize("hasAuthority('products')")
+    public List<SellPriceHistoryResponse> sellPriceHistory(@PathVariable Long id) {
+        productService.get(id);
+        return sellPriceSuggestionService.historyForProduct(id);
     }
 
     /**

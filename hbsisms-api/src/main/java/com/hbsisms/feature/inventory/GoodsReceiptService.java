@@ -63,8 +63,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * <ul>
  *   <li>Thành phẩm tay: nhập ngay (cộng tồn theo lô + vị trí), phân bổ cho đơn đang thiếu hàng.</li>
  *   <li>Thành phẩm từ lệnh SX (dòng 52): phiếu Pending → thủ kho xác nhận lô/NSX/HSD/vị trí/SL → cộng tồn,
- *       lưu giá vốn/khay, đóng lệnh {@code COMPLETED}, cập nhật giá niêm yết quy cách =
- *       giá vốn × (1 + sell_price_markup_percent/100).</li>
+ *       lưu giá vốn/khay, đóng lệnh {@code COMPLETED}. Task 59: không tự đổi listPrice — Chủ Áp dụng
+ *       gợi ý giá bán trên màn sản phẩm.</li>
  *   <li>Nguyên vật liệu (Inter 1 dòng 46–47): tạo phiếu ở trạng thái Chờ nhập — chưa cộng tồn; hàng về thì
  *       thủ kho xác nhận SL thực nhận, lô, NSX/HSD, đơn giá → cộng tồn theo lô NVL, phiếu Hoàn thành.
  *       Phiếu chờ có thể hủy.</li>
@@ -251,23 +251,37 @@ public class GoodsReceiptService {
 
     /**
      * Task 51 (Cường): phiếu nhập thành phẩm Pending từ lệnh SX — chưa cộng tồn.
-     * Long sẽ xác nhận nhập (lô / vị trí / giá vốn) ở bước sau.
+     * Có thể nhiều dòng (chia khay 1 kg / 0,5 kg). Thủ kho xác nhận lô / vị trí ở bước sau.
      */
     @Transactional
     public GoodsReceipt createPendingFinishedFromProduction(
             Long productionOrderId,
             String productionOrderCode,
-            ProductVariant variant,
-            BigDecimal qty,
+            List<FinishedPackLine> packs,
             Long actorId) {
         if (productionOrderId == null) {
             throw ApiException.badRequest("Thiếu lệnh sản xuất");
         }
-        if (variant == null) {
+        if (packs == null || packs.isEmpty()) {
             throw ApiException.badRequest("Thiếu quy cách thành phẩm");
         }
-        if (qty == null || qty.signum() <= 0) {
-            throw ApiException.badRequest("Số lượng thành phẩm phải lớn hơn 0");
+        StringBuilder notePacks = new StringBuilder();
+        int lineNo = 1;
+        for (FinishedPackLine pack : packs) {
+            if (pack == null || pack.variant() == null) {
+                throw ApiException.badRequest("Thiếu quy cách thành phẩm");
+            }
+            if (pack.qty() == null || pack.qty().signum() <= 0) {
+                throw ApiException.badRequest("Số lượng thành phẩm phải lớn hơn 0");
+            }
+            if (notePacks.length() > 0) {
+                notePacks.append(" + ");
+            }
+            notePacks
+                    .append(pack.variant().getSku())
+                    .append(" × ")
+                    .append(pack.qty().stripTrailingZeros().toPlainString());
+            lineNo++;
         }
         AppUser actor = actorId == null ? null : userRepository.findById(actorId).orElse(null);
         Instant now = Instant.now(clock);
@@ -277,31 +291,34 @@ public class GoodsReceiptService {
         receipt.setStatus(ReceiptStatus.PENDING);
         receipt.setProductionOrderId(productionOrderId);
         receipt.setSource(productionOrderCode);
-        receipt.setNote(
-                "Chờ nhập TP từ lệnh "
-                        + productionOrderCode
-                        + " · "
-                        + variant.getSku()
-                        + " × "
-                        + qty.stripTrailingZeros().toPlainString());
+        receipt.setNote("Chờ nhập TP từ lệnh " + productionOrderCode + " · " + notePacks);
         receipt.setReceivedBy(actor);
         receipt.setReceivedAt(now);
         GoodsReceipt saved = goodsReceiptRepository.saveAndFlush(receipt);
-        GoodsReceiptLine line = new GoodsReceiptLine();
-        line.setReceipt(saved);
-        line.setProductVariant(variant);
-        line.setLineNo(1);
-        line.setQtyExpected(qty);
-        goodsReceiptLineRepository.save(line);
-        auditLogService.record(actorId, "create", REF_TYPE, saved.getId(), Map.of(
-                "code", saved.getCode(),
-                "receiptType", ReceiptType.FINISHED.code(),
-                "status", ReceiptStatus.PENDING.code(),
-                "productionOrderId", productionOrderId,
-                "variantId", variant.getId(),
-                "qtyExpected", qty));
+        lineNo = 1;
+        List<Long> variantIds = new ArrayList<>();
+        for (FinishedPackLine pack : packs) {
+            GoodsReceiptLine line = new GoodsReceiptLine();
+            line.setReceipt(saved);
+            line.setProductVariant(pack.variant());
+            line.setLineNo(lineNo++);
+            line.setQtyExpected(pack.qty());
+            goodsReceiptLineRepository.save(line);
+            variantIds.add(pack.variant().getId());
+        }
+        Map<String, Object> audit = new LinkedHashMap<>();
+        audit.put("code", saved.getCode());
+        audit.put("receiptType", ReceiptType.FINISHED.code());
+        audit.put("status", ReceiptStatus.PENDING.code());
+        audit.put("productionOrderId", productionOrderId);
+        audit.put("variantIds", variantIds);
+        audit.put("packCount", packs.size());
+        auditLogService.record(actorId, "create", REF_TYPE, saved.getId(), audit);
         return saved;
     }
+
+    /** Một dòng đóng gói khi tạo phiếu TP từ lệnh SX. */
+    public record FinishedPackLine(ProductVariant variant, BigDecimal qty) {}
 
     /**
      * Inter 1 dòng 47: thủ kho xác nhận nhập kho phiếu NVL — mỗi dòng nhập SL thực nhận (có thể khác dự kiến,
@@ -494,14 +511,13 @@ public class GoodsReceiptService {
         }
 
         List<GoodsReceiptLine> lines = goodsReceiptLineRepository.findByReceipt_IdOrderByLineNoAsc(id);
-        GoodsReceiptLine line = lines.stream()
+        List<GoodsReceiptLine> fgLines = lines.stream()
                 .filter(l -> l.getProductVariant() != null)
-                .findFirst()
-                .orElseThrow(() -> ApiException.badRequest("Phiếu thiếu dòng thành phẩm"));
-        Long variantId = line.getProductVariant().getId();
-        ProductVariant variant = productVariantRepository
-                .findWithProductById(variantId)
-                .orElseThrow(() -> ApiException.notFound("Không tìm thấy quy cách sản phẩm"));
+                .sorted(Comparator.comparingInt(GoodsReceiptLine::getLineNo))
+                .toList();
+        if (fgLines.isEmpty()) {
+            throw ApiException.badRequest("Phiếu thiếu dòng thành phẩm");
+        }
 
         // Chỉ đọc chi phí/mã lệnh — không findByIdForUpdate (tránh conflict OneToOne finishedReceipt
         // trùng phiếu đang khóa → Hibernate entityEntry is null).
@@ -517,50 +533,101 @@ public class GoodsReceiptService {
         final Long linkedSalesOrderIdEarly =
                 order.getSalesOrder() == null ? null : order.getSalesOrder().getId();
 
+        // Một dòng: cho phép sửa SL nhập (giống cũ). Nhiều dòng (chia 1kg/0,5kg): giữ đúng qtyExpected.
+        List<Integer> receiveQtys = new ArrayList<>();
+        if (fgLines.size() == 1) {
+            receiveQtys.add(request.qty());
+        } else {
+            int expectedSum = 0;
+            for (GoodsReceiptLine line : fgLines) {
+                BigDecimal expected = line.getQtyExpected();
+                if (expected == null || expected.signum() <= 0 || expected.stripTrailingZeros().scale() > 0) {
+                    throw ApiException.badRequest("Số khay từng quy cách phải là số nguyên dương");
+                }
+                int q = expected.intValueExact();
+                receiveQtys.add(q);
+                expectedSum += q;
+            }
+            if (request.qty() != expectedSum) {
+                throw ApiException.badRequest(
+                        "Số khay nhập phải đúng tổng đóng gói (" + expectedSum + " khay)");
+            }
+        }
+
         BigDecimal material = order.getActualMaterialCost() == null ? BigDecimal.ZERO : order.getActualMaterialCost();
         BigDecimal production =
                 order.getActualProductionCost() == null ? BigDecimal.ZERO : order.getActualProductionCost();
-        BigDecimal unitCost = material
-                .add(production)
-                .divide(BigDecimal.valueOf(request.qty()), 2, RoundingMode.HALF_UP);
-        // Giá bán gợi ý (Inter 1 #53, Inter 5 #6): giá vốn / khay quy về 1 kg (khay 0,5 kg: × 2) rồi cộng lời.
-        // Chỉ ghi vào nhật ký + hiện ở màn hoàn thành lệnh — KHÔNG ghi vào giá niêm yết (kể cả khay 0 ₫);
-        // áp dụng giá gợi ý do Chủ quyết (Inter 5 #6).
+        BigDecimal totalCost = material.add(production);
+
+        BigDecimal totalWeightKg = BigDecimal.ZERO;
+        List<ProductVariant> variants = new ArrayList<>();
+        for (int i = 0; i < fgLines.size(); i++) {
+            Long variantId = fgLines.get(i).getProductVariant().getId();
+            ProductVariant variant = productVariantRepository
+                    .findWithProductById(variantId)
+                    .orElseThrow(() -> ApiException.notFound("Không tìm thấy quy cách sản phẩm"));
+            variants.add(variant);
+            totalWeightKg = totalWeightKg.add(
+                    PackSizes.trayWeightKg(variant).multiply(BigDecimal.valueOf(receiveQtys.get(i))));
+        }
+        if (totalWeightKg.signum() <= 0) {
+            throw ApiException.badRequest("Tổng khối lượng thành phẩm không hợp lệ");
+        }
+        BigDecimal costPerKg = totalCost.divide(totalWeightKg, 4, RoundingMode.HALF_UP);
+        // Giá vốn quy đổi khay 1 kg — gợi ý bán (Task 59: không tự đổi listPrice).
+        BigDecimal unitCostOneKg = costPerKg.setScale(2, RoundingMode.HALF_UP);
         int markupPercent = appConfigService.sellPriceMarkupPercent();
-        BigDecimal costOneKg = unitCost.divide(PackSizes.weightKg(variant), 2, RoundingMode.HALF_UP);
-        BigDecimal priceOneKg = appConfigService.sellPriceFromUnitCost(costOneKg);
+        BigDecimal priceOneKg = appConfigService.sellPriceFromUnitCost(unitCostOneKg);
 
         String orderCode = order.getCode();
         LocalDate finishedDate = order.getFinishedDate();
         Long orderId = order.getId();
+        LocalDate mfg = request.mfgDate() != null ? request.mfgDate() : finishedDate;
 
         AppUser actor = actorId == null ? null : userRepository.findById(actorId).orElse(null);
-        FinishedReceiptLineRequest stockLine = new FinishedReceiptLineRequest(
-                variant.getId(),
-                request.lotCode(),
-                request.mfgDate() != null ? request.mfgDate() : finishedDate,
-                request.expDate(),
-                request.locationId(),
-                request.qty());
-        Lot lot = resolveLot(variant, stockLine);
-        lot.setUnitCost(unitCost);
-        lotRepository.save(lot);
-        stockService.receiveIn(StockMutation.of(
-                variant.getId(),
-                lot.getId(),
-                request.locationId(),
-                request.qty(),
-                REF_TYPE,
-                receipt.getId(),
-                "Nhập thành phẩm từ lệnh " + orderCode,
-                actorId));
+        String baseLot = Strings.trimToNull(request.lotCode());
+        List<ReceiptItemResponse> items = new ArrayList<>();
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        int totalQty = 0;
 
-        line.setQtyReceived(BigDecimal.valueOf(request.qty()));
-        line.setLotCode(lot.getLotCode());
-        line.setMfgDate(stockLine.mfgDate());
-        line.setExpDate(request.expDate());
-        line.setUnitPrice(unitCost);
-        goodsReceiptLineRepository.save(line);
+        for (int i = 0; i < fgLines.size(); i++) {
+            GoodsReceiptLine line = fgLines.get(i);
+            ProductVariant variant = variants.get(i);
+            int qty = receiveQtys.get(i);
+            BigDecimal unitCost = costPerKg
+                    .multiply(PackSizes.trayWeightKg(variant))
+                    .setScale(2, RoundingMode.HALF_UP);
+            String lotCode = baseLot;
+            if (lotCode != null && fgLines.size() > 1) {
+                lotCode = lotCode + "-" + (i + 1);
+            }
+            FinishedReceiptLineRequest stockLine = new FinishedReceiptLineRequest(
+                    variant.getId(), lotCode, mfg, request.expDate(), request.locationId(), qty);
+            Lot lot = resolveLot(variant, stockLine);
+            lot.setUnitCost(unitCost);
+            lotRepository.save(lot);
+            stockService.receiveIn(StockMutation.of(
+                    variant.getId(),
+                    lot.getId(),
+                    request.locationId(),
+                    qty,
+                    REF_TYPE,
+                    receipt.getId(),
+                    "Nhập thành phẩm từ lệnh " + orderCode,
+                    actorId));
+
+            line.setQtyReceived(BigDecimal.valueOf(qty));
+            line.setLotCode(lot.getLotCode());
+            line.setMfgDate(mfg);
+            line.setExpDate(request.expDate());
+            line.setUnitPrice(unitCost);
+            goodsReceiptLineRepository.save(line);
+
+            items.add(new ReceiptItemResponse(
+                    variant.getSku() + " · " + lot.getLotCode(), (double) qty, "khay"));
+            totalAmount = totalAmount.add(unitCost.multiply(BigDecimal.valueOf(qty)));
+            totalQty += qty;
+        }
 
         Instant now = Instant.now(clock);
         receipt.setStatus(ReceiptStatus.COMPLETED);
@@ -613,11 +680,12 @@ public class GoodsReceiptService {
         detail.put("code", receipt.getCode());
         detail.put("status", ReceiptStatus.COMPLETED.code());
         detail.put("productionOrderId", orderId);
-        detail.put("qty", request.qty());
-        detail.put("unitCost", unitCost);
+        detail.put("qty", totalQty);
+        detail.put("unitCostOneKg", unitCostOneKg);
         detail.put("suggestedSellPrice", priceOneKg);
         detail.put("markupPercent", markupPercent);
         detail.put("locationId", request.locationId());
+        detail.put("packLines", fgLines.size());
         auditLogService.record(actorId, "complete", REF_TYPE, receipt.getId(), detail);
 
         // Không gọi GoodsReceiptResponse.from(receipt) — tránh lazy receivedBy/completedBy
@@ -633,15 +701,12 @@ public class GoodsReceiptService {
                 receipt.getNote(),
                 actor == null ? null : actor.getFullName(),
                 source == null || source.isBlank() ? "—" : source,
-                List.of(new ReceiptItemResponse(
-                        variant.getSku() + " · " + lot.getLotCode(),
-                        request.qty().doubleValue(),
-                        "khay")),
+                items,
                 ReceiptStatus.COMPLETED,
                 null,
                 now,
                 actor == null ? null : actor.getFullName(),
-                unitCost.multiply(BigDecimal.valueOf(request.qty())),
+                totalAmount,
                 List.of());
     }
 
@@ -804,6 +869,7 @@ public class GoodsReceiptService {
 
     private GoodsReceiptResponse toResponse(GoodsReceipt receipt, List<GoodsReceiptLine> rawLines) {
         if (receipt.getReceiptType() == ReceiptType.FINISHED) {
+            BigDecimal finishedAmount = finishedReceiptAmount(rawLines);
             List<ReceiptItemResponse> ledgerItems = stockLedgerRepository
                     .findByRefTypeAndRefIdWithDetails(REF_TYPE, receipt.getId())
                     .stream()
@@ -814,7 +880,7 @@ public class GoodsReceiptService {
                     })
                     .toList();
             if (!ledgerItems.isEmpty()) {
-                return GoodsReceiptResponse.from(receipt, ledgerItems);
+                return GoodsReceiptResponse.from(receipt, ledgerItems, finishedAmount);
             }
             // PN TP pending từ SX: dòng variant + qtyExpected (ReceiptPanel prefill).
             List<GoodsReceiptLine> fgLines = rawLines.stream()
@@ -828,9 +894,9 @@ public class GoodsReceiptService {
                                 line.getQtyExpected().doubleValue(),
                                 "khay"))
                         .toList();
-                return GoodsReceiptResponse.from(receipt, items);
+                return GoodsReceiptResponse.from(receipt, items, finishedAmount);
             }
-            return GoodsReceiptResponse.from(receipt, List.of());
+            return GoodsReceiptResponse.from(receipt, List.of(), finishedAmount);
         }
         List<GoodsReceiptLine> nvlLines = rawLines.stream()
                 .filter(line -> line.getRawMaterial() != null)
@@ -852,6 +918,25 @@ public class GoodsReceiptService {
                 .toList();
         List<ReceiptLineResponse> lines = sorted.stream().map(ReceiptLineResponse::from).toList();
         return GoodsReceiptResponse.from(receipt, items, lines);
+    }
+
+    /** Tổng vốn phiếu TP = Σ (SL thực nhận × đơn giá vốn/khay); null nếu chưa nhập hoặc thiếu đơn giá. */
+    private static BigDecimal finishedReceiptAmount(List<GoodsReceiptLine> lines) {
+        if (lines == null || lines.isEmpty()) {
+            return null;
+        }
+        BigDecimal total = null;
+        for (GoodsReceiptLine line : lines) {
+            if (line.getProductVariant() == null
+                    || line.getQtyReceived() == null
+                    || line.getUnitPrice() == null) {
+                continue;
+            }
+            BigDecimal lineAmount =
+                    line.getQtyReceived().multiply(line.getUnitPrice()).setScale(2, RoundingMode.HALF_UP);
+            total = total == null ? lineAmount : total.add(lineAmount);
+        }
+        return total;
     }
 
     /**

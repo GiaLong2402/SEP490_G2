@@ -51,6 +51,11 @@ public interface RawMaterialLotRepository extends JpaRepository<RawMaterialLot, 
     @Query("select coalesce(sum(l.qtyRemaining), 0) from RawMaterialLot l where l.rawMaterial.id = :rawMaterialId")
     BigDecimal sumRemaining(@Param("rawMaterialId") Long rawMaterialId);
 
+    /** Lô còn tồn — dùng seed tồn đầu kỳ WAC (task 55). */
+    @EntityGraph(attributePaths = "rawMaterial")
+    @Query("select l from RawMaterialLot l where l.qtyRemaining > 0")
+    List<RawMaterialLot> findAllWithRemaining();
+
     /** Tổng tồn còn dùng được (bỏ lô đã hết hạn). */
     @Query("""
             select coalesce(sum(l.qtyRemaining), 0) from RawMaterialLot l

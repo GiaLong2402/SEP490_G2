@@ -133,3 +133,44 @@ export interface BomReplaceInput {
   lines: BomLineInput[];
 }
 
+/** Task 59 — nguồn giá vốn gợi ý giá bán. */
+export type SellPriceCostSource = 'WAC' | 'PRODUCTION';
+
+export interface SellPriceSuggestion {
+  variantId: ID;
+  sku: string;
+  packLabel: string;
+  currentListPrice: number;
+  costSource: SellPriceCostSource;
+  unitCost: number;
+  costSourceLabel: string;
+  productionOrderId: ID | null;
+  productionOrderCode: string | null;
+  markupPercent: number;
+  markupSource: string;
+  suggestedListPrice: number;
+}
+
+export interface ApplySellPriceInput {
+  costSource: SellPriceCostSource;
+}
+
+/** Task 59 — một giai đoạn giá bán (sau mỗi lần Áp dụng). */
+export interface SellPriceHistoryRow {
+  id: ID;
+  variantId: ID;
+  sku: string;
+  packLabel: string;
+  listPrice: number;
+  previousListPrice: number | null;
+  unitCost: number | null;
+  costSource: SellPriceCostSource;
+  markupPercent: number;
+  markupSource: string | null;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  current: boolean;
+  createdByUserId: ID | null;
+  createdByName: string | null;
+}
+

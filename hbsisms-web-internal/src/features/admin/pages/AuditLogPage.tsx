@@ -41,6 +41,9 @@ const ACTION_LABEL: Record<string, string> = {
   complete_counter: 'Hoàn tất quầy',
   register: 'Đăng ký',
   link_account: 'Liên kết tài khoản',
+  apply_sell_price: 'Áp dụng giá bán',
+  open: 'Mở kỳ',
+  close: 'Khóa sổ',
 };
 
 /** Chỉ các hành động nghiệp vụ thường gặp — dùng cho dropdown lọc. */
@@ -50,6 +53,9 @@ const FILTER_ACTIONS: { value: string; label: string }[] = [
   { value: 'approve', label: 'Duyệt' },
   { value: 'complete', label: 'Hoàn thành' },
   { value: 'cancel', label: 'Hủy' },
+  { value: 'apply_sell_price', label: 'Áp dụng giá bán' },
+  { value: 'open', label: 'Mở kỳ giá vốn' },
+  { value: 'close', label: 'Khóa sổ giá vốn' },
   { value: 'convert', label: 'Chuyển thành đơn' },
   { value: 'print_receipt', label: 'In phiếu' },
   { value: 'adjust', label: 'Điều chỉnh tồn' },
@@ -75,6 +81,9 @@ const ACTION_VERB: Record<string, string> = {
   complete_counter: 'đã hoàn tất quầy',
   register: 'đã đăng ký',
   link_account: 'đã liên kết',
+  apply_sell_price: 'đã áp dụng giá bán cho',
+  open: 'đã mở',
+  close: 'đã khóa sổ',
 };
 
 const ENTITY_LABEL: Record<string, string> = {
@@ -93,6 +102,9 @@ const ENTITY_LABEL: Record<string, string> = {
   delivery: 'Giao hàng',
   sales_return: 'Trả hàng',
   customer: 'Khách hàng',
+  product: 'Sản phẩm',
+  product_variant: 'Quy cách',
+  cost_period: 'Kỳ giá vốn',
 };
 
 /** Khớp entityType thật mà API ghi audit — tránh chọn mục không bao giờ có dữ liệu. */
@@ -101,6 +113,8 @@ const FILTER_ENTITIES: { value: string; label: string }[] = [
   { value: 'sales_order', label: 'Đơn hàng' },
   { value: 'quote', label: 'Báo giá' },
   { value: 'production_order', label: 'Lệnh sản xuất' },
+  { value: 'product_variant', label: 'Quy cách / giá bán' },
+  { value: 'cost_period', label: 'Kỳ giá vốn' },
   { value: 'payment', label: 'Thanh toán' },
   { value: 'delivery', label: 'Giao hàng' },
   { value: 'sales_return', label: 'Trả hàng' },
@@ -124,6 +138,27 @@ const ACTION_TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'neutral'
   reconcile: 'blue',
   print_receipt: 'neutral',
   complete_counter: 'green',
+  apply_sell_price: 'green',
+  open: 'amber',
+  close: 'blue',
+};
+
+/** Key cấu hình / field audit → nhãn tiếng Việt. */
+const FIELD_LABEL: Record<string, string> = {
+  sell_price_markup_percent: '% lời giá bán',
+  low_stock_threshold: 'Ngưỡng tồn thấp',
+  order_discount_approve_pct: '% giảm giá cần duyệt',
+  oldListPrice: 'Giá cũ',
+  newListPrice: 'Giá mới',
+  unitCost: 'Giá vốn',
+  suggestedSellPrice: 'Giá gợi ý',
+  markupPercent: '% lời',
+  markupSource: 'Nguồn % lời',
+  costSource: 'Nguồn giá vốn',
+  sku: 'SKU',
+  yearMonth: 'Kỳ',
+  WAC: 'WAC (bình quân kỳ)',
+  PRODUCTION: 'Giá thành lệnh SX',
 };
 
 const DOT_CLASS: Record<'green' | 'amber' | 'red' | 'blue' | 'neutral', string> = {
@@ -158,8 +193,16 @@ const VALUE_LABEL: Record<string, string> = {
   false: 'không',
 };
 
+function humanizeCode(code: string) {
+  return code.replace(/_/g, ' ').trim();
+}
+
 function actionLabel(action: string) {
-  return ACTION_LABEL[action] ?? action;
+  return ACTION_LABEL[action] ?? humanizeCode(action);
+}
+
+function fieldLabel(key: string) {
+  return FIELD_LABEL[key] ?? humanizeCode(key);
 }
 
 function detailRecord(detail: unknown): Record<string, unknown> | null {
@@ -211,19 +254,39 @@ function entityHref(row: AuditRow): string | null {
       return '/admin/users';
     case 'app_role':
       return '/admin/roles';
+    case 'product_variant': {
+      const d = detailRecord(row.detail);
+      const productId = d?.productId != null ? Number(d.productId) : null;
+      if (productId && Number.isFinite(productId)) return `/products/${productId}`;
+      return '/products';
+    }
+    case 'product':
+      return row.entityId != null ? `/products/${row.entityId}` : '/products';
+    case 'cost_period':
+      return '/costing';
     default:
       return null;
   }
 }
 
-/** Ưu tiên mã nghiệp vụ (PN-… / SO-…); fallback #id. */
+/** Ưu tiên mã nghiệp vụ (PN-… / SO-… / SKU); fallback ngắn gọn, không lộ snake_case. */
 function entityPhrase(row: AuditRow) {
   const type = row.entityType;
   if (!type) return 'một đối tượng';
-  const name = (ENTITY_LABEL[type] ?? type.replace(/_/g, ' ')).toLowerCase();
+  const name = (ENTITY_LABEL[type] ?? humanizeCode(type)).toLowerCase();
   const code = businessCode(row);
   if (code) return `${name} ${code}`;
-  return row.entityId != null ? `${name} #${row.entityId}` : name;
+  const d = detailRecord(row.detail);
+  if (type === 'product_variant' && d?.sku != null && String(d.sku).trim()) {
+    return `quy cách ${String(d.sku).trim()}`;
+  }
+  if (type === 'cost_period' && d?.yearMonth != null) {
+    return `kỳ giá vốn ${d.yearMonth}`;
+  }
+  if (type === 'app_config' && d?.key != null) {
+    return `cấu hình «${fieldLabel(String(d.key))}»`;
+  }
+  return row.entityId != null ? `${name}` : name;
 }
 
 function prettyValue(raw: unknown): string {
@@ -252,6 +315,13 @@ function detailCaption(detail: unknown): string | null {
   else if (receiptType) bits.push(`Phiếu ${receiptType}`);
   else if (status) bits.push(status.charAt(0).toUpperCase() + status.slice(1));
 
+  if (d.oldListPrice != null && d.newListPrice != null
+    && Number.isFinite(Number(d.oldListPrice)) && Number.isFinite(Number(d.newListPrice))) {
+    bits.push(`${money(Number(d.oldListPrice))} → ${money(Number(d.newListPrice))}`);
+  } else if (d.newListPrice != null && Number.isFinite(Number(d.newListPrice))) {
+    bits.push(`Giá mới ${money(Number(d.newListPrice))}`);
+  }
+
   if (d.total != null && Number.isFinite(Number(d.total))) bits.push(`Tổng ${money(Number(d.total))}`);
   else if (d.amount != null && Number.isFinite(Number(d.amount))) bits.push(`Số tiền ${money(Number(d.amount))}`);
 
@@ -264,15 +334,24 @@ function detailCaption(detail: unknown): string | null {
 
   if (d.unitCost != null && Number.isFinite(Number(d.unitCost))) bits.push(`Giá vốn ${money(Number(d.unitCost))}`);
   if (d.suggestedSellPrice != null && Number.isFinite(Number(d.suggestedSellPrice))) {
-    bits.push(`Giá bán ${money(Number(d.suggestedSellPrice))}`);
+    bits.push(`Giá gợi ý ${money(Number(d.suggestedSellPrice))}`);
+  }
+  if (d.markupPercent != null && Number.isFinite(Number(d.markupPercent))) {
+    bits.push(`Lời ${d.markupPercent}%`);
+  }
+  if (d.costSource != null) {
+    const src = String(d.costSource);
+    bits.push(FIELD_LABEL[src] ?? prettyValue(src) ?? src);
   }
 
   if (d.sourceQuoteId != null) bits.push(`Từ báo giá #${d.sourceQuoteId}`);
   if (d.orderId != null) bits.push(`Theo đơn #${d.orderId}`);
   if (d.productionOrderId != null) bits.push(`Theo lệnh sản xuất #${d.productionOrderId}`);
+  if (d.yearMonth != null) bits.push(`Kỳ ${d.yearMonth}`);
 
   if (d.key != null) {
-    bits.push(d.value != null ? `${d.key} = ${prettyValue(d.value) || String(d.value)}` : String(d.key));
+    const label = fieldLabel(String(d.key));
+    bits.push(d.value != null ? `${label}: ${prettyValue(d.value) || String(d.value)}` : label);
   }
 
   if (d.awaitingPriceApproval === true) bits.push('Chờ duyệt giá');
@@ -290,7 +369,7 @@ function detailCaption(detail: unknown): string | null {
 
   if (!bits.length && note) return note;
   if (!bits.length) return null;
-  const head = bits.slice(0, 3).join(' · ');
+  const head = bits.slice(0, 4).join(' · ');
   return note && bits.length <= 2 ? `${head} — ${note}` : head;
 }
 
@@ -515,30 +594,30 @@ export default function AuditLogPage() {
                   {g.items.map((row, idx) => {
                     const tone = ACTION_TONE[row.action] ?? 'neutral';
                     const who = row.userName?.trim() || 'Hệ thống';
-                    const verb = ACTION_VERB[row.action] ?? `đã ${row.action}`;
+                    const verb = ACTION_VERB[row.action] ?? `đã ${humanizeCode(row.action)}`;
                     const caption = detailCaption(row.detail);
                     const time = dateTime(row.createdAt).split(' ').pop() ?? dateTime(row.createdAt);
                     return (
-                      <li key={row.id} className="relative flex gap-3 px-4 py-3 hover:bg-rowalt/40">
+                      <li key={row.id} className="relative flex gap-3 px-4 py-3.5 hover:bg-rowalt/40">
                         <div className="w-12 shrink-0 pt-0.5 text-right">
                           <div className="tabular-nums text-small font-medium text-ink-muted">{time}</div>
                         </div>
                         <div className="relative flex w-4 shrink-0 justify-center">
                           <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${DOT_CLASS[tone]}`} aria-hidden />
                           {idx < g.items.length - 1 && (
-                            <span className="absolute top-4 bottom-[-12px] w-px bg-line" aria-hidden />
+                            <span className="absolute top-4 bottom-[-14px] w-px bg-line" aria-hidden />
                           )}
                         </div>
-                        <div className="min-w-0 flex-1">
+                        <div className="min-w-0 flex-1 space-y-1">
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <p className="text-body text-ink">
+                            <p className="text-body leading-snug text-ink">
                               <span className="font-semibold">{who}</span>
                               <span className="text-ink-muted"> {verb} </span>
                               <EntityLink row={row} />
                             </p>
                             <Chip tone={tone}>{actionLabel(row.action)}</Chip>
                           </div>
-                          {caption ? <p className="mt-0.5 text-small text-ink-muted">{caption}</p> : null}
+                          {caption ? <p className="text-small leading-relaxed text-ink-muted">{caption}</p> : null}
                         </div>
                       </li>
                     );

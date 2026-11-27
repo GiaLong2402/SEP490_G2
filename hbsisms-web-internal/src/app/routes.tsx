@@ -4,6 +4,7 @@ import { createBrowserRouter, isRouteErrorResponse, useRouteError } from 'react-
 import { adminRoutes } from '@/features/admin';
 import { approvalRoutes } from '@/features/approvals';
 import { RequireAuth, RequirePermission } from '@/features/auth';
+import { costingRoutes } from '@/features/costing';
 import { customerRoutes } from '@/features/customers';
 import { damageRoutes } from '@/features/damage';
 import { dashboardRoutes } from '@/features/dashboard';
@@ -31,7 +32,7 @@ const LoginPage = lazy(() => import('@/features/auth/pages/LoginPage'));
 // Thêm feature mới: khai báo routes trong feature rồi đưa vào danh sách này.
 const featureRoutes = [
   ...dashboardRoutes, ...requestRoutes, ...quoteRoutes, ...orderRoutes, ...pickingRoutes, ...deliveryRoutes, ...returnRoutes, ...inventoryRoutes, ...receiptRoutes, ...productionRoutes, ...stocktakeRoutes, ...warehouseRoutes,
-  ...damageRoutes, ...paymentRoutes, ...debtRoutes, ...customerRoutes, ...productRoutes, ...marketingRoutes, ...approvalRoutes, ...reportRoutes, ...adminRoutes,
+  ...damageRoutes, ...paymentRoutes, ...debtRoutes, ...costingRoutes, ...customerRoutes, ...productRoutes, ...marketingRoutes, ...approvalRoutes, ...reportRoutes, ...adminRoutes,
 ];
 
 function NotFound() {

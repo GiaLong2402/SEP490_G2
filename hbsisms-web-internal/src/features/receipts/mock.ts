@@ -124,6 +124,23 @@ mock('GET', '/raw-materials/:id/lots', ({ params, query }) => {
     .sort((a, b) => (a.expDate === null ? 1 : 0) - (b.expDate === null ? 1 : 0) || (a.expDate ?? '').localeCompare(b.expDate ?? '') || a.receivedAt.localeCompare(b.receivedAt));
 });
 
+/** WAC NVL mock: bình quân đơn giản theo tồn lô còn lại. */
+mock('GET', '/raw-materials/:id/avg-unit-cost', ({ params }) => {
+  const id = Number(params.id);
+  const material = db.rawMaterials.find((m) => m.id === id);
+  if (!material) fail(404, 'Không tìm thấy nguyên liệu');
+  ensureOpeningLots();
+  const lots = rawLots.filter((l) => l.rawMaterialId === id && l.qtyRemaining > 0);
+  let qty = 0;
+  let value = 0;
+  for (const l of lots) {
+    qty += l.qtyRemaining;
+    value += l.qtyRemaining * (l.unitPrice ?? 0);
+  }
+  if (!(qty > 0)) return { rawMaterialId: id, avgUnitCost: null, source: 'NONE' };
+  return { rawMaterialId: id, avgUnitCost: Math.round(value / qty), source: 'WAC' };
+});
+
 mock('GET', '/goods-receipts', ({ query }) => {
   const rows = db.receipts
     .filter((r) => matches(query.q, r.code, r.source))

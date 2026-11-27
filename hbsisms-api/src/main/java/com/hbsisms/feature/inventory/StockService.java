@@ -4,8 +4,11 @@ import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.common.text.Strings;
 import com.hbsisms.feature.catalog.ProductVariant;
 import com.hbsisms.feature.catalog.ProductVariantRepository;
+import com.hbsisms.feature.costing.CostItemType;
+import com.hbsisms.feature.costing.CostingMovementService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
+import java.math.BigDecimal;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +26,7 @@ public class StockService {
     private final LocationRepository locationRepository;
     private final WarehouseRepository warehouseRepository;
     private final UserRepository userRepository;
+    private final CostingMovementService costingMovementService;
 
     public StockService(
             StockRepository stockRepository,
@@ -31,7 +35,8 @@ public class StockService {
             LotRepository lotRepository,
             LocationRepository locationRepository,
             WarehouseRepository warehouseRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            CostingMovementService costingMovementService) {
         this.stockRepository = stockRepository;
         this.stockLedgerRepository = stockLedgerRepository;
         this.productVariantRepository = productVariantRepository;
@@ -39,6 +44,7 @@ public class StockService {
         this.locationRepository = locationRepository;
         this.warehouseRepository = warehouseRepository;
         this.userRepository = userRepository;
+        this.costingMovementService = costingMovementService;
     }
 
     @Transactional
@@ -57,6 +63,7 @@ public class StockService {
                 cmd.refId(),
                 cmd.note(),
                 cmd.actorId());
+        postFinishedInbound(cmd);
         return requireStock(stock.getId());
     }
 
@@ -75,6 +82,7 @@ public class StockService {
                 cmd.refId(),
                 cmd.note(),
                 cmd.actorId());
+        postFinishedOutbound(cmd);
         return requireStock(stock.getId());
     }
 
@@ -136,6 +144,7 @@ public class StockService {
                 cmd.refId(),
                 cmd.note(),
                 cmd.actorId());
+        postFinishedOutbound(cmd);
         return requireStock(stock.getId());
     }
 
@@ -159,6 +168,7 @@ public class StockService {
                 cmd.refId(),
                 cmd.note() != null ? cmd.note() : "Bỏ hàng đang giữ",
                 cmd.actorId());
+        postFinishedOutbound(cmd);
         return requireStock(stock.getId());
     }
 
@@ -224,6 +234,20 @@ public class StockService {
                 cmd.refId(),
                 cmd.note(),
                 cmd.actorId());
+        if (signedDelta > 0) {
+            postFinishedInbound(cmd);
+        } else {
+            postFinishedOutbound(new StockMutation(
+                    cmd.variantId(),
+                    cmd.lotId(),
+                    cmd.locationId(),
+                    Math.abs(signedDelta),
+                    cmd.toLocationId(),
+                    cmd.refType(),
+                    cmd.refId(),
+                    cmd.note(),
+                    cmd.actorId()));
+        }
         return requireStock(stock.getId());
     }
 
@@ -264,6 +288,7 @@ public class StockService {
                 cmd.refId(),
                 cmd.note(),
                 cmd.actorId());
+        postFinishedOutbound(cmd);
         return requireStock(stock.getId());
     }
 
@@ -303,7 +328,33 @@ public class StockService {
                 cmd.refId(),
                 cmd.note() != null ? cmd.note() : "Nhập lại hàng trả",
                 cmd.actorId());
+        postFinishedInbound(cmd);
         return requireStock(stock.getId());
+    }
+
+    /** Task 56 — nhập TP vào sổ kỳ (giá từ lô). MOVE không gọi. */
+    private void postFinishedInbound(StockMutation cmd) {
+        BigDecimal unit = lotRepository
+                .findById(cmd.lotId())
+                .map(Lot::getUnitCost)
+                .orElse(BigDecimal.ZERO);
+        costingMovementService.recordInbound(
+                CostItemType.FINISHED,
+                cmd.variantId(),
+                BigDecimal.valueOf(cmd.qty()),
+                unit,
+                cmd.refType(),
+                cmd.refId());
+    }
+
+    /** Task 56 — xuất TP: giá tạm = WAC kỳ mở. */
+    private void postFinishedOutbound(StockMutation cmd) {
+        costingMovementService.recordOutbound(
+                CostItemType.FINISHED,
+                cmd.variantId(),
+                BigDecimal.valueOf(cmd.qty()),
+                cmd.refType(),
+                cmd.refId());
     }
 
     /** Move by stock row id — used by {@code POST /inventory/moves}. */

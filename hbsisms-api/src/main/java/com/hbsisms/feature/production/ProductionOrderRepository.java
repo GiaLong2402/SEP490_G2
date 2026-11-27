@@ -56,4 +56,8 @@ public interface ProductionOrderRepository extends JpaRepository<ProductionOrder
             @Param("q") String q, @Param("status") ProductionOrderStatus status, Pageable pageable);
 
     List<ProductionOrder> findBySalesOrder_Id(Long salesOrderId);
+
+    /** Task 59 — lệnh SX hoàn thành mới nhất gắn quy cách TP. */
+    Optional<ProductionOrder> findFirstByFinishedVariant_IdAndStatusOrderByIdDesc(
+            Long finishedVariantId, ProductionOrderStatus status);
 }

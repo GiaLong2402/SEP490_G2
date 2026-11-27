@@ -5,6 +5,7 @@ import com.hbsisms.feature.catalog.PackSizes;
 import com.hbsisms.feature.catalog.ProductBomLine;
 import com.hbsisms.feature.catalog.ProductBomLineRepository;
 import com.hbsisms.feature.catalog.ProductVariant;
+import com.hbsisms.feature.costing.CostingService;
 import com.hbsisms.feature.inventory.RawMaterial;
 import com.hbsisms.feature.inventory.RawMaterialLot;
 import com.hbsisms.feature.inventory.RawMaterialLotRepository;
@@ -21,7 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Đọc BOM × SL kế hoạch → snapshot NVL + đối chiếu tồn dùng được + chi phí tạm tính.
+ * Đọc BOM × SL kế hoạch → snapshot NVL + đối chiếu tồn dùng được + chi phí tạm tính (WAC NVL).
  *
  * <p>BOM ghi cho <b>1 kg thành phẩm</b>. Dòng tính theo cân nặng (kg, g…) nhân với cân nặng khay của quy cách
  * (khay 0,5 kg → một nửa); dòng đếm cái (khay xốp, màng bọc…) giữ nguyên mỗi khay. Hao hụt là phần mất đi
@@ -40,14 +41,17 @@ public class BomExplosionService {
 
     private final ProductBomLineRepository bomLineRepository;
     private final RawMaterialLotRepository rawMaterialLotRepository;
+    private final CostingService costingService;
     private final Clock clock;
 
     public BomExplosionService(
             ProductBomLineRepository bomLineRepository,
             RawMaterialLotRepository rawMaterialLotRepository,
+            CostingService costingService,
             Clock clock) {
         this.bomLineRepository = bomLineRepository;
         this.rawMaterialLotRepository = rawMaterialLotRepository;
+        this.costingService = costingService;
         this.clock = clock;
     }
 
@@ -133,8 +137,12 @@ public class BomExplosionService {
         return unit != null && WEIGHT_UNITS.contains(unit.trim().toLowerCase(Locale.ROOT));
     }
 
-    /** Chi phí tạm tính theo giá lô FEFO còn dùng được; không có giá → 0. */
+    /** Chi phí tạm tính: WAC NVL × SL cần; chưa có WAC → cộng theo giá lô FEFO. */
     private BigDecimal estimateMaterialCost(Long rawMaterialId, BigDecimal requiredQty, LocalDate today) {
+        var wac = costingService.currentRawAvgUnitCost(rawMaterialId);
+        if (wac.isPresent()) {
+            return requiredQty.multiply(wac.get()).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        }
         List<RawMaterialLot> lots = rawMaterialLotRepository.findFefoUsable(rawMaterialId, today);
         BigDecimal remaining = requiredQty;
         BigDecimal cost = BigDecimal.ZERO;

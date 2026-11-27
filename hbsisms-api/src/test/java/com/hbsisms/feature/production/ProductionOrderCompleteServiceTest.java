@@ -73,6 +73,8 @@ class ProductionOrderCompleteServiceTest {
     @Mock
     private RawMaterialStockService rawMaterialStockService;
     @Mock
+    private com.hbsisms.feature.costing.CostingService costingService;
+    @Mock
     private BusinessCodeService businessCodeService;
     @Mock
     private AppConfigService appConfigService;
@@ -96,11 +98,18 @@ class ProductionOrderCompleteServiceTest {
                 materialIssueService,
                 goodsReceiptService,
                 rawMaterialStockService,
+                costingService,
                 businessCodeService,
                 appConfigService,
                 auditLogService,
                 userRepository,
                 Clock.fixed(NOW, ZoneOffset.UTC));
+        org.mockito.Mockito.lenient()
+                .when(costingService.resolveRawIssueUnitCost(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                    java.math.BigDecimal lot = inv.getArgument(1);
+                    return lot == null ? java.math.BigDecimal.ZERO : lot;
+                });
     }
 
     @Test
@@ -115,7 +124,7 @@ class ProductionOrderCompleteServiceTest {
         receipt.setReceiptType(ReceiptType.FINISHED);
         receipt.setStatus(ReceiptStatus.PENDING);
         when(goodsReceiptService.createPendingFinishedFromProduction(
-                        eq(7L), eq("LSX-7"), eq(variant), eq(new BigDecimal("12")), eq(1L)))
+                        eq(7L), eq("LSX-7"), any(), eq(1L)))
                 .thenReturn(receipt);
         when(productionOrderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(productionOrderRepository.findWithHeaderById(7L)).thenReturn(Optional.of(order));
@@ -125,17 +134,18 @@ class ProductionOrderCompleteServiceTest {
         ProductionOrderResponse response = service.complete(
                 7L,
                 new ProductionOrderCompleteRequest(
-                        new BigDecimal("12"),
+                        new BigDecimal("10"),
                         new BigDecimal("90000"),
                         null,
                         LocalDate.of(2026, 11, 22),
                         null,
                         null,
-                        List.of()),
+                        List.of(),
+                        null),
                 1L);
 
         assertThat(order.getStatus()).isEqualTo(ProductionOrderStatus.AWAITING_RECEIPT);
-        assertThat(order.getActualQty()).isEqualByComparingTo("12");
+        assertThat(order.getActualQty()).isEqualByComparingTo("10");
         assertThat(order.getActualProductionCost()).isEqualByComparingTo("90000");
         assertThat(order.getFinishedDate()).isEqualTo(LocalDate.of(2026, 11, 22));
         assertThat(order.getFinishedReceipt()).isSameAs(receipt);
@@ -174,7 +184,7 @@ class ProductionOrderCompleteServiceTest {
         GoodsReceipt receipt = new GoodsReceipt();
         ReflectionTestUtils.setField(receipt, "id", 88L);
         receipt.setCode("PN-88");
-        when(goodsReceiptService.createPendingFinishedFromProduction(any(), any(), any(), any(), any()))
+        when(goodsReceiptService.createPendingFinishedFromProduction(any(), any(), any(), any()))
                 .thenReturn(receipt);
         when(productionOrderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(productionOrderRepository.findWithHeaderById(7L)).thenReturn(Optional.of(order));
@@ -190,7 +200,8 @@ class ProductionOrderCompleteServiceTest {
                         null,
                         null,
                         null,
-                        List.of(new ProductionLeftoverInput(9L, new BigDecimal("2"), TODAY.plusDays(1)))),
+                        List.of(new ProductionLeftoverInput(9L, new BigDecimal("2"), TODAY.plusDays(1))),
+                        null),
                 null);
 
         assertThat(order.getActualMaterialCost()).isEqualByComparingTo("6000.00");
@@ -235,7 +246,7 @@ class ProductionOrderCompleteServiceTest {
         GoodsReceipt receipt = new GoodsReceipt();
         ReflectionTestUtils.setField(receipt, "id", 88L);
         receipt.setCode("PN-88");
-        when(goodsReceiptService.createPendingFinishedFromProduction(any(), any(), any(), any(), any()))
+        when(goodsReceiptService.createPendingFinishedFromProduction(any(), any(), any(), any()))
                 .thenReturn(receipt);
         when(productionOrderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(productionOrderRepository.findWithHeaderById(7L)).thenReturn(Optional.of(order));
@@ -247,7 +258,7 @@ class ProductionOrderCompleteServiceTest {
                 7L,
                 new ProductionOrderCompleteRequest(
                         new BigDecimal("10"), BigDecimal.ZERO, null, null, null, null,
-                        List.of(new ProductionLeftoverInput(9L, new BigDecimal("0.8"), null))),
+                        List.of(new ProductionLeftoverInput(9L, new BigDecimal("0.8"), null)), null),
                 null);
 
         verify(rawMaterialStockService).returnToLot(
@@ -282,7 +293,7 @@ class ProductionOrderCompleteServiceTest {
                         7L,
                         new ProductionOrderCompleteRequest(
                                 new BigDecimal("10"), BigDecimal.ZERO, null, null, null, null,
-                                List.of(new ProductionLeftoverInput(9L, new BigDecimal("1"), null))),
+                                List.of(new ProductionLeftoverInput(9L, new BigDecimal("1"), null)), null),
                         null))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("hạn dùng lô dư");
@@ -298,7 +309,7 @@ class ProductionOrderCompleteServiceTest {
         GoodsReceipt receipt = new GoodsReceipt();
         ReflectionTestUtils.setField(receipt, "id", 1L);
         receipt.setCode("PN-1");
-        when(goodsReceiptService.createPendingFinishedFromProduction(any(), any(), any(), any(), any()))
+        when(goodsReceiptService.createPendingFinishedFromProduction(any(), any(), any(), any()))
                 .thenReturn(receipt);
         when(productionOrderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(productionOrderRepository.findWithHeaderById(7L)).thenReturn(Optional.of(order));
@@ -314,7 +325,8 @@ class ProductionOrderCompleteServiceTest {
                         TODAY,
                         new BigDecimal("2"),
                         "Vỡ khay",
-                        List.of()),
+                        List.of(),
+                        null),
                 null);
 
         assertThat(order.getDefectQty()).isEqualByComparingTo("2");
@@ -341,11 +353,12 @@ class ProductionOrderCompleteServiceTest {
                                 null,
                                 null,
                                 null,
-                                List.of(new ProductionLeftoverInput(9L, new BigDecimal("5"), TODAY.plusDays(1)))),
+                                List.of(new ProductionLeftoverInput(9L, new BigDecimal("5"), TODAY.plusDays(1))),
+                                null),
                         null))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
-        verify(goodsReceiptService, never()).createPendingFinishedFromProduction(any(), any(), any(), any(), any());
+        verify(goodsReceiptService, never()).createPendingFinishedFromProduction(any(), any(), any(), any());
     }
 
     @Test
@@ -356,11 +369,11 @@ class ProductionOrderCompleteServiceTest {
 
         assertThatThrownBy(() -> service.complete(
                         7L,
-                        new ProductionOrderCompleteRequest(BigDecimal.ONE, null, null, null, null, null, null),
+                        new ProductionOrderCompleteRequest(BigDecimal.ONE, null, null, null, null, null, null, null),
                         null))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.CONFLICT));
-        verify(goodsReceiptService, never()).createPendingFinishedFromProduction(any(), any(), any(), any(), any());
+        verify(goodsReceiptService, never()).createPendingFinishedFromProduction(any(), any(), any(), any());
     }
 
     @Test
@@ -378,11 +391,11 @@ class ProductionOrderCompleteServiceTest {
 
         ProductionOrderResponse response = service.complete(
                 7L,
-                new ProductionOrderCompleteRequest(new BigDecimal("99"), null, null, null, null, null, null),
+                new ProductionOrderCompleteRequest(new BigDecimal("99"), null, null, null, null, null, null, null),
                 null);
 
         assertThat(response.finishedReceiptCode()).isEqualTo("PN-OLD");
-        verify(goodsReceiptService, never()).createPendingFinishedFromProduction(any(), any(), any(), any(), any());
+        verify(goodsReceiptService, never()).createPendingFinishedFromProduction(any(), any(), any(), any());
     }
 
     private static ProductionOrder inProgressOrder(Long id) {

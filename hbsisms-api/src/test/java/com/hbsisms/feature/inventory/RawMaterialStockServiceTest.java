@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.hbsisms.common.exception.ApiException;
+import com.hbsisms.feature.costing.CostingMovementService;
 import com.hbsisms.feature.user.AppUser;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -36,6 +37,11 @@ class RawMaterialStockServiceTest {
     private RawMaterialLotRepository rawMaterialLotRepository;
     @Mock
     private RawMaterialLedgerRepository rawMaterialLedgerRepository;
+    @Mock
+    private CostingMovementService costingMovementService;
+
+    @Mock
+    private com.hbsisms.feature.costing.CostingService costingService;
 
     private RawMaterialStockService service;
     private RawMaterial ice;
@@ -43,8 +49,18 @@ class RawMaterialStockServiceTest {
     @BeforeEach
     void setUp() {
         service = new RawMaterialStockService(
-                rawMaterialRepository, rawMaterialLotRepository, rawMaterialLedgerRepository,
+                rawMaterialRepository,
+                rawMaterialLotRepository,
+                rawMaterialLedgerRepository,
+                costingMovementService,
+                costingService,
                 Clock.fixed(NOW, ZoneOffset.UTC));
+        org.mockito.Mockito.lenient()
+                .when(costingService.resolveRawIssueUnitCost(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                    java.math.BigDecimal lot = inv.getArgument(1);
+                    return lot == null ? java.math.BigDecimal.ZERO : lot;
+                });
         ice = new RawMaterial();
         setId(ice, 3L);
         ice.setCode("NVL-003");

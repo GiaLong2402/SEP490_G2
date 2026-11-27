@@ -14,7 +14,7 @@ import java.util.Objects;
  * column still renders until the FE label is fully renamed.
  *
  * @param status phiếu NVL: chờ nhập / hoàn thành / đã hủy; phiếu thành phẩm luôn hoàn thành
- * @param totalAmount phiếu NVL: tổng thực nhận × đơn giá (trống khi chưa nhập kho)
+ * @param totalAmount NVL/TP đã nhập: tổng thực nhận × đơn giá (vốn); trống khi chờ nhập / hủy / thiếu đơn giá
  * @param lines phiếu NVL: các dòng dự kiến + thực nhận; phiếu thành phẩm / phiếu NVL cũ: rỗng
  */
 public record GoodsReceiptResponse(
@@ -36,18 +36,31 @@ public record GoodsReceiptResponse(
         List<ReceiptLineResponse> lines) {
 
     public static GoodsReceiptResponse from(GoodsReceipt receipt, List<ReceiptItemResponse> items) {
-        return from(receipt, items, List.of());
+        return from(receipt, items, List.of(), null);
+    }
+
+    public static GoodsReceiptResponse from(
+            GoodsReceipt receipt, List<ReceiptItemResponse> items, BigDecimal totalAmount) {
+        return from(receipt, items, List.of(), totalAmount);
     }
 
     public static GoodsReceiptResponse from(
             GoodsReceipt receipt, List<ReceiptItemResponse> items, List<ReceiptLineResponse> lines) {
-        String source = receipt.getSource();
         BigDecimal total = lines.stream().map(ReceiptLineResponse::amount).anyMatch(Objects::nonNull)
                 ? lines.stream()
                         .map(ReceiptLineResponse::amount)
                         .filter(Objects::nonNull)
                         .reduce(BigDecimal.ZERO, BigDecimal::add)
                 : null;
+        return from(receipt, items, lines, total);
+    }
+
+    public static GoodsReceiptResponse from(
+            GoodsReceipt receipt,
+            List<ReceiptItemResponse> items,
+            List<ReceiptLineResponse> lines,
+            BigDecimal totalAmount) {
+        String source = receipt.getSource();
         return new GoodsReceiptResponse(
                 receipt.getId(),
                 receipt.getCode(),
@@ -64,7 +77,7 @@ public record GoodsReceiptResponse(
                 receipt.getExpectedDate(),
                 receipt.getCompletedAt(),
                 receipt.getCompletedBy() == null ? null : receipt.getCompletedBy().getFullName(),
-                total,
+                totalAmount,
                 lines);
     }
 }

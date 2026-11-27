@@ -1,5 +1,7 @@
 package com.hbsisms.feature.inventory;
 
+import com.hbsisms.feature.costing.CostingService;
+import com.hbsisms.feature.inventory.dto.RawMaterialAvgCostResponse;
 import com.hbsisms.feature.inventory.dto.RawMaterialLotResponse;
 import com.hbsisms.feature.inventory.dto.RawMaterialRequest;
 import com.hbsisms.feature.inventory.dto.RawMaterialResponse;
@@ -24,11 +26,15 @@ public class RawMaterialController {
 
     private final RawMaterialService rawMaterialService;
     private final RawMaterialStockService rawMaterialStockService;
+    private final CostingService costingService;
 
     public RawMaterialController(
-            RawMaterialService rawMaterialService, RawMaterialStockService rawMaterialStockService) {
+            RawMaterialService rawMaterialService,
+            RawMaterialStockService rawMaterialStockService,
+            CostingService costingService) {
         this.rawMaterialService = rawMaterialService;
         this.rawMaterialStockService = rawMaterialStockService;
+        this.costingService = costingService;
     }
 
     @GetMapping
@@ -50,6 +56,16 @@ public class RawMaterialController {
     public List<RawMaterialLotResponse> lots(
             @PathVariable Long id, @RequestParam(defaultValue = "false") boolean availableOnly) {
         return rawMaterialStockService.lots(id, availableOnly).stream().map(RawMaterialLotResponse::from).toList();
+    }
+
+    /** ĐG WAC NVL hiện hành (xuất SX định giá theo số này; chưa có → avgUnitCost null). */
+    @GetMapping("/{id}/avg-unit-cost")
+    public RawMaterialAvgCostResponse avgUnitCost(@PathVariable Long id) {
+        rawMaterialService.get(id); // 404 nếu không có
+        return costingService
+                .currentRawAvgUnitCost(id)
+                .map(c -> new RawMaterialAvgCostResponse(id, c, "WAC"))
+                .orElseGet(() -> new RawMaterialAvgCostResponse(id, null, "NONE"));
     }
 
     @PostMapping

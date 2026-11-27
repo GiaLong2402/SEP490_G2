@@ -186,7 +186,7 @@ public class AppConfigService {
     }
 
     /**
-     * % lời trên giá vốn để tính giá bán (mặc định 30). Nhập TP từ LSX ghi vào listPrice.
+     * % lời trên giá vốn để tính giá bán (mặc định 30). Task 59: gợi ý / Áp dụng trên màn SP.
      * Công thức: {@code listPrice = round_1000(unitCost × (1 + markup/100))}.
      */
     public int sellPriceMarkupPercent() {
@@ -223,11 +223,17 @@ public class AppConfigService {
      * Giá bán từ giá vốn/khay (chuẩn 1 kg): × (1 + markup%) rồi làm tròn HALF_UP về bội số 1.000 ₫.
      */
     public BigDecimal sellPriceFromUnitCost(BigDecimal unitCost) {
+        return sellPriceFromUnitCost(unitCost, sellPriceMarkupPercent());
+    }
+
+    /** Task 59 — dùng % lời theo SP/danh mục (hoặc cấu hình chung). */
+    public BigDecimal sellPriceFromUnitCost(BigDecimal unitCost, int markupPercent) {
         if (unitCost == null || unitCost.signum() <= 0) {
             return null;
         }
+        int pct = Math.max(0, markupPercent);
         BigDecimal cost = unitCost.setScale(0, RoundingMode.HALF_UP);
-        BigDecimal factor = BigDecimal.ONE.add(BigDecimal.valueOf(sellPriceMarkupPercent()).movePointLeft(2));
+        BigDecimal factor = BigDecimal.ONE.add(BigDecimal.valueOf(pct).movePointLeft(2));
         BigDecimal raw = cost.multiply(factor);
         return roundToThousand(raw);
     }
