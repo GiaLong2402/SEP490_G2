@@ -5,10 +5,10 @@ import { canWarehouseOps, useAuth } from '@/features/auth';
 import { receiptsApi, useRawMaterials, useUnitLabel, type RawMaterialLot } from '@/features/receipts';
 import type { ID } from '@/shared/domain/entities';
 import { useAction } from '@/shared/api/useAction';
-import { date, dateTimeFull, money, num, todayISO } from '@/shared/lib/format';
+import { date, dateTimeFull, formatThousands, money, num, parseThousands, todayISO } from '@/shared/lib/format';
 import { Alert, Button, Chip, DateInput, ErrorState, Field, InfoTip, Input, PageLoading } from '@/shared/ui';
 import { productionApi } from '../api';
-import { useMaterialIssue, useProductVariants } from '../hooks';
+import { useMaterialIssue, usePackagingPreview, useProductVariants } from '../hooks';
 import type { ProductionOrder } from '../types';
 import { ActionBar, HistoryCard, OverviewCard, Section, StepLayout, SuffixInput, orderHistory } from './OrderShell';
 
@@ -67,7 +67,15 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
   const canComplete = canWarehouseOps(user?.roleCode);
   const unitLabel = useUnitLabel();
   const issue = useMaterialIssue(order.materialIssueId);
-  const materialIds = useMemo(() => [...new Set((issue.data?.lines ?? []).map((l) => l.rawMaterialId))], [issue.data]);
+  /** Chỉ NVL theo kg (snapshot lệnh) — VT đóng gói không trả dư lúc complete. */
+  const weightMaterialIds = useMemo(
+    () => new Set((order.materials ?? []).map((m) => Number(m.rawMaterialId))),
+    [order.materials],
+  );
+  const materialIds = useMemo(
+    () => [...new Set((issue.data?.lines ?? []).map((l) => l.rawMaterialId).filter((id) => weightMaterialIds.has(Number(id))))],
+    [issue.data, weightMaterialIds],
+  );
   const lotQueries = useQueries({
     queries: materialIds.map((id) => ({ queryKey: ['raw-material-lots', id], queryFn: ({ signal }: { signal: AbortSignal }) => receiptsApi.rawMaterialLots(id, false, signal) })),
   });
@@ -114,6 +122,11 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
   const [packMode, setPackMode] = useState<PackMode>('ONE_KG');
   const [qtyOneKg, setQtyOneKg] = useState('');
   const [qtyHalfKg, setQtyHalfKg] = useState('');
+  const [prodCost, setProdCost] = useState(
+    order.estimatedProductionCost != null && order.estimatedProductionCost > 0
+      ? String(Math.round(order.estimatedProductionCost))
+      : '',
+  );
 
   useEffect(() => {
     if (oneKgVariant) setPackMode('ONE_KG');
@@ -189,7 +202,7 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
       && (nOne > 0 || nHalf > 0));
   const packError =
     packMode === 'SPLIT' && !okValid
-      ? 'Nhập số khay đạt (quy đổi 1 kg) trước, rồi chia đúng khối lượng'
+      ? 'Nhập số khay đạt trước, rồi mới chia khay 1 kg / 0,5 kg'
       : !okValid
         ? undefined
         : packMode === 'ONE_KG' && !oneKgVariant && !halfKgVariant
@@ -201,9 +214,11 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
               : packMode === 'SPLIT' && !canSplit
                 ? 'Cần cả quy cách 1 kg và 0,5 kg để chia'
                 : packMode === 'SPLIT' && Number.isFinite(splitWeight) && splitWeight > ok
-                  ? `Quy đổi ${splitWeight} > đạt ${num(ok)} (1×1kg = 2×0,5kg)`
+                  ? `Đang chia ${num(splitWeight)} (quy đổi 1 kg), vượt số đạt ${num(ok)}`
                   : packMode === 'SPLIT' && !splitValid
-                    ? `1×n₁ + 0,5×n₀,₅ phải = đạt ${num(ok)} (hiện ${Number.isFinite(splitWeight) ? splitWeight : '—'})`
+                    ? Number.isFinite(splitWeight)
+                      ? `Chia khay chưa khớp: cần đủ ${num(ok)} (quy đổi 1 kg), hiện mới ${num(splitWeight)}`
+                      : `Chia khay chưa khớp số đạt ${num(ok)}`
                     : undefined;
 
   const setSplitOne = (raw: string) => {
@@ -249,7 +264,38 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
   const hasDefect = badValid && bad > 0;
   const defectReason = hasDefect ? (reason === 'Khác' ? otherReason.trim() || null : reason || null) : null;
   const reasonError = hasDefect && !defectReason ? (reason === 'Khác' ? 'Ghi lý do khác' : 'Chọn lý do hỏng') : undefined;
-  const valid = okValid && badValid && !overPlan && !reasonError && !packError && leftErrors.size === 0 && !!doneDate;
+
+  /** Số khay vật lý → trừ VT đóng gói (xốp, túi…). */
+  const physicalTrays =
+    packMode === 'SPLIT'
+      ? splitValid
+        ? nOne + nHalf
+        : 0
+      : packMode === 'HALF_KG'
+        ? okValid
+          ? ok * 2
+          : 0
+        : okValid
+          ? ok
+          : 0;
+  const packPreview = usePackagingPreview(order.productId, physicalTrays);
+  const packStockError =
+    physicalTrays > 0 && packPreview.data && !packPreview.data.allMaterialsSufficient
+      ? 'Tồn vật tư đóng gói không đủ — kiểm tra bảng bên dưới'
+      : undefined;
+  const actualProdCost = Number(parseThousands(prodCost)) || 0;
+  const prodCostError =
+    prodCost.trim() !== '' && !(actualProdCost >= 0) ? 'Số tiền ≥ 0' : undefined;
+  const valid =
+    okValid
+    && badValid
+    && !overPlan
+    && !reasonError
+    && !packError
+    && !packStockError
+    && !prodCostError
+    && leftErrors.size === 0
+    && !!doneDate;
 
   const setOkCapped = (raw: string) => {
     if (raw.trim() === '') {
@@ -308,7 +354,7 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
     () =>
       productionApi.complete(order.id, {
         actualQty: ok,
-        actualProductionCost: order.estimatedProductionCost,
+        actualProductionCost: actualProdCost,
         variantId: null,
         finishedDate: doneDate,
         defectQty: bad || null,
@@ -329,6 +375,7 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
           ['Cần xong', date(order.plannedDueDate)],
           ['Phiếu xuất', <><span className="font-mono">{order.materialIssueCode ?? '—'}</span> · đã xuất</>],
           ['Tiền nguyên liệu', money(issuedCost)],
+          ['Chi phí SX dự tính', money(order.estimatedProductionCost)],
         ]}
       />
       <HistoryCard events={orderHistory(order, issue.data)} />
@@ -379,6 +426,24 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
           <Field label="Ngày làm xong" required>
             <DateInput max={todayISO()} value={doneDate} onChange={setDoneDate} />
           </Field>
+          <Field
+            label="Chi phí sản xuất thực tế"
+            tip={
+              order.estimatedProductionCost
+                ? `Tiền công, điện, gas… cả lệnh. Dự tính lúc lập lệnh: ${money(order.estimatedProductionCost)}.`
+                : 'Tiền công, điện, gas… cả lệnh. Để trống = 0.'
+            }
+            error={touched && prodCostError ? prodCostError : undefined}
+          >
+            <SuffixInput
+              suffix="₫"
+              inputMode="numeric"
+              className="text-right"
+              placeholder="0"
+              value={formatThousands(prodCost)}
+              onChange={(e) => setProdCost(parseThousands(e.target.value))}
+            />
+          </Field>
           {hasDefect && (
           <div className="sm:col-span-3">
             <div className="mb-1.5 text-small font-medium text-ink-muted">Lý do hỏng <span className="text-red-fg">*</span> <span className="font-normal text-ink-faint">(chọn nhanh hoặc tự ghi)</span></div>
@@ -420,7 +485,7 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
       <Section
         flush
         title="Đóng gói thành phẩm"
-        subtitle="Số đạt = quy đổi khay 1 kg · 1 khay 1 kg = 2 khay 0,5 kg · giá vốn chia theo khối lượng"
+        subtitle="Số đạt = quy đổi khay 1 kg · VT đóng gói (xốp, màng) trừ theo số khay vật lý vừa chọn"
       >
         <div className="space-y-3 p-4">
           <div role="radiogroup" aria-label="Quy cách đóng gói" className="flex flex-wrap gap-2">
@@ -448,52 +513,38 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
             ))}
           </div>
           {packMode === 'SPLIT' && (
-            <div className="space-y-2">
-              <p className="text-small text-ink-muted">
-                Công thức: <b className="text-ink">n₁×1 + n₀,₅×0,5 = số đạt</b>
-                {okValid ? ` (${num(ok)})` : ' — điền số đạt trước'}
-                {okValid && splitTyped ? (
-                  <>
-                    {' '}
-                    · quy đổi{' '}
-                    <b className={splitWeightOk ? 'text-green-fg' : 'text-amber-fg'}>
-                      {Number.isFinite(splitWeight) ? splitWeight : '—'}/{num(ok)}
-                    </b>
-                    {Number.isFinite(splitWeight) && splitWeight < ok ? ` · còn ${ok - splitWeight}` : null}
-                    {` · ${num(nOne + nHalf)} khay vật lý`}
-                  </>
-                ) : null}
-              </p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field
-                  label="Khay 1 kg (vật lý)"
-                  tip={oneKgVariant ? oneKgVariant.sku : undefined}
-                  error={touched && packMode === 'SPLIT' && packError && !splitWeightOk ? packError : undefined}
-                >
-                  <Input
-                    type="number"
-                    min={0}
-                    max={okValid ? ok : undefined}
-                    disabled={!okValid}
-                    className="text-right"
-                    placeholder={okValid ? `0–${ok}` : '…'}
-                    value={qtyOneKg}
-                    onChange={(e) => setSplitOne(e.target.value)}
-                  />
-                </Field>
-                <Field label="Khay 0,5 kg (vật lý)" tip={halfKgVariant ? `${halfKgVariant.sku} · tối đa ${okValid ? ok * 2 : '…'}` : undefined}>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={okValid ? ok * 2 : undefined}
-                    disabled={!okValid}
-                    className="text-right"
-                    placeholder={okValid ? `0–${ok * 2}` : '…'}
-                    value={qtyHalfKg}
-                    onChange={(e) => setSplitHalf(e.target.value)}
-                  />
-                </Field>
-              </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field
+                label="Khay 1 kg (vật lý)"
+                tip={oneKgVariant ? oneKgVariant.sku : undefined}
+                error={touched && packMode === 'SPLIT' && packError && !splitWeightOk ? packError : undefined}
+              >
+                <Input
+                  type="number"
+                  min={0}
+                  max={okValid ? ok : undefined}
+                  disabled={!okValid}
+                  className="text-right"
+                  placeholder={okValid ? `0–${ok}` : '…'}
+                  value={qtyOneKg}
+                  onChange={(e) => setSplitOne(e.target.value)}
+                />
+              </Field>
+              <Field
+                label="Khay 0,5 kg (vật lý)"
+                tip={halfKgVariant ? `${halfKgVariant.sku} · tối đa ${okValid ? ok * 2 : '…'}` : undefined}
+              >
+                <Input
+                  type="number"
+                  min={0}
+                  max={okValid ? ok * 2 : undefined}
+                  disabled={!okValid}
+                  className="text-right"
+                  placeholder={okValid ? `0–${ok * 2}` : '…'}
+                  value={qtyHalfKg}
+                  onChange={(e) => setSplitHalf(e.target.value)}
+                />
+              </Field>
             </div>
           )}
           {packMode === 'ONE_KG' && oneKgVariant && (
@@ -511,8 +562,63 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
           {(touched || (packMode === 'SPLIT' && splitTyped)) && packError && (
             <p className="text-small text-red-fg">{packError}</p>
           )}
+          {touched && packStockError && <p className="text-small text-red-fg">{packStockError}</p>}
           {!variantsQ.isLoading && !oneKgVariant && !halfKgVariant && (
             <Alert tone="warning">Sản phẩm chưa có quy cách 1 kg / 0,5 kg đang bán — kiểm tra danh mục sản phẩm.</Alert>
+          )}
+          {physicalTrays > 0 && (
+            <div className="space-y-2 border-t border-line pt-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-small font-semibold text-ink">
+                  VT đóng gói sẽ trừ · {num(physicalTrays)} khay vật lý
+                </p>
+                {packPreview.data && (
+                  <p className="text-small tabular-nums text-ink-muted">
+                    Ước ~{money(packPreview.data.estimatedMaterialCost)}
+                  </p>
+                )}
+              </div>
+              {packPreview.isLoading && <p className="text-small text-ink-faint">Đang tính định mức đóng gói…</p>}
+              {packPreview.error && (
+                <Alert tone="warning">Không lấy được xem trước VT đóng gói — vẫn có thể báo xong nếu kho đủ.</Alert>
+              )}
+              {packPreview.data && packPreview.data.materials.length === 0 && (
+                <p className="text-small text-ink-faint">BOM không có dòng đếm (xốp, túi…) — không trừ thêm.</p>
+              )}
+              {packPreview.data && packPreview.data.materials.length > 0 && (
+                <div className="overflow-x-auto rounded-md border border-line">
+                  <table className="w-full min-w-[520px] border-collapse text-body">
+                    <thead>
+                      <tr className="bg-thead text-left text-micro uppercase tracking-wide text-ink-muted">
+                        <th className="px-3 py-2 font-semibold">Vật tư</th>
+                        <th className="px-3 py-2 text-right font-semibold">Cần</th>
+                        <th className="px-3 py-2 text-right font-semibold">Tồn dùng được</th>
+                        <th className="px-3 py-2 text-right font-semibold">Trạng thái</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {packPreview.data.materials.map((m) => (
+                        <tr key={m.rawMaterialId} className="border-t border-line">
+                          <td className="px-3 py-2">
+                            <div className="font-medium text-ink">{m.rawMaterialName}</div>
+                            <div className="font-mono text-small text-ink-faint">{m.rawMaterialCode}</div>
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums">
+                            {num(m.requiredQty)} {unitLabel(m.unit)}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-ink-muted">
+                            {num(m.onHandQty)} {unitLabel(m.unit)}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <Chip tone={m.sufficient ? 'green' : 'red'}>{m.stockStatus}</Chip>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </Section>

@@ -10,6 +10,7 @@ const RESEND_SECONDS = 45
  */
 export default function OtpCodeForm({
   onConfirm,
+  onResend,
   resetKey = 0,
   submitting = false,
   externalError = '',
@@ -77,12 +78,21 @@ export default function OtpCodeForm({
     await onConfirm(code)
   }
 
-  function handleResend() {
+  async function handleResend() {
     if (secondsLeft > 0 || submitting) return
     setDigits(Array(OTP_LENGTH).fill(''))
     setError('')
-    setSecondsLeft(RESEND_SECONDS)
     focusIndex(0)
+    if (onResend) {
+      try {
+        await onResend()
+        setSecondsLeft(RESEND_SECONDS)
+      } catch {
+        // Lỗi hiện qua externalError / parent
+      }
+      return
+    }
+    setSecondsLeft(RESEND_SECONDS)
   }
 
   const mm = String(Math.floor(secondsLeft / 60)).padStart(2, '0')

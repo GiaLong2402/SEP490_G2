@@ -49,12 +49,30 @@ export function ActionBar({ children, actions, stacked }: { children: ReactNode;
   );
 }
 
-/** Ô nhập có đơn vị ở cuối (khay, ₫, kg…). */
-export function SuffixInput({ suffix, className = '', ...rest }: InputHTMLAttributes<HTMLInputElement> & { suffix: string }) {
+/** Ô nhập + đơn vị tách cột (không đè số). */
+export function SuffixInput({
+  suffix,
+  className = '',
+  disabled,
+  ...rest
+}: InputHTMLAttributes<HTMLInputElement> & { suffix: string }) {
   return (
-    <div className="relative">
-      <input className={`field-control pr-12 ${className}`} {...rest} />
-      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-ink-faint">{suffix}</span>
+    <div
+      className={`flex h-[34px] w-full overflow-hidden rounded-sm border border-field bg-card focus-within:border-primary focus-within:outline-none focus-within:ring-2 focus-within:ring-primary/20 ${
+        disabled ? 'bg-rowalt' : ''
+      }`}
+    >
+      <input
+        disabled={disabled}
+        className={`h-full min-w-0 flex-1 border-0 bg-transparent px-2.5 text-body tabular-nums text-ink outline-none placeholder:text-ink-faint disabled:text-ink-faint [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${className}`}
+        {...rest}
+      />
+      <span
+        aria-hidden
+        className="flex shrink-0 items-center border-l border-line bg-rowalt/70 px-2.5 text-small text-ink-muted whitespace-nowrap"
+      >
+        {suffix}
+      </span>
     </div>
   );
 }

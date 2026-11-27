@@ -9,7 +9,6 @@ import com.hbsisms.common.exception.ApiException;
 import com.hbsisms.feature.catalog.Product;
 import com.hbsisms.feature.catalog.ProductBomLine;
 import com.hbsisms.feature.catalog.ProductBomLineRepository;
-import com.hbsisms.feature.catalog.ProductVariant;
 import com.hbsisms.feature.catalog.UnitOfMeasure;
 import com.hbsisms.feature.inventory.RawMaterial;
 import com.hbsisms.feature.inventory.RawMaterialLot;
@@ -97,15 +96,15 @@ class BomExplosionServiceTest {
         ProductBomLine bom = bomLine(fish, null, BigDecimal.ONE, new BigDecimal("50"));
         stubSingleLine(bom, fish, "100");
 
-        // Chả cá: 1 kg chả, hao hụt 50% → 10 khay 1 kg cần 20 kg cá
-        BomExplosionService.ExplosionResult result = service.explode(10L, BigDecimal.TEN, tray(1000));
+        // Chả cá: 1 kg chả, hao hụt 50% → 10 khay quy đổi 1 kg cần 20 kg cá
+        BomExplosionService.ExplosionResult result = service.explode(10L, BigDecimal.TEN);
 
         assertThat(result.lines().get(0).getRequiredQty()).isEqualByComparingTo("20");
         assertThat(result.lines().get(0).getBomQtyPerUnit()).isEqualByComparingTo("1");
     }
 
     @Test
-    void explode_halfKgTray_halvesWeightLinesOnly() {
+    void explode_planSkipsPackaging_packagingUsesPhysicalTrays() {
         RawMaterial fish = raw(5L, "NL-CA-THU", new BigDecimal("100"));
         RawMaterial tray = raw(6L, "NL-KHAY", new BigDecimal("100"));
         tray.setUnit("cai");
@@ -118,13 +117,16 @@ class BomExplosionServiceTest {
         when(rawMaterialLotRepository.findFefoUsable(eq(5L), eq(TODAY))).thenReturn(List.of());
         when(rawMaterialLotRepository.findFefoUsable(eq(6L), eq(TODAY))).thenReturn(List.of());
 
-        // 6 khay 0,5 kg, hao hụt 40%: cá = 0,5 × 6 / 0,6 = 5 kg; khay xốp vẫn 6 cái
-        BomExplosionService.ExplosionResult result = service.explode(10L, new BigDecimal("6"), tray(500));
+        // Kế hoạch 2 kg quy đổi: chỉ cá (hao 40% → 2/0.6); khay xốp chưa trừ
+        BomExplosionService.ExplosionResult plan = service.explode(10L, new BigDecimal("2"));
+        assertThat(plan.lines()).hasSize(1);
+        assertThat(plan.lines().get(0).getRequiredQty()).isEqualByComparingTo("3.3333");
 
-        assertThat(result.lines().get(0).getBomQtyPerUnit()).isEqualByComparingTo("0.5");
-        assertThat(result.lines().get(0).getRequiredQty()).isEqualByComparingTo("5");
-        assertThat(result.lines().get(1).getBomQtyPerUnit()).isEqualByComparingTo("1");
-        assertThat(result.lines().get(1).getRequiredQty()).isEqualByComparingTo("6");
+        // Đóng gói 1×1kg + 2×0,5kg = 3 khay vật lý → 3 khay xốp
+        BomExplosionService.ExplosionResult pack = service.explodePackaging(10L, new BigDecimal("3"));
+        assertThat(pack.lines()).hasSize(1);
+        assertThat(pack.lines().get(0).getRawMaterial().getId()).isEqualTo(6L);
+        assertThat(pack.lines().get(0).getRequiredQty()).isEqualByComparingTo("3");
     }
 
     @Test
@@ -174,12 +176,6 @@ class BomExplosionServiceTest {
         when(bomLineRepository.findByProduct_IdOrderBySortOrderAscIdAsc(10L)).thenReturn(List.of(bom));
         when(rawMaterialLotRepository.sumUsableRemaining(eq(raw.getId()), eq(TODAY))).thenReturn(new BigDecimal(usable));
         when(rawMaterialLotRepository.findFefoUsable(eq(raw.getId()), eq(TODAY))).thenReturn(List.of());
-    }
-
-    private static ProductVariant tray(int grams) {
-        ProductVariant v = new ProductVariant();
-        v.setUnitWeightG(grams);
-        return v;
     }
 
     private static UnitOfMeasure unit(String code) {

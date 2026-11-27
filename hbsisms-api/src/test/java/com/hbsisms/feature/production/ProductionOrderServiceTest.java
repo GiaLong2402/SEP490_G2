@@ -112,7 +112,7 @@ class ProductionOrderServiceTest {
         Product product = product(10L, "TP-001", "Bánh quy");
         when(productRepository.findById(10L)).thenReturn(Optional.of(product));
         when(businessCodeService.nextProductionOrderCode()).thenReturn("LSX-2026-0001");
-        when(bomExplosionService.explode(eq(10L), any(), any())).thenReturn(explosion(true, "42"));
+        when(bomExplosionService.explode(eq(10L), any())).thenReturn(explosion(true, "42"));
         when(productionOrderRepository.save(any())).thenAnswer(inv -> {
             ProductionOrder o = inv.getArgument(0);
             ReflectionTestUtils.setField(o, "id", 100L);
@@ -137,7 +137,7 @@ class ProductionOrderServiceTest {
         Product product = product(10L, "TP-001", "Bánh quy");
         when(productRepository.findById(10L)).thenReturn(Optional.of(product));
         when(businessCodeService.nextProductionOrderCode()).thenReturn("LSX-2026-0002");
-        when(bomExplosionService.explode(eq(10L), any(), any())).thenReturn(explosion(false, "42"));
+        when(bomExplosionService.explode(eq(10L), any())).thenReturn(explosion(false, "42"));
         when(productionOrderRepository.save(any())).thenAnswer(inv -> {
             ProductionOrder o = inv.getArgument(0);
             ReflectionTestUtils.setField(o, "id", 101L);
@@ -156,7 +156,7 @@ class ProductionOrderServiceTest {
     void create_whenBomHasComponent_propagates400() {
         Product product = product(10L, "TP-001", "Bánh quy");
         when(productRepository.findById(10L)).thenReturn(Optional.of(product));
-        when(bomExplosionService.explode(eq(10L), any(), any()))
+        when(bomExplosionService.explode(eq(10L), any()))
                 .thenThrow(ApiException.badRequest("BOM chứa sản phẩm cấu thành — hiện chỉ hỗ trợ nguyên liệu thô"));
 
         assertThatThrownBy(() -> service.create(
@@ -170,7 +170,7 @@ class ProductionOrderServiceTest {
     void create_whenBomEmpty_propagates400() {
         Product product = product(10L, "TP-001", "Bánh quy");
         when(productRepository.findById(10L)).thenReturn(Optional.of(product));
-        when(bomExplosionService.explode(eq(10L), any(), any()))
+        when(bomExplosionService.explode(eq(10L), any()))
                 .thenThrow(ApiException.badRequest("Sản phẩm chưa có định mức nguyên liệu (BOM)"));
 
         assertThatThrownBy(() -> service.create(
@@ -183,7 +183,7 @@ class ProductionOrderServiceTest {
     void approve_whenAllSufficient_createsPendingMaterialIssue() {
         ProductionOrder order = draftOrder(true);
         when(productionOrderRepository.findWithHeaderById(100L)).thenReturn(Optional.of(order));
-        when(bomExplosionService.explode(eq(10L), any(), any())).thenReturn(explosion(true, "42"));
+        when(bomExplosionService.explode(eq(10L), any())).thenReturn(explosion(true, "42"));
         MaterialIssue issue = new MaterialIssue();
         ReflectionTestUtils.setField(issue, "id", 50L);
         issue.setCode("PX-2026-0001");
@@ -206,7 +206,7 @@ class ProductionOrderServiceTest {
     void approve_whenShortage_returns409AndDoesNotCreateIssue() {
         ProductionOrder order = draftOrder(false);
         when(productionOrderRepository.findWithHeaderById(100L)).thenReturn(Optional.of(order));
-        when(bomExplosionService.explode(eq(10L), any(), any())).thenReturn(explosion(false, "42"));
+        when(bomExplosionService.explode(eq(10L), any())).thenReturn(explosion(false, "42"));
 
         assertThatThrownBy(() -> service.approve(100L, 1L))
                 .isInstanceOf(ApiException.class)
@@ -224,21 +224,21 @@ class ProductionOrderServiceTest {
         assertThatThrownBy(() -> service.approve(100L, 1L))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.CONFLICT));
-        verify(bomExplosionService, never()).explode(anyLong(), any(), any());
+        verify(bomExplosionService, never()).explode(anyLong(), any());
     }
 
     @Test
     void update_draft_recomputesBom() {
         ProductionOrder order = draftOrder(true);
         when(productionOrderRepository.findWithHeaderById(100L)).thenReturn(Optional.of(order));
-        when(bomExplosionService.explode(eq(10L), any(), any())).thenReturn(explosion(true, "84"));
+        when(bomExplosionService.explode(eq(10L), any())).thenReturn(explosion(true, "84"));
 
         ProductionOrderResponse response = service.update(
                 100L,
                 new ProductionOrderUpdateRequest(new BigDecimal("200"), null, "sửa", null, null));
 
         assertThat(response.plannedQty()).isEqualByComparingTo("200");
-        verify(bomExplosionService).explode(10L, new BigDecimal("200"), null);
+        verify(bomExplosionService).explode(10L, new BigDecimal("200"));
         assertThat(response.materials().get(0).requiredQty()).isEqualByComparingTo("84");
     }
 
@@ -252,7 +252,7 @@ class ProductionOrderServiceTest {
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("số khay nguyên")
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
-        verify(bomExplosionService, never()).explode(anyLong(), any(), any());
+        verify(bomExplosionService, never()).explode(anyLong(), any());
         verify(productionOrderRepository, never()).save(any());
     }
 
@@ -260,7 +260,7 @@ class ProductionOrderServiceTest {
     void update_fractionalTrays_returns400_wholeWithTrailingZerosOk() {
         ProductionOrder order = draftOrder(true);
         when(productionOrderRepository.findWithHeaderById(100L)).thenReturn(Optional.of(order));
-        when(bomExplosionService.explode(eq(10L), any(), any())).thenReturn(explosion(true, "84"));
+        when(bomExplosionService.explode(eq(10L), any())).thenReturn(explosion(true, "84"));
 
         assertThatThrownBy(() -> service.update(
                         100L, new ProductionOrderUpdateRequest(new BigDecimal("2.5"), null, null, null, null)))
@@ -303,64 +303,44 @@ class ProductionOrderServiceTest {
     }
 
     @Test
-    void create_withHalfKgTray_plansThatTrayAndExplodesForIt() {
+    void create_ignoresVariantId_leavesFinishedVariantNull() {
         Product product = product(10L, "TP-001", "Chả cá");
-        ProductVariant half = variant(product, 21L, 500);
         when(productRepository.findById(10L)).thenReturn(Optional.of(product));
-        when(productVariantRepository.findById(21L)).thenReturn(Optional.of(half));
         when(businessCodeService.nextProductionOrderCode()).thenReturn("LSX-2026-0003");
-        when(bomExplosionService.explode(10L, new BigDecimal("6"), half)).thenReturn(explosion(true, "5"));
+        when(bomExplosionService.explode(10L, new BigDecimal("6"))).thenReturn(explosion(true, "5"));
         when(productionOrderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ProductionOrderResponse response = service.create(
                 new ProductionOrderCreateRequest(10L, new BigDecimal("6"), null, null, null, 21L), null);
 
-        assertThat(response.finishedVariantId()).isEqualTo(21L);
-        verify(bomExplosionService).explode(10L, new BigDecimal("6"), half);
+        assertThat(response.finishedVariantId()).isNull();
+        verify(bomExplosionService).explode(10L, new BigDecimal("6"));
+        verify(productVariantRepository, never()).findById(any());
     }
 
     @Test
-    void create_withoutTray_defaultsToOneKgTray() {
+    void create_withoutTray_keepsFinishedVariantNull() {
         Product product = product(10L, "TP-001", "Chả cá");
-        ProductVariant half = variant(product, 21L, 500);
-        ProductVariant oneKg = variant(product, 22L, 1000);
         when(productRepository.findById(10L)).thenReturn(Optional.of(product));
-        when(productVariantRepository.findByProduct_IdOrderByIdAsc(10L)).thenReturn(List.of(half, oneKg));
         when(businessCodeService.nextProductionOrderCode()).thenReturn("LSX-2026-0004");
-        when(bomExplosionService.explode(10L, BigDecimal.ONE, oneKg)).thenReturn(explosion(true, "1"));
+        when(bomExplosionService.explode(10L, BigDecimal.ONE)).thenReturn(explosion(true, "1"));
         when(productionOrderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ProductionOrderResponse response = service.create(
                 new ProductionOrderCreateRequest(10L, BigDecimal.ONE, null, null, null, null), null);
 
-        assertThat(response.finishedVariantId()).isEqualTo(22L);
+        assertThat(response.finishedVariantId()).isNull();
     }
 
     @Test
-    void create_trayOfOtherProduct_returns400() {
-        Product product = product(10L, "TP-001", "Chả cá");
-        when(productRepository.findById(10L)).thenReturn(Optional.of(product));
-        when(productVariantRepository.findById(31L))
-                .thenReturn(Optional.of(variant(product(11L, "TP-002", "Mực"), 31L, 1000)));
-
-        assertThatThrownBy(() -> service.create(
-                        new ProductionOrderCreateRequest(10L, BigDecimal.ONE, null, null, null, 31L), null))
-                .isInstanceOf(ApiException.class)
-                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
-        verify(productionOrderRepository, never()).save(any());
-    }
-
-    @Test
-    void approve_reExplodesWithPlannedTray() {
+    void approve_reExplodesWeightOnly() {
         ProductionOrder order = draftOrder(true);
-        ProductVariant half = variant(order.getProduct(), 21L, 500);
-        order.setFinishedVariant(half);
         when(productionOrderRepository.findWithHeaderById(100L)).thenReturn(Optional.of(order));
-        when(bomExplosionService.explode(10L, new BigDecimal("100"), half)).thenReturn(explosion(true, "42"));
+        when(bomExplosionService.explode(10L, new BigDecimal("100"))).thenReturn(explosion(true, "42"));
 
         service.approve(100L, null);
 
-        verify(bomExplosionService).explode(10L, new BigDecimal("100"), half);
+        verify(bomExplosionService).explode(10L, new BigDecimal("100"));
     }
 
     @Test

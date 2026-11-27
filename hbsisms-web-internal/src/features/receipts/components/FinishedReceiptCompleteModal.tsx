@@ -209,8 +209,7 @@ export function FinishedReceiptFields({ form, productLabel }: { form: FinishedRe
       {multiPack && (
         <div className="sm:col-span-2 lg:col-span-12">
           <Alert tone="info">
-            Đạt quy đổi {num(form.packWeightKg)} (khay 1 kg) · xếp kho {num(form.packTotal)} khay vật lý
-            {' '}({packItems.map((i) => `${num(i.qty)} ${i.name}`).join(' + ')}). Giá vốn chia theo kg quy đổi.
+            Giá vốn chia theo {num(form.packWeightKg)} khay quy đổi 1 kg (xếp kho {num(form.packTotal)} khay vật lý).
           </Alert>
         </div>
       )}

@@ -50,6 +50,16 @@
     @apply h-[34px] w-full rounded-sm border border-field bg-card px-2.5 text-body text-ink placeholder:text-ink-faint
       focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-rowalt disabled:text-ink-faint;
   }
+  /* Đồng bộ ô số: không hiện mũi tên spin trình duyệt */
+  .field-control[type='number'] {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+  .field-control[type='number']::-webkit-inner-spin-button,
+  .field-control[type='number']::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
+  }
   .num { @apply whitespace-nowrap font-mono text-small tabular-nums; }
 
   /* Sidebar: thanh cuộn mỏng, hợp trên nền tối — dùng chung mọi role */

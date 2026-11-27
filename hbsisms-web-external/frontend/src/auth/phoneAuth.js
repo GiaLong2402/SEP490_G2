@@ -1,4 +1,5 @@
 import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth'
+import { authApi } from '@/api/auth'
 import { getFirebaseAuth, isFirebaseConfigured } from '@/lib/firebase'
 import { buildStubIdToken } from '@/auth/stubIdToken'
 import { normalizeVietnamPhone } from '@/utils/phone'
@@ -45,10 +46,12 @@ export function clearPhoneAuthSession() {
 }
 
 /**
- * Gửi OTP.
+ * Gửi OTP — precheck backend (5 lần/15 phút → khoá 30 phút) rồi mới gọi Firebase/stub.
  * @returns {{ mode: 'stub' | 'firebase' }}
  */
 export async function sendPhoneOtp(phone) {
+  await authApi.otpPrecheck({ phone })
+
   if (!isFirebaseConfigured()) {
     clearPhoneAuthSession()
     return { mode: 'stub' }
@@ -92,6 +95,7 @@ export async function confirmPhoneOtp(code, phone) {
 }
 
 export function mapFirebaseAuthError(err) {
+  if (err?.name === 'ApiError' && err.message) return err.message
   const code = err?.code || ''
   const message = err?.message || ''
   if (code === 'auth/invalid-phone-number') return 'Số điện thoại không hợp lệ.'

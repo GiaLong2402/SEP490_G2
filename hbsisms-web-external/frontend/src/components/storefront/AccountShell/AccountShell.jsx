@@ -4,7 +4,6 @@ import PageBanner from '@/components/storefront/PageBanner/PageBanner'
 import {
   ClipboardIcon,
   LogoutIcon,
-  MapPinIcon,
   TextAaIcon,
   UserIcon,
 } from '@/components/icons/Icons'
@@ -16,7 +15,6 @@ import './AccountShell.css'
 const NAV = [
   { to: ROUTES.ACCOUNT, label: 'Tài khoản', Icon: UserIcon },
   { to: ROUTES.ORDERS, label: 'Đơn & yêu cầu của tôi', Icon: ClipboardIcon },
-  { to: ROUTES.ADDRESSES, label: 'Sổ địa chỉ', Icon: MapPinIcon },
   { to: ROUTES.DISPLAY_SETTINGS, label: 'Cài đặt hiển thị', Icon: TextAaIcon },
 ]
 

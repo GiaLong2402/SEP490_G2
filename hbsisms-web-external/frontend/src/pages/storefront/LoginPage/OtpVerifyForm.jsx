@@ -10,8 +10,10 @@ export default function OtpVerifyForm({
   otpMode = 'stub',
   onBackToPhone,
   onVerified,
+  onResend,
   submitting = false,
   error = '',
+  otpResetKey = 0,
 }) {
   const lead =
     otpMode === 'firebase'
@@ -28,8 +30,9 @@ export default function OtpVerifyForm({
       </button>
 
       <OtpCodeForm
-        resetKey="login-otp"
+        resetKey={otpResetKey}
         onConfirm={onVerified}
+        onResend={onResend}
         submitting={submitting}
         externalError={error}
       />

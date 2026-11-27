@@ -5,6 +5,9 @@ import type { CurrentUser, LoginRequest, LoginResponse, OtpLoginRequest } from '
 export const authApi = {
   login: (body: LoginRequest) => api.post<LoginResponse>(API_PATHS.auth.login, body),
   loginOtp: (body: OtpLoginRequest) => api.post<LoginResponse>('/auth/login/otp', body),
+  /** Precheck chống spam OTP — 429 nếu SĐT bị khoá tạm. */
+  otpPrecheck: (body: { phone: string }) =>
+    api.post<{ allowed: boolean; remaining: number; windowSeconds: number }>('/auth/otp/precheck', body),
   me: () => api.get<CurrentUser>(API_PATHS.auth.me),
   logout: () => api.post<void>(API_PATHS.auth.logout),
 };

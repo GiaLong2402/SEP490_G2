@@ -111,15 +111,7 @@ export function ReceiptPanel({ order }: { order: ProductionOrder }) {
         }
         subtitle={<>Tự tạo khi báo làm xong · nguồn: lệnh {order.code} · hiện ở màn Nhập kho với nút <b>Nhập kho</b></>}
       >
-        <article className="rounded-md border border-line">
-          <div className="flex items-center gap-2 rounded-t-md border-b border-line bg-rowalt/60 px-3 py-1.5">
-            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-micro font-semibold text-card">1</span>
-            <span className="text-small font-medium text-ink-muted">Mặt hàng 1</span>
-          </div>
-          <div className="p-3">
-            <FinishedReceiptFields form={form} productLabel={productLabel} />
-          </div>
-        </article>
+        <FinishedReceiptFields form={form} productLabel={productLabel} />
       </Section>
 
       <Section

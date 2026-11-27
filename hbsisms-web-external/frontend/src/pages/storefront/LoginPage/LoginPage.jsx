@@ -54,6 +54,7 @@ export default function LoginPage() {
   const [otpMode, setOtpMode] = useState('stub') // stub | firebase
   const [otpSubmitting, setOtpSubmitting] = useState(false)
   const [otpError, setOtpError] = useState('')
+  const [otpResetKey, setOtpResetKey] = useState(0)
   const [pendingIdToken, setPendingIdToken] = useState(null)
   const [creating, setCreating] = useState(false)
   const [infoMessage, setInfoMessage] = useState('')
@@ -115,11 +116,28 @@ export default function LoginPage() {
       const { mode } = await sendPhoneOtp(phone)
       setOtpMode(mode)
       setStatus('idle')
+      setOtpResetKey((k) => k + 1)
       setStep(STEP.OTP)
     } catch (err) {
       setStatus('error')
       setError(mapFirebaseAuthError(err) || 'Không gửi được mã. Vui lòng thử lại.')
       clearPhoneAuthSession()
+    }
+  }
+
+  async function handleResendOtp() {
+    setOtpError('')
+    setOtpSubmitting(true)
+    try {
+      const { mode } = await sendPhoneOtp(phone)
+      setOtpMode(mode)
+      setOtpResetKey((k) => k + 1)
+    } catch (err) {
+      setOtpError(mapFirebaseAuthError(err) || 'Không gửi được mã. Vui lòng thử lại.')
+      clearPhoneAuthSession()
+      throw err
+    } finally {
+      setOtpSubmitting(false)
     }
   }
 
@@ -287,8 +305,10 @@ export default function LoginPage() {
               otpMode={otpMode}
               onBackToPhone={goBackToPhone}
               onVerified={handleOtpVerified}
+              onResend={handleResendOtp}
               submitting={otpSubmitting}
               error={otpError}
+              otpResetKey={otpResetKey}
             />
           )}
 

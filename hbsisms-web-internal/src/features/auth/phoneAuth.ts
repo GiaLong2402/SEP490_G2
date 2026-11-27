@@ -1,6 +1,8 @@
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from 'firebase/auth'
 import { getFirebaseAuth, isFirebaseConfigured } from '@/lib/firebase'
+import { ApiError } from '@/shared/api/client'
 import { toE164Vn } from '@/shared/utils/phone'
+import { authApi } from './api'
 import { buildStubIdToken } from './stubIdToken'
 
 const RECAPTCHA_HOST_ID = 'recaptcha-container'
@@ -38,6 +40,8 @@ export function clearPhoneAuthSession() {
 }
 
 export async function sendPhoneOtp(phone: string): Promise<{ mode: 'stub' | 'firebase' }> {
+  await authApi.otpPrecheck({ phone })
+
   if (!isFirebaseConfigured()) {
     clearPhoneAuthSession()
     return { mode: 'stub' }
@@ -77,6 +81,7 @@ export async function confirmPhoneOtp(code: string, phone: string): Promise<stri
 }
 
 export function mapFirebaseAuthError(err: unknown): string {
+  if (err instanceof ApiError && err.message) return err.message
   const e = err as { code?: string; message?: string }
   const code = e?.code || ''
   const message = e?.message || ''
