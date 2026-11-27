@@ -86,7 +86,9 @@ function order({ code, state, paymentStatus, fulfillment, hoursAgo, lines, sched
     payments: payment ? [payment] : [],
     events,
     paidAmount: paymentStatus === 'PAID' ? subtotal + shippingFee : 0,
-    canCancel: state === 'PENDING' && paymentStatus !== 'PAID',
+    canCancel:
+      (state === 'PENDING' && paymentStatus !== 'PAID') ||
+      (state === 'AWAITING_SETTLEMENT' && paymentStatus === 'DEPOSITED'),
   }
 }
 

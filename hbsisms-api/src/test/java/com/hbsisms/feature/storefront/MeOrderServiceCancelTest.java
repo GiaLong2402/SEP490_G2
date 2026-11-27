@@ -134,6 +134,47 @@ class MeOrderServiceCancelTest {
         assertThat(cash.getStatus()).isEqualTo(PayTxnStatus.PENDING);
     }
 
+    @Test
+    void cancelMine_awaitingSettlement_forfeitsDepositAndReleasesHold() {
+        Customer customer = customer(3L);
+        SalesOrder order = settlementOrder(9L, "SO-160", customer);
+        Payment balanceLink = pendingPayos(order, 99L, "plink-bal");
+
+        when(salesOrderRepository.findByCodeAndCustomer_Id("SO-160", 3L)).thenReturn(Optional.of(order));
+        when(salesOrderRepository.findWithDetailsById(9L)).thenReturn(Optional.of(order));
+        when(paymentRepository.findByOrder_IdOrderByPaidAtAscIdAsc(9L)).thenReturn(List.of(balanceLink));
+        when(payosClient.cancelPaymentRequest("plink-bal", "Khách hủy đơn")).thenReturn(true);
+        when(salesOrderRepository.save(any(SalesOrder.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderEventRepository.save(any(OrderEvent.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(deliveryRepository.findByOrder_IdOrderByIdAsc(9L)).thenReturn(List.of());
+        when(orderEventRepository.findByOrder_IdOrderByCreatedAtAscIdAsc(9L)).thenReturn(List.of());
+
+        service.cancelMine(customer, "SO-160");
+
+        assertThat(order.getState()).isEqualTo(OrderState.CANCELLED);
+        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.DEPOSITED);
+        assertThat(balanceLink.getStatus()).isEqualTo(PayTxnStatus.CANCELLED);
+        verify(orderAllocationService)
+                .releaseForOrder(eq(order), any(), org.mockito.ArgumentMatchers.contains("mất cọc"));
+        verify(orderEventRepository).save(org.mockito.ArgumentMatchers.argThat(
+                (OrderEvent e) -> e.getDescription() != null && e.getDescription().contains("mất tiền cọc")));
+    }
+
+    @Test
+    void portalCanCancel_settlementDeposited_true() {
+        SalesOrder order = settlementOrder(1L, "SO-x", customer(1L));
+        assertThat(MeOrderService.portalCanCancel(order)).isTrue();
+        assertThat(MeOrderService.isSettlementCancel(order)).isTrue();
+    }
+
+    @Test
+    void portalCanCancel_inProduction_false() {
+        SalesOrder order = settlementOrder(1L, "SO-x", customer(1L));
+        order.setState(OrderState.IN_PRODUCTION);
+        assertThat(MeOrderService.portalCanCancel(order)).isFalse();
+    }
+
     private static Customer customer(long id) {
         Customer customer = new Customer();
         setId(customer, id);
@@ -147,6 +188,13 @@ class MeOrderServiceCancelTest {
         order.setCustomer(customer);
         order.setState(OrderState.PENDING);
         order.setPaymentStatus(PaymentStatus.WAITING);
+        return order;
+    }
+
+    private static SalesOrder settlementOrder(long id, String code, Customer customer) {
+        SalesOrder order = unpaidOrder(id, code, customer);
+        order.setState(OrderState.AWAITING_SETTLEMENT);
+        order.setPaymentStatus(PaymentStatus.DEPOSITED);
         return order;
     }
 

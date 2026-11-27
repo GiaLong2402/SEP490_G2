@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useCustomerOptions } from '@/features/customers';
+import { CustomerSearchField, useCustomerOptions } from '@/features/customers';
 import { LineItemsEditor, isCompleteLine, newLine, toPricingLines, usePricing, type EditableLine } from '@/features/pricing';
 import { useVariantOptions } from '@/features/products';
 import { useRequest } from '@/features/requests';
@@ -31,10 +31,12 @@ export default function QuoteFormPage() {
   const [lines, setLines] = useState<EditableLine[]>([newLine()]);
   const [touched, setTouched] = useState(false);
   const prefilledRef = useRef(false);
+  const customerFromRequestRef = useRef(false);
   const editLoadedRef = useRef(false);
 
   const requestQuery = useRequest(requestId);
   const request = requestQuery.data;
+  const walkInRequest = request != null && request.customerId == null;
 
   useEffect(() => {
     if (!isEdit || !existing || editLoadedRef.current) return;
@@ -44,6 +46,7 @@ export default function QuoteFormPage() {
     }
     editLoadedRef.current = true;
     prefilledRef.current = true;
+    customerFromRequestRef.current = true;
     setCustomerId(existing.customerId);
     setValidUntil(existing.validUntil ?? todayISO(7));
     setNote(existing.note ?? '');
@@ -58,6 +61,14 @@ export default function QuoteFormPage() {
         : [newLine()],
     );
   }, [isEdit, existing, navigate]);
+
+  useEffect(() => {
+    if (isEdit || !request || customerFromRequestRef.current || customerId != null) return;
+    if (request.customerId != null) {
+      customerFromRequestRef.current = true;
+      setCustomerId(request.customerId);
+    }
+  }, [isEdit, request, customerId]);
 
   useEffect(() => {
     if (isEdit || !request || prefilledRef.current) return;
@@ -171,15 +182,41 @@ export default function QuoteFormPage() {
 
         <Card title="Thông tin chung">
           <div className="grid gap-3 md:grid-cols-3">
-            <Field label="Khách hàng" required error={touched && !customerId ? 'Vui lòng chọn khách' : undefined}>
-              <Select
-                value={customerId ?? ''}
-                disabled={isEdit && !!existing?.requestId}
-                onChange={(e) => setCustomerId(e.target.value ? Number(e.target.value) : null)}
-              >
-                <option value="">Chọn khách hàng...</option>
-                {customers.data?.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
-              </Select>
+            <Field
+              label="Khách hàng"
+              required
+              error={touched && !customerId ? 'Vui lòng chọn khách trên hệ thống' : undefined}
+            >
+              {walkInRequest || (!customerId && requestId != null) ? (
+                <div className="space-y-1.5">
+                  {walkInRequest && (
+                    <p className="text-small text-ink-muted">
+                      Yêu cầu khách vãng lai
+                      {request?.customerName ? ` · ${request.customerName}` : ''}
+                      {request?.contactPhone ? ` · ${request.contactPhone}` : ''}
+                      . Chọn hoặc tìm khách trên hệ thống để lập báo giá.
+                    </p>
+                  )}
+                  <CustomerSearchField
+                    value={customerId}
+                    onChange={setCustomerId}
+                    placeholder="Tìm theo SĐT, tên hoặc mã KH…"
+                  />
+                </div>
+              ) : (
+                <Select
+                  value={customerId ?? ''}
+                  disabled={isEdit && !!existing?.requestId}
+                  onChange={(e) => setCustomerId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">Chọn khách hàng...</option>
+                  {customers.data?.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.code})
+                    </option>
+                  ))}
+                </Select>
+              )}
             </Field>
             <Field label="Hiệu lực đến"><Input type="date" min={todayISO()} value={validUntil} onChange={(e) => setValidUntil(e.target.value)} /></Field>
             <Field label="Ghi chú"><Textarea rows={1} value={note} onChange={(e) => setNote(e.target.value)} /></Field>

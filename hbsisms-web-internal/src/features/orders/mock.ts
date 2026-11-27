@@ -535,17 +535,24 @@ mock('POST', '/orders/:id/cancel', ({ params, body, userId }) => {
   if (!String(body.reason ?? '').trim()) fail(400, 'Vui lòng nhập lý do hủy');
   const wasCharged = order.paymentStatus === 'debt';
   const hadPaid = order.paymentStatus === 'paid' || order.paymentStatus === 'partial';
+  const forfeitDeposit = order.paymentStatus === 'deposited';
   releaseOrder(order, userId);
   if (wasCharged && order.customerId) postDebtEntry(order.customerId, { orderId: order.id, entryType: 'adjust', amount: -order.total, note: `Hủy đơn ${order.code}` });
   order.state = 'cancelled';
-  order.paymentStatus = hadPaid ? 'refund_pending' : 'unpaid';
+  if (hadPaid) order.paymentStatus = 'refund_pending';
+  else if (!forfeitDeposit) order.paymentStatus = 'unpaid';
+  // deposited → giữ nguyên (mất cọc)
   order.updatedAt = new Date().toISOString();
   db.deliveries.filter((d) => d.orderId === order.id && d.state !== 'delivered').forEach((d) => (d.state = 'failed'));
   db.approvals.filter((a) => a.refType === 'sales_order' && a.refId === order.id && a.status === 'pending').forEach((a) => { a.status = 'rejected'; a.note = 'Đơn đã hủy'; a.decidedAt = new Date().toISOString(); });
   addOrderEvent(
     order.id,
     'cancelled',
-    hadPaid ? `Hủy đơn (đã thu tiền — chờ hoàn tiền): ${body.reason}` : `Hủy đơn: ${body.reason}`,
+    hadPaid
+      ? `Hủy đơn (đã thu tiền — chờ hoàn tiền): ${body.reason}`
+      : forfeitDeposit
+        ? `Hủy đơn (mất cọc — hàng trả kho): ${body.reason}`
+        : `Hủy đơn: ${body.reason}`,
     userId,
   );
   audit(userId, 'cancel', 'sales_order', order.id, { reason: body.reason, paymentStatus: order.paymentStatus });

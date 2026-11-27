@@ -212,14 +212,6 @@ function RequestDetail({ req, onChanged }) {
                 </dd>
               </div>
               <div>
-                <dt>Đáp ứng được</dt>
-                <dd>{qty(req.fulfillableQty)}</dd>
-              </div>
-              <div>
-                <dt>Còn thiếu</dt>
-                <dd>{qty(req.shortageQty)}</dd>
-              </div>
-              <div>
                 <dt>Ngày giao dự kiến</dt>
                 <dd>{req.expectedDate ? formatDate(req.expectedDate) : '—'}</dd>
               </div>

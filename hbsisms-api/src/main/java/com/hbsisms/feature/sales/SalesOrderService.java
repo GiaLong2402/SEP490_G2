@@ -689,12 +689,18 @@ public class SalesOrderService {
         }
 
         boolean wasDebt = order.getPaymentStatus() == PaymentStatus.DEBT;
+        // Đã thu đủ / một phần → chờ hoàn. Chỉ còn cọc (DEPOSITED) → mất cọc, giữ tiền, nhả hàng.
         boolean hadPaid = order.getPaymentStatus() == PaymentStatus.PAID
-                || order.getPaymentStatus() == PaymentStatus.PARTIAL
-                || order.getPaymentStatus() == PaymentStatus.DEPOSITED;
+                || order.getPaymentStatus() == PaymentStatus.PARTIAL;
+        boolean forfeitDeposit = order.getPaymentStatus() == PaymentStatus.DEPOSITED;
 
         Long actorId = actor == null ? null : actor.getId();
-        orderAllocationService.releaseForOrder(order, actorId, "Huỷ đơn — giải phóng hold");
+        orderAllocationService.releaseForOrder(
+                order,
+                actorId,
+                forfeitDeposit
+                        ? "Huỷ đơn — giải phóng hold (mất cọc)"
+                        : "Huỷ đơn — giải phóng hold");
 
         if (wasDebt && order.getCustomer() != null) {
             reverseDebtCharge(order, "Hủy đơn " + order.getCode());
@@ -704,6 +710,8 @@ public class SalesOrderService {
         if (hadPaid) {
             order.setPaymentStatus(PaymentStatus.REFUND_PENDING);
             markPaymentsNeedRefund(order);
+        } else if (forfeitDeposit) {
+            // Giữ DEPOSITED: tiền cọc cửa hàng giữ; payment SUCCESS không đánh needsRefund.
         } else {
             order.setPaymentStatus(PaymentStatus.UNPAID);
         }
@@ -732,7 +740,9 @@ public class SalesOrderService {
 
         String eventDesc = hadPaid
                 ? "Hủy đơn (đã thu tiền — chờ hoàn tiền): " + reason
-                : "Hủy đơn: " + reason;
+                : forfeitDeposit
+                        ? "Hủy đơn (mất cọc — hàng trả kho): " + reason
+                        : "Hủy đơn: " + reason;
         addEvent(order, "cancelled", eventDesc, actor);
         salesOrderRepository.save(order);
     }

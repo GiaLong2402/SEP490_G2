@@ -286,12 +286,59 @@ export default function PaymentStep({ order, payment }) {
                 </dd>
               </div>
             </dl>
-            <p className="pay-order__total">
-              <span>Tổng thanh toán</span>
-              <strong>{formatPrice(order.total)}</strong>
-            </p>
-            {/* QR đã đóng: không cho hủy (khách có thể vừa chuyển tiền) */}
-            {qrClosed ? (
+            {(() => {
+              const paid = Number(order.paidAmount) || 0
+              const deposit = Number(order.depositAmount) || 0
+              const dueNow = Number(payment.amount) || 0
+              const isSettlement =
+                order.paymentStatus === 'DEPOSITED' ||
+                order.state === 'AWAITING_SETTLEMENT' ||
+                order.uiStatus === 'awaiting_settlement'
+              const isDepositPay =
+                order.isPreorder && order.paymentStatus === 'UNPAID' && deposit > 0
+              const depositShown = isSettlement
+                ? paid > 0
+                  ? paid
+                  : deposit
+                : isDepositPay
+                  ? deposit
+                  : 0
+
+              if (isSettlement || isDepositPay) {
+                return (
+                  <div className="pay-order__money">
+                    <p className="pay-order__line">
+                      <span>Tổng đơn hàng</span>
+                      <strong>{formatPrice(order.total)}</strong>
+                    </p>
+                    <p className="pay-order__line">
+                      <span>
+                        {isSettlement
+                          ? `Đã cọc${order.depositPercent > 0 ? ` (${order.depositPercent}%)` : ''}`
+                          : `Tiền cọc${order.depositPercent > 0 ? ` (${order.depositPercent}%)` : ''}`}
+                      </span>
+                      <strong>
+                        {isSettlement ? '−' : ''}
+                        {formatPrice(depositShown)}
+                      </strong>
+                    </p>
+                    <p className="pay-order__total">
+                      <span>{isSettlement ? 'Còn phải tất toán' : 'Thanh toán lần này'}</span>
+                      <strong>{formatPrice(dueNow)}</strong>
+                    </p>
+                  </div>
+                )
+              }
+
+              return (
+                <p className="pay-order__total">
+                  <span>Tổng thanh toán</span>
+                  <strong>{formatPrice(dueNow || order.total)}</strong>
+                </p>
+              )
+            })()}
+            {/* QR đóng hoặc không được hủy: về chi tiết đơn */}
+            {qrClosed || !order.canCancel ? (
               <Link to={orderDetailPath(order.code)} className="pay-cancel">
                 Xem đơn hàng
               </Link>

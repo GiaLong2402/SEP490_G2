@@ -28,6 +28,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /** Lệnh SX nháp tự tạo khi đơn đặt trước thiếu hàng — tách theo loại khay. */
 @ExtendWith(MockitoExtension.class)
@@ -47,6 +48,8 @@ class PreorderFulfillmentServiceTest {
     private BusinessCodeService businessCodeService;
     @Mock
     private NotificationService notificationService;
+    @Mock
+    private PlatformTransactionManager transactionManager;
 
     private PreorderFulfillmentService service;
     private Product product;
@@ -63,7 +66,8 @@ class PreorderFulfillmentServiceTest {
                 bomExplosionService,
                 businessCodeService,
                 notificationService,
-                Clock.systemUTC());
+                Clock.systemUTC(),
+                transactionManager);
         product = new Product();
         ReflectionTestUtils.setField(product, "id", 10L);
         halfKg = variant(21L, 500);

@@ -152,7 +152,16 @@ export default function RequestsPage() {
             setFeasibilityId(r.id);
             setFeasTouched(false);
           }}>Khả năng đáp ứng</Button>
-          {r.customerId && <LinkButton to={`/quotes/new?requestId=${r.id}&customerId=${r.customerId}`} icon={<FileText size={14} />}>Báo giá</LinkButton>}
+          <LinkButton
+            to={
+              r.customerId
+                ? `/quotes/new?requestId=${r.id}&customerId=${r.customerId}`
+                : `/quotes/new?requestId=${r.id}`
+            }
+            icon={<FileText size={14} />}
+          >
+            Báo giá
+          </LinkButton>
         </div>
       ),
     },

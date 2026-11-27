@@ -100,11 +100,19 @@ function orderRoutes(method, parts) {
   }
   if (parts[3] === 'cancel' && method === 'POST') {
     if (!o.canCancel) throw new ApiError(409, 'Đơn này không thể hủy nữa.')
+    const forfeitDeposit = o.state === 'AWAITING_SETTLEMENT' && o.paymentStatus === 'DEPOSITED'
     o.state = 'CANCELLED'
-    o.paymentStatus = 'UNPAID'
+    if (!forfeitDeposit) o.paymentStatus = 'UNPAID'
     o.canCancel = false
     o.holdExpiresAt = null
-    o.events.unshift({ id: nextId++, eventType: 'CANCELLED', description: 'Khách hủy đơn', createdAt: new Date().toISOString() })
+    o.events.unshift({
+      id: nextId++,
+      eventType: 'CANCELLED',
+      description: forfeitDeposit
+        ? 'Khách hủy khi tất toán — mất tiền cọc, hàng trả kho'
+        : 'Khách hủy đơn',
+      createdAt: new Date().toISOString(),
+    })
     return clone(o)
   }
   return NOT_MOCKED

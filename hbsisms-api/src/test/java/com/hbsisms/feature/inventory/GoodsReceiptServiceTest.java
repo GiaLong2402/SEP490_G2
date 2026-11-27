@@ -25,7 +25,6 @@ import com.hbsisms.feature.inventory.dto.RawReceiptCompleteRequest;
 import com.hbsisms.feature.inventory.dto.RawReceiptLineRequest;
 import com.hbsisms.feature.inventory.dto.ReceiptItemResponse;
 import com.hbsisms.feature.production.ProductionOrderRepository;
-import com.hbsisms.feature.sales.OrderAllocationService;
 import com.hbsisms.feature.system.AppConfigService;
 import com.hbsisms.feature.system.AuditLogService;
 import com.hbsisms.feature.user.AppUser;
@@ -78,8 +77,6 @@ class GoodsReceiptServiceTest {
     @Mock
     private UserRepository userRepository;
     @Mock
-    private OrderAllocationService orderAllocationService;
-    @Mock
     private AppConfigService appConfigService;
     @Mock
     private AuditLogService auditLogService;
@@ -103,7 +100,6 @@ class GoodsReceiptServiceTest {
                 stockService,
                 productionOrderRepository,
                 userRepository,
-                orderAllocationService,
                 org.mockito.Mockito.mock(com.hbsisms.feature.sales.PreorderFulfillmentService.class),
                 appConfigService,
                 auditLogService,
@@ -198,7 +194,6 @@ class GoodsReceiptServiceTest {
                 HttpStatus.BAD_REQUEST,
                 "Không tạo phiếu nhập thành phẩm");
         verify(stockService, never()).receiveIn(any());
-        verify(orderAllocationService, never()).allocateOutstandingAfterReceipt(any());
     }
 
     @Test
