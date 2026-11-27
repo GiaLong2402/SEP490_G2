@@ -26,8 +26,12 @@ export const productionApi = {
   /** Inter1 #48 note: SP đã có BOM — quyền inventory. */
   bomProducts: (signal?: AbortSignal) => api.get<ProductionBomProduct[]>('/production-orders/bom-products', undefined, signal),
   /** Inter1 #48 note: xem trước NVL (tồn dùng được, bỏ lô hết hạn). */
-  materialPreview: (productId: ID, plannedQty: number, signal?: AbortSignal) =>
-    api.get<ProductionMaterialPreview>('/production-orders/material-preview', { productId, plannedQty }, signal),
+  materialPreview: (productId: ID, plannedQty: number, variantId: ID | null, signal?: AbortSignal) =>
+    api.get<ProductionMaterialPreview>(
+      '/production-orders/material-preview',
+      variantId ? { productId, plannedQty, variantId } : { productId, plannedQty },
+      signal,
+    ),
 
   // Dòng 51 (Cường) — đã có; defectQty / defectReason / leftovers cần Cường nhận thêm.
   complete: (id: ID, body: ProductionCompleteInput) => api.post<ProductionOrder>(`/production-orders/${id}/complete`, body),

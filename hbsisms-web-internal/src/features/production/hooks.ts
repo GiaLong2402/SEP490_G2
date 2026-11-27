@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { ID } from '@/shared/domain/entities';
 import { productionApi, type ProductionOrderQuery } from './api';
-import type { ProductionBomProduct } from './types';
+import type { ProductionBomProduct, ProductionTrayOption } from './types';
 
 export const useProductionOrders = (query: ProductionOrderQuery) =>
   useQuery({ queryKey: ['production-orders', query], queryFn: ({ signal }) => productionApi.list(query, signal), placeholderData: keepPreviousData });
@@ -19,6 +19,8 @@ export interface BomProduct {
   isProducible: boolean;
   /** Số dòng nguyên liệu trong định mức. */
   bomLines: number | null;
+  /** Loại khay chọn khi lập lệnh — khay 1 kg đứng đầu. */
+  variants: ProductionTrayOption[];
 }
 
 /**
@@ -37,6 +39,7 @@ export function useBomProducts() {
     name: p.name,
     isProducible: p.isProducible,
     bomLines: p.bomLineCount,
+    variants: p.variants ?? [],
   }));
   return {
     loading: query.isLoading,
@@ -46,10 +49,10 @@ export function useBomProducts() {
   };
 }
 
-export const useMaterialPreview = (productId: ID | null, plannedQty: number) =>
+export const useMaterialPreview = (productId: ID | null, plannedQty: number, variantId: ID | null = null) =>
   useQuery({
-    queryKey: ['production-material-preview', productId, plannedQty],
-    queryFn: ({ signal }) => productionApi.materialPreview(productId as ID, plannedQty, signal),
+    queryKey: ['production-material-preview', productId, plannedQty, variantId],
+    queryFn: ({ signal }) => productionApi.materialPreview(productId as ID, plannedQty, variantId, signal),
     enabled: productId !== null && Number.isFinite(plannedQty) && plannedQty > 0,
   });
 

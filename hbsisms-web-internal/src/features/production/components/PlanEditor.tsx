@@ -4,11 +4,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { isOwnerOrAdmin, useAuth } from '@/features/auth';
 import { useAction } from '@/shared/api/useAction';
 import { date, dateTimeFull, formatThousands, money, num, parseThousands, todayISO } from '@/shared/lib/format';
-import { Button, Chip, ConfirmDialog, DateInput, Field, InfoTip, Textarea } from '@/shared/ui';
+import { Button, Chip, ConfirmDialog, DateInput, Field, InfoTip, Select, Textarea } from '@/shared/ui';
 import { useUnitLabel } from '@/features/receipts';
 import { productionApi } from '../api';
 import { useBomProducts, useMaterialPreview } from '../hooks';
-import type { ProductionOrder } from '../types';
+import type { ProductionOrder, ProductionTrayOption } from '../types';
 import { ProductPicker } from './ProductPicker';
 import { ActionBar, HistoryCard, OverviewCard, Section, StepLayout, SuffixInput, orderHistory } from './OrderShell';
 
@@ -29,6 +29,10 @@ interface PlanRow {
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
+/** "Khay 0,5 kg" theo cân nặng; chưa nhập cân nặng thì dùng nhãn quy cách. */
+export const trayName = (v: Pick<ProductionTrayOption, 'sku' | 'packLabel' | 'unitWeightG'>) =>
+  v.unitWeightG ? `Khay ${num(v.unitWeightG / 1000)} kg` : (v.packLabel?.trim() || v.sku);
+
 /**
  * Bước 01 (Duy, dòng 48): thông tin lệnh + nguyên liệu cần dùng theo định mức, đối chiếu tồn dùng được.
  * Xem trước qua GET /production-orders/material-preview (quyền inventory); tồn không tính lô hết hạn.
@@ -40,6 +44,7 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
   const unitLabel = useUnitLabel();
   const bomProducts = useBomProducts();
   const [productId, setProductId] = useState(order ? String(order.productId) : '');
+  const [trayId, setTrayId] = useState(order?.finishedVariantId ? String(order.finishedVariantId) : '');
   const [qty, setQty] = useState(order ? String(order.plannedQty) : '');
   const [qtyBadInput, setQtyBadInput] = useState(false);
   const [due, setDue] = useState(order?.plannedDueDate ?? todayISO(3));
@@ -51,6 +56,7 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
   useEffect(() => {
     if (!order) return;
     setProductId(String(order.productId));
+    setTrayId(order.finishedVariantId ? String(order.finishedVariantId) : '');
     setQty(String(order.plannedQty));
     setDue(order.plannedDueDate ?? '');
     setCost(order.estimatedProductionCost ? String(order.estimatedProductionCost) : '');
@@ -69,13 +75,27 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
   const dirty =
     !order ||
     n !== order.plannedQty ||
+    (Number(trayId) || null) !== (order.finishedVariantId ?? null) ||
     (due || null) !== order.plannedDueDate ||
     (production || null) !== order.estimatedProductionCost ||
     (note.trim() || null) !== (order.note ?? null);
   const product = bomProducts.items.find((p) => String(p.id) === productId);
   const pid = Number(productId) || 0;
+  const trays = product?.variants ?? [];
+  const tray = trays.find((v) => String(v.id) === trayId);
+  const variantId = Number(trayId) || null;
 
-  const preview = useMaterialPreview(pid > 0 ? pid : null, n > 0 ? n : 0);
+  /** Đổi thành phẩm (hoặc loại khay cũ đã ngừng bán) → chọn sẵn khay 1 kg / loại đầu tiên. */
+  useEffect(() => {
+    if (!product) return;
+    if (trays.length === 0) {
+      if (trayId) setTrayId('');
+    } else if (!trays.some((v) => String(v.id) === trayId)) {
+      setTrayId(String(trays[0].id));
+    }
+  }, [product, trays, trayId]);
+
+  const preview = useMaterialPreview(pid > 0 ? pid : null, n > 0 ? n : 0, variantId);
   const previewRows: PlanRow[] = (preview.data?.materials ?? []).map((m) => ({
     key: String(m.rawMaterialId),
     rawId: Number(m.rawMaterialId),
@@ -122,6 +142,7 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
     plannedDueDate: due || null,
     note: note.trim() || null,
     estimatedProductionCost: production || null,
+    variantId,
   };
   const persist = () =>
     order ? productionApi.update(order.id, body) : productionApi.create({ productId: pid, ...body });
@@ -181,6 +202,7 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
         items={[
           ['Trạng thái', order ? 'Nháp' : 'Nháp (chưa lưu)'],
           ['Thành phẩm', product?.name ?? order?.productName ?? '—'],
+          ['Loại khay', tray ? trayName(tray) : order?.finishedVariantSku ?? '—'],
           ['Số lượng', n > 0 ? `${num(n)} khay` : '—'],
           ['Cần xong', date(due || null)],
           ['Tiền nguyên liệu (tạm)', money(materialTotal)],
@@ -200,9 +222,9 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
 
   return (
     <StepLayout aside={aside}>
-      <Section title="Thông tin lệnh" subtitle="Chọn thành phẩm cần làm, số lượng và ngày cần xong">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="sm:col-span-3">
+      <Section title="Thông tin lệnh" subtitle="Chọn thành phẩm, loại khay, số lượng và ngày cần xong">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="sm:col-span-2 lg:col-span-4">
             <div className="mb-1 text-small font-medium text-ink-muted">
               Thành phẩm <span className="text-red-fg">*</span>
             </div>
@@ -226,6 +248,24 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
             />
             {touched && errors.product && <p className="mt-1 text-small text-red-fg">{errors.product}</p>}
           </div>
+          <Field
+            label="Loại khay"
+            tip="Định mức nguyên liệu tính cho 1 kg. Khay 0,5 kg dùng một nửa phần nguyên liệu cân ký; khay xốp, màng bọc vẫn tính theo từng khay."
+          >
+            <Select
+              aria-label="Loại khay"
+              value={trayId}
+              disabled={trays.length === 0}
+              onChange={(e) => setTrayId(e.target.value)}
+            >
+              {trays.length === 0 && <option value="">{productId ? 'Chưa có quy cách đang bán' : 'Chọn thành phẩm trước'}</option>}
+              {trays.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {trayName(v)}
+                </option>
+              ))}
+            </Select>
+          </Field>
           <Field label="Số lượng kế hoạch" required error={showQtyError ? errors.qty : undefined}>
             <SuffixInput
               suffix="khay"
@@ -255,7 +295,7 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
               onChange={(e) => setCost(parseThousands(e.target.value))}
             />
           </Field>
-          <div className="sm:col-span-3">
+          <div className="sm:col-span-2 lg:col-span-4">
             <Field label="Ghi chú sản xuất (không bắt buộc)">
               <Textarea
                 rows={2}
@@ -271,7 +311,11 @@ export function PlanEditor({ order }: { order: ProductionOrder | null }) {
       <Section
         flush
         title="Nguyên liệu cần dùng"
-        subtitle={n > 0 ? `Theo định mức cho ${num(n)} khay, đã cộng hao hụt` : 'Nhập số lượng để tính nguyên liệu'}
+        subtitle={
+          n > 0
+            ? `Theo định mức cho ${num(n)} ${tray ? trayName(tray).toLowerCase() : 'khay'}, đã cộng hao hụt`
+            : 'Nhập số lượng để tính nguyên liệu'
+        }
         right={
           productId ? (
             <Link to={`/products/${productId}`} className="text-small font-medium text-primary hover:underline">

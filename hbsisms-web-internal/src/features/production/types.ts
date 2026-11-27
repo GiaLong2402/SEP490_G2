@@ -8,10 +8,10 @@ export interface ProductionOrderMaterialLine {
   rawMaterialCode: string;
   rawMaterialName: string;
   unit: string;
-  /** Định mức cho 1 đơn vị thành phẩm. */
+  /** Định mức cho 1 khay của lệnh (dòng cân ký đã nhân theo cân nặng khay: khay 0,5 kg = nửa định mức 1 kg). */
   bomQtyPerUnit: number;
   wastePercent: number;
-  /** = định mức × số lượng kế hoạch × (1 + hao hụt). */
+  /** = định mức / khay × số khay ÷ (1 − hao hụt%). */
   requiredQty: number;
   onHandQty: number;
   sufficient: boolean;
@@ -36,8 +36,11 @@ export interface ProductionOrder {
   actualQty: number | null;
   actualProductionCost: number | null;
   actualMaterialCost: number | null;
+  /** Loại khay chọn lúc lập lệnh (báo làm xong dùng luôn loại này). */
   finishedVariantId: ID | null;
   finishedVariantSku: string | null;
+  /** Cân nặng 1 khay thành phẩm (kg), vd. 0.5 — null nếu lệnh chưa chọn khay / API cũ. */
+  finishedTrayKg?: number | null;
   finishedReceiptId: ID | null;
   finishedReceiptCode: string | null;
   allMaterialsSufficient: boolean;
@@ -63,10 +66,12 @@ export interface ProductionOrder {
   unitCost?: number | null;
   /** % markup từ app_config `sell_price_markup_percent`. */
   markupPercent?: number | null;
-  /** Gợi ý giá bán = unitCost × (1 + markup/100) — không đổi listPrice. */
+  /** Giá bán 1 kg = (unitCost ÷ cân nặng khay) × (1 + markup/100), tròn 1.000 ₫ — khay 0,5 kg = nửa. */
   suggestedSellPrice?: number | null;
   /** Giá niêm yết hiện tại của quy cách thành phẩm. */
   currentListPrice?: number | null;
+  /** Giá đang bán / giá gợi ý của từng khay (lệnh đã hoàn thành) — hệ thống không tự đổi giá đang bán. */
+  trayPrices?: ProductionTrayPrice[] | null;
   /** Lô / HSD / vị trí thành phẩm đã nhập kho (null nếu chưa nhập). */
   finishedPutAway?: FinishedPutAway | null;
 }
@@ -128,6 +133,8 @@ export interface ProductionOrderInput {
   plannedDueDate: ISODate | null;
   note: string | null;
   estimatedProductionCost: number | null;
+  /** Loại khay làm ra (0,5 kg / 1 kg). Trống → khay 1 kg. */
+  variantId: ID | null;
 }
 
 export type ProductionOrderUpdateInput = Omit<ProductionOrderInput, 'productId'>;
@@ -158,6 +165,27 @@ export interface ProductionBomProduct {
   name: string;
   isProducible: boolean;
   bomLineCount: number;
+  /** Loại khay đang bán — khay 1 kg đứng đầu. */
+  variants: ProductionTrayOption[];
+}
+
+export interface ProductionTrayPrice {
+  variantId: ID;
+  sku: string;
+  packLabel: string | null;
+  unitWeightG: number | null;
+  active: boolean;
+  /** Khay vừa làm trong lệnh này. */
+  produced: boolean;
+  listPrice: number | null;
+  suggestedPrice: number | null;
+}
+
+export interface ProductionTrayOption {
+  id: ID;
+  sku: string;
+  packLabel: string | null;
+  unitWeightG: number | null;
 }
 
 /** GET /production-orders/material-preview — tồn dùng được (bỏ lô hết hạn). */
