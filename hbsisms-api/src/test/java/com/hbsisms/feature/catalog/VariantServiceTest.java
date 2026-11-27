@@ -126,16 +126,25 @@ class VariantServiceTest {
     }
 
     @Test
-    void create_rejectsInvalidListPrice() {
+    void create_rejectsNegativeListPrice() {
         when(productRepository.findById(10L)).thenReturn(Optional.of(withId(new Product(), 10L)));
 
         assertBadRequest(() -> variantService.create(
-                10L, new VariantRequest("SKU-1", "Khay", null, null, 1, null, true, null)));
-        assertBadRequest(() -> variantService.create(
-                10L, new VariantRequest("SKU-1", "Khay", null, BigDecimal.ZERO, 1, null, true, null)));
-        assertBadRequest(() -> variantService.create(
                 10L, new VariantRequest("SKU-1", "Khay", null, bd("-1"), 1, null, true, null)));
         verify(productVariantRepository, never()).save(any());
+    }
+
+    @Test
+    void create_zeroListPrice_savesAsUnpriced() {
+        when(productRepository.findById(10L)).thenReturn(Optional.of(withId(new Product(), 10L)));
+        when(productVariantRepository.save(any(ProductVariant.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Khay mới chưa có giá: web gửi 0 (giá không nhập tay) — phải lưu được
+        variantService.create(10L, new VariantRequest("SKU-1", "Khay 1 kg", 1000, BigDecimal.ZERO, 1, null, true, null));
+
+        ArgumentCaptor<ProductVariant> captor = ArgumentCaptor.forClass(ProductVariant.class);
+        verify(productVariantRepository).save(captor.capture());
+        assertThat(captor.getValue().getListPrice()).isEqualByComparingTo("0");
     }
 
     @Test
@@ -216,7 +225,7 @@ class VariantServiceTest {
         existing.setProduct(withId(new Product(), 10L));
         existing.setSku("SKU-OLD");
         existing.setPackLabel("Cũ");
-        existing.setListPrice(bd("50"));
+        existing.setListPrice(bd("150"));
         existing.setPackPerCase((short) 1);
         existing.setActive(true);
 
@@ -241,6 +250,8 @@ class VariantServiceTest {
         assertThat(captor.getValue().getSku()).isEqualTo("SKU-1");
         assertThat(captor.getValue().getPackLabel()).isEqualTo("Khay mới");
         assertThat(captor.getValue().isActive()).isFalse();
+        // Giá không sửa tay: giữ giá cũ, bỏ qua giá gửi lên
+        assertThat(captor.getValue().getListPrice()).isEqualByComparingTo("150");
         verify(volumeTierRepository).deleteByVariant_Id(50L);
         verify(volumeTierRepository).flush();
         verify(volumeTierRepository).save(any(VolumeTier.class));

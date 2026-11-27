@@ -21,8 +21,9 @@ public record VariantRequest(
 
         Integer unitWeightG,
 
+        /** 0 = chưa có giá (khay mới; giá không nhập tay — Inter 5 #6 Chủ áp dụng giá gợi ý). */
         @NotNull(message = "Vui lòng nhập giá niêm yết")
-        @DecimalMin(value = "0.01", message = "Giá niêm yết phải lớn hơn 0")
+        @DecimalMin(value = "0", message = "Giá niêm yết không được âm")
         BigDecimal listPrice,
 
         @NotNull(message = "Vui lòng nhập số khay / thùng")
