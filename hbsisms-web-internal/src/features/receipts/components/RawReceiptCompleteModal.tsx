@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CalendarClock, Truck, UserRound } from 'lucide-react';
 import { useAction } from '@/shared/api/useAction';
 import { date, dateTimeFull, formatThousands, money, num, parseThousands, todayISO } from '@/shared/lib/format';
+import { isPieceUnit } from '@/shared/lib/units';
 import { Button, Chip, DateInput, Field, InfoTip, Input, Modal } from '@/shared/ui';
 import { receiptsApi } from '../api';
 import { useUnitLabel } from '../hooks';
@@ -19,11 +20,14 @@ type RowErrors = Partial<Record<'qtyReceived' | 'unitPrice' | 'expDate', string>
 
 const priceOf = (r: Row) => Number(parseThousands(r.unitPrice));
 
-function errorsOf(r: Row, today: string): RowErrors {
+function errorsOf(r: Row, today: string, unit: string): RowErrors {
   const qty = Number(r.qtyReceived);
   if (r.qtyReceived.trim() === '' || !(qty >= 0)) return { qtyReceived: 'Nhập số ≥ 0' };
   if (qty === 0) return {};
   const errors: RowErrors = {};
+  if (isPieceUnit(unit) && !Number.isInteger(qty)) {
+    errors.qtyReceived = 'Đơn vị đếm cái — nhập số nguyên (không thập phân)';
+  }
   if (!(priceOf(r) > 0)) errors.unitPrice = 'Nhập đơn giá > 0';
   if (r.mfgDate && r.expDate && r.expDate < r.mfgDate) errors.expDate = 'Hạn sử dụng trước ngày sản xuất';
   else if (r.expDate && r.expDate < today) errors.expDate = 'Đã quá hạn sử dụng';
@@ -49,7 +53,11 @@ export function RawReceiptCompleteModal({ receipt, onClose }: { receipt: Receipt
 
   const today = todayISO();
   const receivedCount = rows.filter((r) => Number(r.qtyReceived) > 0).length;
-  const valid = rows.length > 0 && rows.every((r) => Object.keys(errorsOf(r, today)).length === 0) && receivedCount > 0;
+  const valid =
+    rows.length > 0 &&
+    !!receipt &&
+    rows.every((r, i) => Object.keys(errorsOf(r, today, receipt.lines[i]?.unit ?? '')).length === 0) &&
+    receivedCount > 0;
   const total = rows.reduce((sum, r) => sum + (Number(r.qtyReceived) > 0 ? Number(r.qtyReceived) * priceOf(r) : 0), 0);
 
   const complete = useAction(
@@ -125,10 +133,11 @@ export function RawReceiptCompleteModal({ receipt, onClose }: { receipt: Receipt
               const r = rows[i];
               if (!r) return null;
               const patch = (p: Partial<Row>) => setRows(rows.map((x) => (x.lineId === r.lineId ? { ...x, ...p } : x)));
-              const errors = touched ? errorsOf(r, today) : {};
+              const errors = touched ? errorsOf(r, today, line.unit) : {};
               const hasError = Object.keys(errors).length > 0;
               const qty = Number(r.qtyReceived);
               const skipped = r.qtyReceived.trim() !== '' && qty === 0;
+              const piece = isPieceUnit(line.unit);
               const diff = qty - line.qtyExpected;
               const lineTotal = qty > 0 ? qty * priceOf(r) : 0;
               return (
@@ -147,8 +156,8 @@ export function RawReceiptCompleteModal({ receipt, onClose }: { receipt: Receipt
                     </span>
                   </div>
                   <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-5">
-                    <Field label={`Thực nhận (${unitLabel(line.unit)})`} required error={errors.qtyReceived} hint={`Dự kiến ${num(line.qtyExpected)} ${unitLabel(line.unit)}`}>
-                      <Input type="number" min={0} step="0.001" className="text-right" value={r.qtyReceived} onChange={(e) => patch({ qtyReceived: e.target.value })} />
+                    <Field label={`Thực nhận (${unitLabel(line.unit)})`} required error={errors.qtyReceived} hint={`Dự kiến ${num(line.qtyExpected)} ${unitLabel(line.unit)}${piece ? ' · số nguyên' : ''}`}>
+                      <Input type="number" min={0} step={piece ? 1 : '0.001'} className="text-right" value={r.qtyReceived} onChange={(e) => patch({ qtyReceived: e.target.value })} />
                     </Field>
                     <Field label="Đơn giá (₫)" required={!skipped} error={errors.unitPrice}>
                       <Input inputMode="numeric" className="text-right" placeholder="0" disabled={skipped} value={r.unitPrice} onChange={(e) => patch({ unitPrice: formatThousands(e.target.value.replace(/\D/g, '')) })} />

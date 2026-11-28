@@ -5,6 +5,7 @@ import { useRawZones } from '@/features/warehouses';
 import { useAction } from '@/shared/api/useAction';
 import { receiptStatusMeta, receiptTypeLabels } from '@/shared/domain/enums';
 import { date, dateTimeFull, money, num, todayISO } from '@/shared/lib/format';
+import { isPieceUnit } from '@/shared/lib/units';
 import { Button, Card, Chip, ConfirmDialog, DataTable, DateInput, Field, FilterBar, FilterSelect, IconButton, InfoTip, Input, Modal, PageHeader, Pagination, SearchBox, Select, StatusChip, Tabs, enumOptions, useListParams, type Column } from '@/shared/ui';
 import { receiptsApi } from '../api';
 import { RawMaterialFormModal } from '../components/RawMaterialFormModal';
@@ -133,12 +134,28 @@ export default function ReceiptsPage() {
     };
   }, [params]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const rawValid = rawRows.every((r) => Number(r.rawMaterialId) > 0 && Number(r.qty) > 0) && new Set(rawRows.map((r) => r.rawMaterialId)).size === rawRows.length;
+  const rawValid =
+    rawRows.every((r) => {
+      const qty = Number(r.qty);
+      if (!(Number(r.rawMaterialId) > 0) || !(qty > 0)) return false;
+      const material = rawCatalog.data?.find((m) => String(m.id) === r.rawMaterialId);
+      if (material && isPieceUnit(material.unit) && !Number.isInteger(qty)) return false;
+      return true;
+    }) && new Set(rawRows.map((r) => r.rawMaterialId)).size === rawRows.length;
   const linesValid = rawValid;
-  const rawRowErrors = (r: RawRow, duplicate: boolean) => ({
-    material: !(Number(r.rawMaterialId) > 0) ? 'Chọn nguyên liệu' : duplicate ? 'Nguyên liệu này đã chọn ở trên - gộp số lượng vào một dòng.' : undefined,
-    qty: Number(r.qty) > 0 ? undefined : 'Số lượng lớn hơn 0',
-  });
+  const rawRowErrors = (r: RawRow, duplicate: boolean) => {
+    const material = rawCatalog.data?.find((m) => String(m.id) === r.rawMaterialId);
+    const qty = Number(r.qty);
+    let qtyErr: string | undefined;
+    if (!(qty > 0)) qtyErr = 'Số lượng lớn hơn 0';
+    else if (material && isPieceUnit(material.unit) && !Number.isInteger(qty)) {
+      qtyErr = 'Đơn vị đếm cái — nhập số nguyên (không thập phân)';
+    }
+    return {
+      material: !(Number(r.rawMaterialId) > 0) ? 'Chọn nguyên liệu' : duplicate ? 'Nguyên liệu này đã chọn ở trên - gộp số lượng vào một dòng.' : undefined,
+      qty: qtyErr,
+    };
+  };
   const sourceValid = source.trim().length > 0;
 
   const create = useAction(
@@ -418,9 +435,21 @@ export default function ReceiptsPage() {
                       required
                       className="sm:col-span-4"
                       error={err?.qty}
-                      tip="Số hàng bạn hẹn nhận. Khi hàng về sẽ ghi số thật, khác số này cũng được."
+                      tip={
+                        material && isPieceUnit(material.unit)
+                          ? 'Đơn vị đếm cái (túi, cuộn…) — chỉ nhập số nguyên.'
+                          : 'Số hàng bạn hẹn nhận. Khi hàng về sẽ ghi số thật, khác số này cũng được.'
+                      }
                     >
-                      <Input type="number" min={0} step="0.1" className="text-right" placeholder="0" value={r.qty} onChange={(e) => patch({ qty: e.target.value })} />
+                      <Input
+                        type="number"
+                        min={0}
+                        step={material && isPieceUnit(material.unit) ? 1 : '0.1'}
+                        className="text-right"
+                        placeholder="0"
+                        value={r.qty}
+                        onChange={(e) => patch({ qty: e.target.value })}
+                      />
                     </Field>
                   </div>
                 </li>

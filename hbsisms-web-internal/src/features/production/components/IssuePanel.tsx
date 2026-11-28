@@ -260,7 +260,7 @@ export function IssuePanel({ order }: { order: ProductionOrder }) {
           </span>
           <span>
             {canConfirmExport
-              ? 'Xuất xong: trừ tồn từng lô (FEFO), ghi sổ theo WAC, lệnh chuyển "Đang sản xuất".'
+              ? 'Xuất xong: trừ NVL theo kg (FEFO + WAC), lệnh → "Đang sản xuất". Túi/xốp/màng trừ lúc báo làm xong — nếu thiếu sẽ có nút tạo phiếu nhập.'
               : 'Chỉ Chủ / Admin được xác nhận xuất kho — bạn có thể xem và in phiếu.'}
           </span>
         </ActionBar>
