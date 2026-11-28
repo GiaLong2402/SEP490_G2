@@ -12,7 +12,9 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -62,7 +64,11 @@ public class AuditLog {
     private Instant createdAt;
 
     public Map<String, Object> getDetail() {
-        return detail == null ? null : Map.copyOf(detail);
+        if (detail == null) {
+            return null;
+        }
+        // Map.copyOf() rejects null values; audit JSON often stores optional null fields.
+        return Collections.unmodifiableMap(new LinkedHashMap<>(detail));
     }
 
     public void setDetail(Map<String, Object> detail) {
