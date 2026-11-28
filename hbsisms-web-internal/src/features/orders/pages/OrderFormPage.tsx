@@ -301,12 +301,16 @@ export default function OrderFormPage() {
                   </Field>
                 </>
               ) : (
-                <Field label="Khách hàng" required error={touched && !customerId ? 'Vui lòng chọn khách' : undefined} className="md:col-span-2 xl:col-span-1">
+                <Field label="Khách hàng" required error={touched && !customerId ? 'Vui lòng chọn khách' : undefined} className="md:col-span-2 xl:col-span-3">
                   <CustomerSearchField value={customerId} onChange={setCustomerId} />
                 </Field>
               )}
-              <Field label="Kênh bán" required><Select value={channel} onChange={(e) => setChannel(e.target.value as SaleChannel)}>{enumOptions(channelLabels)}</Select></Field>
-              <Field label="Hình thức giao" required><Select value={fulfillment} onChange={(e) => setFulfillment(e.target.value as FulfillmentMethod)}>{enumOptions(fulfillmentLabels)}</Select></Field>
+              <Field label="Kênh bán" required className="xl:col-span-1">
+                <Select value={channel} onChange={(e) => setChannel(e.target.value as SaleChannel)}>{enumOptions(channelLabels)}</Select>
+              </Field>
+              <Field label="Hình thức giao" required className="xl:col-span-1">
+                <Select value={fulfillment} onChange={(e) => setFulfillment(e.target.value as FulfillmentMethod)}>{enumOptions(fulfillmentLabels)}</Select>
+              </Field>
               {needsAddress && walkIn && (
                 <>
                   <Field

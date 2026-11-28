@@ -99,7 +99,7 @@ mock('GET', '/customers', ({ query }) => {
       ? null
       : query.isActive === true || query.isActive === 'true';
   const rows = db.customers
-    .filter((c) => matches(query.q, c.name, c.code, c.phone, c.taxCode))
+    .filter((c) => matches(query.q, c.name, c.code, c.phone, c.taxCode, c.contactName, c.contactPhone))
     .filter((c) => !query.type || c.customerType === query.type)
     .filter((c) => activeFilter === null || c.isActive === activeFilter)
     .sort((a, b) => a.name.localeCompare(b.name, 'vi'))

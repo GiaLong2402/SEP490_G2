@@ -242,7 +242,7 @@ export default function RequestsPage() {
               <CustomerSearchField
                 value={form.customerId}
                 onChange={(customerId) => setForm({ ...form, customerId })}
-                placeholder="Tìm theo SĐT, tên hoặc mã KH…"
+                placeholder="Tìm SĐT, tên, mã KH hoặc MST…"
               />
             </Field>
           )}

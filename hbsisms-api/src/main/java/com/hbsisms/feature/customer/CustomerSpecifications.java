@@ -37,13 +37,15 @@ final class CustomerSpecifications {
         return (root, query, cb) -> cb.equal(root.get("active"), isActive);
     }
 
-    /** Case-insensitive contains on name, code, phone, tax code (MST). */
+    /** Case-insensitive contains on name, code, phone, tax code (MST), B2B contact. */
     private static Specification<Customer> matchesKeyword(String keyword) {
         String pattern = "%" + Strings.escapeLike(keyword.toLowerCase(Locale.ROOT)) + "%";
         return (root, query, cb) -> cb.or(
                 cb.like(cb.lower(root.get("name")), pattern, LIKE_ESCAPE),
                 cb.like(cb.lower(root.get("code")), pattern, LIKE_ESCAPE),
                 cb.like(cb.lower(root.get("phone")), pattern, LIKE_ESCAPE),
-                cb.like(cb.lower(root.get("taxCode")), pattern, LIKE_ESCAPE));
+                cb.like(cb.lower(root.get("taxCode")), pattern, LIKE_ESCAPE),
+                cb.like(cb.lower(root.get("contactName")), pattern, LIKE_ESCAPE),
+                cb.like(cb.lower(root.get("contactPhone")), pattern, LIKE_ESCAPE));
     }
 }
