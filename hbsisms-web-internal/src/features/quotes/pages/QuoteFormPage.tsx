@@ -200,7 +200,7 @@ export default function QuoteFormPage() {
                   <CustomerSearchField
                     value={customerId}
                     onChange={setCustomerId}
-                    placeholder="Tìm theo SĐT, tên hoặc mã KH…"
+                    placeholder="Tìm SĐT, tên, mã KH hoặc MST…"
                   />
                 </div>
               ) : (
