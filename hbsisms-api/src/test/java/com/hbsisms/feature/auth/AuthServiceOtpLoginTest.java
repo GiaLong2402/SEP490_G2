@@ -3,6 +3,7 @@ package com.hbsisms.feature.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -19,13 +20,17 @@ import com.hbsisms.feature.auth.firebase.FirebaseTokenVerifier;
 import com.hbsisms.feature.auth.firebase.FirebaseAdminTokenVerifier;
 import com.hbsisms.feature.auth.firebase.StubFirebaseTokenVerifier;
 import com.hbsisms.feature.auth.firebase.VerifiedFirebaseToken;
+import com.hbsisms.feature.customer.Customer;
 import com.hbsisms.feature.customer.CustomerRepository;
+import com.hbsisms.feature.customer.CustomerType;
 import com.hbsisms.feature.role.AppRole;
+import com.hbsisms.feature.role.DefaultRoles;
 import com.hbsisms.feature.role.Permission;
 import com.hbsisms.feature.role.RoleRepository;
 import com.hbsisms.feature.system.AuditLogService;
 import com.hbsisms.feature.user.AppUser;
 import com.hbsisms.feature.user.UserRepository;
+import com.hbsisms.feature.user.UserType;
 import com.hbsisms.security.SecurityProperties;
 import com.hbsisms.security.TokenService;
 import com.hbsisms.security.TokenService.IssuedToken;
@@ -47,6 +52,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -153,6 +159,8 @@ class AuthServiceOtpLoginTest {
         when(authIdentityRepository.findByProviderAndProviderUid(AuthIdentity.PROVIDER_FIREBASE, UID))
                 .thenReturn(Optional.empty());
         when(userRepository.findWithRoleByPhone(PHONE)).thenReturn(Optional.empty());
+        when(customerRepository.findFirstByPhoneAndAccountUserIsNullOrderByIdAsc(PHONE))
+                .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.loginWithOtp(new OtpLoginRequest("tok")))
                 .isInstanceOf(ApiException.class)
@@ -161,6 +169,60 @@ class AuthServiceOtpLoginTest {
                 .isEqualTo(HttpStatus.FORBIDDEN);
         verify(tokenService, never()).issue(any());
         verify(authIdentityRepository, never()).save(any());
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void loginWithOtp_walkInCustomer_createsUserAndLinks() {
+        Customer walkIn = new Customer();
+        ReflectionTestUtils.setField(walkIn, "id", 77L);
+        walkIn.setCode("KH-010");
+        walkIn.setCustomerType(CustomerType.B2C);
+        walkIn.setName("Khách quầy");
+        walkIn.setPhone(PHONE);
+
+        AppRole customerRole = TestFixtures.role((short) 5, DefaultRoles.CUSTOMER, Set.of());
+        when(firebaseTokenVerifier.verify("tok")).thenReturn(new VerifiedFirebaseToken(UID, PHONE));
+        when(authIdentityRepository.findByProviderAndProviderUid(AuthIdentity.PROVIDER_FIREBASE, UID))
+                .thenReturn(Optional.empty());
+        when(userRepository.findWithRoleByPhone(PHONE)).thenReturn(Optional.empty());
+        when(customerRepository.findFirstByPhoneAndAccountUserIsNullOrderByIdAsc(PHONE))
+                .thenReturn(Optional.of(walkIn));
+        when(roleRepository.findByCode(DefaultRoles.CUSTOMER)).thenReturn(Optional.of(customerRole));
+        when(userRepository.save(any(AppUser.class))).thenAnswer(inv -> {
+            AppUser u = inv.getArgument(0);
+            if (u.getId() == null) {
+                ReflectionTestUtils.setField(u, "id", 50L);
+            }
+            return u;
+        });
+        when(authIdentityRepository.save(any(AuthIdentity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(customerRepository.save(walkIn)).thenReturn(walkIn);
+        when(userRepository.findWithRoleById(50L)).thenAnswer(inv -> {
+            AppUser u = new AppUser();
+            ReflectionTestUtils.setField(u, "id", 50L);
+            u.setFullName("Khách quầy");
+            u.setPhone(PHONE);
+            u.setUserType(UserType.CUSTOMER);
+            u.setRole(customerRole);
+            return Optional.of(u);
+        });
+        when(tokenService.issue(any(AppUser.class))).thenReturn(new IssuedToken("jwt-walkin", NOW.plusSeconds(60)));
+
+        LoginResponse response = authService.loginWithOtp(new OtpLoginRequest("tok"));
+
+        assertThat(response.token()).isEqualTo("jwt-walkin");
+        assertThat(response.user().roleCode()).isEqualTo("customer");
+        assertThat(response.user().fullName()).isEqualTo("Khách quầy");
+        assertThat(walkIn.getAccountUser().getId()).isEqualTo(50L);
+
+        ArgumentCaptor<AppUser> userCaptor = ArgumentCaptor.forClass(AppUser.class);
+        verify(userRepository).save(userCaptor.capture());
+        assertThat(userCaptor.getValue().getFullName()).isEqualTo("Khách quầy");
+        assertThat(userCaptor.getValue().getUserType()).isEqualTo(UserType.CUSTOMER);
+
+        verify(auditLogService).record(eq(50L), eq("link_account"), eq("customer"), eq(77L), any());
+        verify(customerRepository, never()).findCodesByPrefix(any());
     }
 
     @Test
