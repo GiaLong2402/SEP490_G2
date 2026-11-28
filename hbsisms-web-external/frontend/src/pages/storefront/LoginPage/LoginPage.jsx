@@ -134,7 +134,9 @@ export default function LoginPage() {
         clearPhoneAuthSession()
         navigate(redirectTo || getHomePathForRole(loggedIn.role), { replace: true })
       } catch (err) {
-        // Chỉ "chưa cấp tài khoản" mới sang đăng ký — tránh 403 khóa/lỗi khác bị nhầm
+        // 403 "chưa được cấp" = chưa có AppUser và chưa có hồ sơ walk-in → form đăng ký.
+        // Khách quầy (đã có Customer theo SĐT) được BE auto-provision trên login OTP → 200, không vào đây.
+        // Tránh nhầm 403 khóa tài khoản / lỗi khác thành bước CREATE.
         if (
           err instanceof ApiError &&
           err.status === 403 &&

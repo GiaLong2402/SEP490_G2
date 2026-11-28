@@ -136,6 +136,33 @@ class AuthOtpApiIntegrationTest {
     }
 
     @Test
+    void otpLogin_linksWalkInCustomerByPhone() throws Exception {
+        String phone = nextPhone();
+        Customer walkIn = new Customer();
+        walkIn.setCode("KH-L" + String.format("%03d", SEQ.getAndIncrement() % 1000));
+        walkIn.setCustomerType(CustomerType.B2C);
+        walkIn.setName("Khách quầy login");
+        walkIn.setPhone(phone);
+        walkIn.setCreditLimit(BigDecimal.ZERO);
+        walkIn.setNetDays((short) 0);
+        walkIn.setCurrentDebt(BigDecimal.ZERO);
+        walkIn.setActive(true);
+        walkIn = customerRepository.save(walkIn);
+        Long customerId = walkIn.getId();
+
+        postJson("/auth/login/otp", Map.of("idToken", stubToken("uid-login-walkin-" + customerId, phone)), null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").isNotEmpty())
+                .andExpect(jsonPath("$.user.roleCode").value("customer"))
+                .andExpect(jsonPath("$.user.fullName").value("Khách quầy login"));
+
+        Customer linked = customerRepository.findWithAccountById(customerId).orElseThrow();
+        assertThat(linked.getAccountUser()).isNotNull();
+        assertThat(linked.getAccountUser().getPhone()).isEqualTo(phone);
+        assertThat(userRepository.findByPhone(phone)).isPresent();
+    }
+
+    @Test
     void otpLogin_lockedStaff_returns403() throws Exception {
         String phone = nextPhone();
         String username = uniqueName();

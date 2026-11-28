@@ -17,20 +17,21 @@ cd hbsisms-api
 .\mvnw.cmd test "-Dtest=AuthOtpApiIntegrationTest"
 ```
 
-Kết quả gần nhất (khi Docker bật): chạy lệnh trên rồi cập nhật dòng này — **8 tests, 0 failures** (BUILD SUCCESS) kỳ vọng.
+Kết quả gần nhất (khi Docker bật): chạy lệnh trên rồi cập nhật dòng này — **9 tests, 0 failures** (BUILD SUCCESS) kỳ vọng.
 
 | Test method | Hành vi (map sheet task 5) | Kết quả |
 |-------------|----------------------------|---------|
 | `otpLogin_provisionedStaffPhone_returns200` | Số đã cấp (NV) → 200 + JWT role warehouse | *chạy khi Docker on* |
 | `otpLogin_unknownStaffPhone_returns403` | Số lạ → 403 chưa cấp TK | *chạy khi Docker on* |
 | `otpRegister_newCustomer_returns201WithCustomerRole` | Khách mới → 201 + role customer | *chạy khi Docker on* |
-| `otpRegister_linksWalkInCustomerByPhone` | Liên kết khách tạo tại quầy (cùng SĐT) | *chạy khi Docker on* |
+| `otpRegister_linksWalkInCustomerByPhone` | Liên kết khách tạo tại quầy qua register (cùng SĐT) | *chạy khi Docker on* |
+| `otpLogin_linksWalkInCustomerByPhone` | Khách quầy: login OTP chỉ idToken → 200 + tạo TK + link hồ sơ | *chạy khi Docker on* |
 | `otpLogin_lockedStaff_returns403` | Tài khoản khóa → 403 | *chạy khi Docker on* |
 | `otpLogin_thenLogout_revokesToken` | Logout thu hồi token (me → 401) | *chạy khi Docker on* |
 | `passwordLogin_admin_stillWorks` | Admin vẫn đăng nhập mật khẩu được | *chạy khi Docker on* |
 | `otpRegister_duplicatePhone_returns409` | Đăng ký trùng SĐT → 409 | *chạy khi Docker on* |
 
-**Ghi chú môi trường:** lúc viết docs, Docker engine chưa sẵn → IT chưa chạy được trong phiên đó. Bật Docker Desktop rồi chạy lệnh trên; nếu **8/8 pass** thì đổi cột Kết quả thành `pass` và sửa dòng “Kết quả gần nhất”.
+**Ghi chú môi trường:** Bật Docker Desktop rồi chạy lệnh trên; nếu **9/9 pass** thì đổi cột Kết quả thành `pass` và sửa dòng “Kết quả gần nhất”.
 
 ---
 
@@ -41,7 +42,8 @@ Kết quả gần nhất (khi Docker bật): chạy lệnh trên rồi cập nh�
 | Số đã cấp → 200 | IT `otpLogin_provisionedStaffPhone_returns200` + unit OtpLogin |
 | Số lạ NV → 403 | IT `otpLogin_unknownStaffPhone_returns403` + unit |
 | Khách mới → role customer | IT `otpRegister_newCustomer_…` + unit Register |
-| Liên kết khách quầy | IT `otpRegister_linksWalkInCustomerByPhone` + unit |
+| Liên kết khách quầy (register) | IT `otpRegister_linksWalkInCustomerByPhone` + unit |
+| Liên kết khách quầy (login, không form) | IT `otpLogin_linksWalkInCustomerByPhone` + unit `loginWithOtp_walkInCustomer_createsUserAndLinks` |
 | Tài khoản khóa → 403 | IT `otpLogin_lockedStaff_returns403` + unit |
 | Logout thu hồi token | IT `otpLogin_thenLogout_revokesToken` |
 | Admin vẫn login mật khẩu | IT `passwordLogin_admin_stillWorks` + unit task 4 |

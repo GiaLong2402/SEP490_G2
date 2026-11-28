@@ -41,7 +41,10 @@ public class AuthService {
     /** 400, not 401: the frontend treats 401 as "session expired" and redirects. */
     static final String INVALID_CREDENTIALS = "Sai tên đăng nhập hoặc mật khẩu";
     static final String ACCOUNT_LOCKED = "Tài khoản đã bị khóa";
-    /** Staff/customer phone not provisioned yet — do not auto-create accounts on OTP login (task 1). */
+    /**
+     * No {@link AppUser} and no walk-in {@link Customer} for this phone — staff must be provisioned by Admin;
+     * brand-new storefront phones must register (OTP register form).
+     */
     static final String ACCOUNT_NOT_PROVISIONED =
             "Tài khoản chưa được cấp. Liên hệ Admin để gắn số điện thoại đăng nhập";
     /** Inter 2 task 4 — non-admin password login blocked when AUTH_PASSWORD_LOGIN_ALL_ROLES=false. */
@@ -126,8 +129,11 @@ public class AuthService {
     }
 
     /**
-     * Task 1 Inter 2 — OTP login via Firebase (or stub) ID token.
-     * Links {@code auth_identity(firebase, uid)} when missing; never creates a new {@link AppUser}.
+     * OTP login via Firebase (or stub) ID token.
+     * Links {@code auth_identity(firebase, uid)} when missing.
+     * If the phone has no {@link AppUser} but has a walk-in {@link Customer} ({@code accountUser} null),
+     * provisions a customer account, links that profile, and issues JWT (no register form).
+     * Otherwise does not create accounts for unknown phones (staff must be Admin-provisioned).
      */
     @Transactional
     public LoginResponse loginWithOtp(OtpLoginRequest request) {
@@ -145,7 +151,21 @@ public class AuthService {
         } else {
             user = userRepository.findWithRoleByPhone(phone).orElse(null);
             if (user == null) {
-                throw ApiException.forbidden(ACCOUNT_NOT_PROVISIONED);
+                Customer walkIn = customerRepository
+                        .findFirstByPhoneAndAccountUserIsNullOrderByIdAsc(phone)
+                        .orElse(null);
+                if (walkIn == null) {
+                    throw ApiException.forbidden(ACCOUNT_NOT_PROVISIONED);
+                }
+                String fullName = walkIn.getName() != null && !walkIn.getName().isBlank()
+                        ? walkIn.getName().trim()
+                        : "Khách vãng lai";
+                user = createCustomerAppUser(phone, fullName, null, now);
+                identity = newAuthIdentity(user, verified.uid(), phone);
+                identity.setLastLoginAt(now);
+                identity = authIdentityRepository.save(identity);
+                linkWalkInCustomer(user, walkIn, phone, "otp_login");
+                return completeOtpSession(user, identity, phone, now);
             }
             if (authIdentityRepository.existsByUser_IdAndProvider(user.getId(), AuthIdentity.PROVIDER_FIREBASE)) {
                 throw ApiException.conflict("Tài khoản đã liên kết Firebase khác. Liên hệ Admin");
@@ -162,7 +182,7 @@ public class AuthService {
     }
 
     /**
-     * Task 2 Inter 2 — customer self-registration.
+     * Customer self-registration.
      * Creates {@code app_user} (role customer) + B2C customer, or links a walk-in customer with the same phone.
      */
     @Transactional
@@ -185,6 +205,18 @@ public class AuthService {
             throw ApiException.conflict("Email " + email + " đã tồn tại");
         }
 
+        AppUser user = createCustomerAppUser(phone, fullName, email, now);
+
+        AuthIdentity identity = newAuthIdentity(user, verified.uid(), phone);
+        identity.setLastLoginAt(now);
+        identity = authIdentityRepository.save(identity);
+
+        linkOrCreateB2cCustomer(user, phone, fullName, email, "otp_register");
+
+        return completeOtpSession(user, identity, phone, now);
+    }
+
+    private AppUser createCustomerAppUser(String phone, String fullName, String email, Instant now) {
         AppRole customerRole = roleRepository
                 .findByCode(DefaultRoles.CUSTOMER)
                 .orElseThrow(() -> ApiException.badRequest("Thiếu role customer trong hệ thống"));
@@ -198,44 +230,50 @@ public class AuthService {
         user.setActive(true);
         user.setPhoneVerifiedAt(now);
         user.setLastLoginAt(now);
-        user = userRepository.save(user);
+        return userRepository.save(user);
+    }
 
-        AuthIdentity identity = newAuthIdentity(user, verified.uid(), phone);
-        identity.setLastLoginAt(now);
-        identity = authIdentityRepository.save(identity);
+    private void linkWalkInCustomer(AppUser user, Customer walkIn, String phone, String via) {
+        walkIn.setAccountUser(user);
+        customerRepository.save(walkIn);
+        auditLogService.record(
+                user.getId(),
+                "link_account",
+                "customer",
+                walkIn.getId(),
+                Map.of("phone", phone, "via", via, "customerCode", walkIn.getCode()));
+    }
 
+    /**
+     * Links an existing walk-in {@link Customer} (same phone, no login yet) or creates a new B2C profile.
+     *
+     * @param via audit detail: {@code otp_login} or {@code otp_register}
+     */
+    private void linkOrCreateB2cCustomer(AppUser user, String phone, String fullName, String email, String via) {
         Customer walkIn = customerRepository.findFirstByPhoneAndAccountUserIsNullOrderByIdAsc(phone).orElse(null);
         if (walkIn != null) {
-            walkIn.setAccountUser(user);
-            customerRepository.save(walkIn);
-            auditLogService.record(
-                    user.getId(),
-                    "link_account",
-                    "customer",
-                    walkIn.getId(),
-                    Map.of("phone", phone, "via", "otp_register", "customerCode", walkIn.getCode()));
-        } else {
-            Customer created = new Customer();
-            created.setCode(nextB2cCode());
-            created.setCustomerType(CustomerType.B2C);
-            created.setName(fullName);
-            created.setPhone(phone);
-            created.setEmail(email);
-            created.setAccountUser(user);
-            created.setCreditLimit(BigDecimal.ZERO);
-            created.setNetDays((short) 0);
-            created.setCurrentDebt(BigDecimal.ZERO);
-            created.setActive(true);
-            created = customerRepository.save(created);
-            auditLogService.record(
-                    user.getId(),
-                    "register",
-                    "customer",
-                    created.getId(),
-                    Map.of("phone", phone, "via", "otp_register", "customerCode", created.getCode()));
+            linkWalkInCustomer(user, walkIn, phone, via);
+            return;
         }
 
-        return completeOtpSession(user, identity, phone, now);
+        Customer created = new Customer();
+        created.setCode(nextB2cCode());
+        created.setCustomerType(CustomerType.B2C);
+        created.setName(fullName);
+        created.setPhone(phone);
+        created.setEmail(email);
+        created.setAccountUser(user);
+        created.setCreditLimit(BigDecimal.ZERO);
+        created.setNetDays((short) 0);
+        created.setCurrentDebt(BigDecimal.ZERO);
+        created.setActive(true);
+        created = customerRepository.save(created);
+        auditLogService.record(
+                user.getId(),
+                "register",
+                "customer",
+                created.getId(),
+                Map.of("phone", phone, "via", via, "customerCode", created.getCode()));
     }
 
     private String nextB2cCode() {

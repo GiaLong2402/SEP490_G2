@@ -17,7 +17,7 @@ cd hbsisms-api
 .\mvnw.cmd test "-Dtest=AuthServiceTest,AuthServiceOtpLoginTest,AuthServiceOtpRegisterTest,StubFirebaseTokenVerifierTest,LoginAttemptServiceTest"
 ```
 
-Kết quả gần nhất: **23 tests, 0 failures** (BUILD SUCCESS) — AuthService **9** + OtpLogin **5** + OtpRegister **4** + StubVerifier **2** + LoginAttempt **3**.
+Kết quả gần nhất: AuthServiceOtpLogin + OtpRegister unit pass (BUILD SUCCESS). OtpLogin gồm thêm case walk-in auto-provision.
 
 ### AuthServiceTest
 
@@ -43,7 +43,8 @@ File: `hbsisms-api/src/test/java/com/hbsisms/feature/auth/AuthServiceOtpLoginTes
 |-------------|---------|---------|
 | `loginWithOtp_existingIdentity_issuesJwtAndUpdatesTimestamps` | đã có auth_identity → 200 + cập nhật thời gian | pass |
 | `loginWithOtp_noIdentity_linksByPhoneThenIssuesJwt` | SĐT đã cấp (NV) → link identity + JWT | pass |
-| `loginWithOtp_unknownPhone_returns403WithoutCreatingUser` | SĐT lạ → 403, không tạo user | pass |
+| `loginWithOtp_unknownPhone_returns403WithoutCreatingUser` | SĐT lạ (không AppUser, không walk-in) → 403, không tạo user | pass |
+| `loginWithOtp_walkInCustomer_createsUserAndLinks` | chỉ có hồ sơ walk-in → tạo AppUser customer + link + JWT | pass |
 | `loginWithOtp_lockedAccount_returns403` | tài khoản khóa → 403 | pass |
 | `loginWithOtp_userAlreadyLinkedToOtherFirebase_returns409` | user đã link uid khác → 409 | pass |
 
