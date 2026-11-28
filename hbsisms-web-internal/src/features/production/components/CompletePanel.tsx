@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
+<<<<<<< HEAD
 import { Check, CircleAlert, PackagePlus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+=======
+import { Check } from 'lucide-react';
+>>>>>>> origin/main
 import { canWarehouseOps, useAuth } from '@/features/auth';
 import { useUnitLabel } from '@/features/receipts';
 import { useAction } from '@/shared/api/useAction';
@@ -594,11 +598,17 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
         }
       >
         <span>
+<<<<<<< HEAD
           {packStockError
             ? 'Nhập đủ vật tư đóng gói rồi F5 / quay lại lệnh mới báo làm xong.'
             : canComplete
               ? `Báo xong: tạo phiếu nhập TP theo đóng gói · đạt ${okValid ? num(ok) : '…'} (quy đổi 1 kg)`
               : 'Chỉ nhân viên kho / Chủ / Admin được báo làm xong.'}
+=======
+          {canComplete
+            ? `Báo xong: tạo phiếu nhập TP theo đóng gói · đạt ${okValid ? num(ok) : '…'} (quy đổi 1 kg)`
+            : 'Chỉ nhân viên kho / Chủ / Admin được báo làm xong.'}
+>>>>>>> origin/main
         </span>
         <span>Hao hụt NVL đã tính trong BOM lúc lập KH/xuất · lệnh chuyển "Chờ nhập kho"</span>
       </ActionBar>
