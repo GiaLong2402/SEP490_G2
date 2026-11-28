@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
+<<<<<<< HEAD
+import { Check, CircleAlert, PackagePlus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+=======
 import { Check } from 'lucide-react';
+>>>>>>> origin/main
 import { canWarehouseOps, useAuth } from '@/features/auth';
 import { useUnitLabel } from '@/features/receipts';
 import { useAction } from '@/shared/api/useAction';
@@ -29,6 +34,7 @@ function isHalfKgPack(label: string | null | undefined, weightG: number | null |
 
 /** Bước 03: báo làm xong — khay đạt/hỏng, đóng gói, chi phí SX. Hao hụt NVL đã nằm trong BOM lúc lập KH/xuất. */
 export function CompletePanel({ order }: { order: ProductionOrder }) {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const canComplete = canWarehouseOps(user?.roleCode);
   const unitLabel = useUnitLabel();
@@ -187,10 +193,27 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
           ? ok
           : 0;
   const packPreview = usePackagingPreview(order.productId, physicalTrays);
+  const shortPack = (packPreview.data?.materials ?? []).filter((m) => !m.sufficient);
   const packStockError =
     physicalTrays > 0 && packPreview.data && !packPreview.data.allMaterialsSufficient
       ? 'Tồn vật tư đóng gói không đủ — kiểm tra bảng bên dưới'
       : undefined;
+  const openPackReceipt = () => {
+    const lines = shortPack
+      .map((m) => {
+        const need = Math.max(0, Math.ceil(m.requiredQty - m.onHandQty));
+        return need > 0 ? `${m.rawMaterialId}:${need}` : null;
+      })
+      .filter(Boolean)
+      .join(',');
+    const q = new URLSearchParams({
+      new: 'raw',
+      source: `Lệnh ${order.code} · VT đóng gói`,
+      returnTo: `/production-orders/${order.id}`,
+    });
+    if (lines) q.set('lines', lines);
+    navigate(`/receipts?${q.toString()}`);
+  };
   const actualProdCost = Number(parseThousands(prodCost)) || 0;
   const prodCostError =
     prodCost.trim() !== '' && !(actualProdCost >= 0) ? 'Số tiền ≥ 0' : undefined;
@@ -540,6 +563,17 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
                   </table>
                 </div>
               )}
+              {shortPack.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 rounded-md border border-red-fg/25 bg-red-bg/40 px-3 py-2.5">
+                  <CircleAlert size={16} className="shrink-0 text-red-fg" aria-hidden />
+                  <span className="min-w-0 flex-1 text-small font-medium text-red-fg">
+                    Thiếu {shortPack.length} vật tư đóng gói — nhập thêm rồi quay lại lệnh
+                  </span>
+                  <Button className="!h-8 !px-3 text-small" icon={<PackagePlus size={14} />} onClick={openPackReceipt}>
+                    Tạo phiếu nhập vật tư
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -551,6 +585,7 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
             <Button
               variant="primary"
               icon={<Check size={15} strokeWidth={2.6} />}
+              disabled={!!packStockError}
               loading={complete.isPending}
               onClick={() => {
                 setTouched(true);
@@ -563,9 +598,17 @@ export function CompletePanel({ order }: { order: ProductionOrder }) {
         }
       >
         <span>
+<<<<<<< HEAD
+          {packStockError
+            ? 'Nhập đủ vật tư đóng gói rồi F5 / quay lại lệnh mới báo làm xong.'
+            : canComplete
+              ? `Báo xong: tạo phiếu nhập TP theo đóng gói · đạt ${okValid ? num(ok) : '…'} (quy đổi 1 kg)`
+              : 'Chỉ nhân viên kho / Chủ / Admin được báo làm xong.'}
+=======
           {canComplete
             ? `Báo xong: tạo phiếu nhập TP theo đóng gói · đạt ${okValid ? num(ok) : '…'} (quy đổi 1 kg)`
             : 'Chỉ nhân viên kho / Chủ / Admin được báo làm xong.'}
+>>>>>>> origin/main
         </span>
         <span>Hao hụt NVL đã tính trong BOM lúc lập KH/xuất · lệnh chuyển "Chờ nhập kho"</span>
       </ActionBar>

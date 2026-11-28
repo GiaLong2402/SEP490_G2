@@ -8,6 +8,7 @@ import com.hbsisms.feature.costing.CostingService;
 import com.hbsisms.feature.inventory.RawMaterial;
 import com.hbsisms.feature.inventory.RawMaterialLot;
 import com.hbsisms.feature.inventory.RawMaterialLotRepository;
+import com.hbsisms.feature.inventory.RawQuantityRules;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
@@ -15,8 +16,6 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
-import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,8 +34,6 @@ public class BomExplosionService {
     private static final BigDecimal HUNDRED = new BigDecimal("100");
     private static final int QTY_SCALE = 4;
     private static final int MONEY_SCALE = 2;
-    /** Đơn vị khối lượng / thể tích — xuất lúc bắt đầu SX. Còn lại (cái, cuộn…) = VT đóng gói. */
-    private static final Set<String> WEIGHT_UNITS = Set.of("kg", "g", "gram", "l", "lit", "ml");
 
     private final ProductBomLineRepository bomLineRepository;
     private final RawMaterialLotRepository rawMaterialLotRepository;
@@ -137,6 +134,10 @@ public class BomExplosionService {
             if (usable == null) {
                 usable = BigDecimal.ZERO;
             }
+            // VT đếm cái: chỉ tính phần nguyên (bỏ bụi thập phân trên tồn cũ).
+            if (kind == LineKind.COUNT) {
+                usable = RawQuantityRules.wholeUsable(usable);
+            }
             BigDecimal expired = rawMaterialLotRepository.sumExpiredRemaining(raw.getId(), today);
             if (expired == null) {
                 expired = BigDecimal.ZERO;
@@ -162,7 +163,7 @@ public class BomExplosionService {
 
     static boolean isWeightLine(ProductBomLine bom, RawMaterial raw) {
         String unit = bom.getUnit() != null ? bom.getUnit().getCode() : raw.getUnit();
-        return unit != null && WEIGHT_UNITS.contains(unit.trim().toLowerCase(Locale.ROOT));
+        return RawQuantityRules.isContinuousUnit(unit);
     }
 
     /** Chi phí tạm tính: WAC liên hoàn NVL × SL cần; chưa có WAC → cộng theo giá lô FEFO. */

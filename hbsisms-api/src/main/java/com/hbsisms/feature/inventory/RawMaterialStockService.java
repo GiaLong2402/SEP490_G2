@@ -48,6 +48,9 @@ public class RawMaterialStockService {
     /** refType bỏ lô (refId = id lô). */
     public static final String REF_LOT_DISCARD = "raw_lot_discard";
 
+    /** refType bỏ phần thập phân tồn đếm cái (túi/cái…) — dữ liệu cũ từ % hao BOM. */
+    public static final String REF_PIECE_FRACTION = "piece_fraction_scrap";
+
     static final String COLD_ZONE_PREFIX = "LANH";
 
     static final String OPENING_LOT_CODE = "TON-DAU";
@@ -100,6 +103,7 @@ public class RawMaterialStockService {
         if (qty == null || qty.signum() <= 0) {
             throw ApiException.badRequest("Số lượng nhập phải lớn hơn 0");
         }
+        RawQuantityRules.requireWholeIfPiece(material.getUnit(), qty, material.getName());
         String code = Strings.trimToNull(lotCode);
         if (code == null) {
             code = autoLotCode(material);
@@ -171,6 +175,7 @@ public class RawMaterialStockService {
         RawMaterial material = rawMaterialRepository
                 .findByIdForUpdate(lot.getRawMaterial().getId())
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy nguyên liệu"));
+        RawQuantityRules.requireWholeIfPiece(material.getUnit(), qty, material.getName());
         Instant now = Instant.now(clock);
         lot.setQtyRemaining(lot.getQtyRemaining().add(qty));
         rawMaterialLotRepository.save(lot);
@@ -284,6 +289,7 @@ public class RawMaterialStockService {
         if (qty == null || qty.signum() <= 0) {
             throw ApiException.badRequest("Số lượng xuất phải lớn hơn 0");
         }
+        RawQuantityRules.requireWholeIfPiece(material.getUnit(), qty, material.getName());
         RawMaterialLot lot = rawMaterialLotRepository
                 .findByIdForUpdate(lotId)
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy lô nguyên liệu"));
@@ -344,10 +350,14 @@ public class RawMaterialStockService {
         if (qty == null || qty.signum() <= 0) {
             throw ApiException.badRequest("Số lượng xuất phải lớn hơn 0");
         }
+        RawQuantityRules.requireWholeIfPiece(material.getUnit(), qty, material.getName());
         LocalDate today = LocalDate.now(clock.withZone(VN));
         BigDecimal usable = rawMaterialLotRepository.sumUsableRemaining(material.getId(), today);
         if (usable == null) {
             usable = BigDecimal.ZERO;
+        }
+        if (RawQuantityRules.isPieceUnit(material.getUnit())) {
+            usable = RawQuantityRules.wholeUsable(usable);
         }
         if (usable.compareTo(qty) < 0) {
             throw ApiException.conflict(
@@ -356,11 +366,16 @@ public class RawMaterialStockService {
         }
         BigDecimal remaining = qty;
         List<IssueSlice> slices = new ArrayList<>();
+        boolean piece = RawQuantityRules.isPieceUnit(material.getUnit());
         for (RawMaterialLot listed : rawMaterialLotRepository.findFefoUsable(material.getId(), today)) {
             if (remaining.signum() <= 0) {
                 break;
             }
-            BigDecimal take = listed.getQtyRemaining().min(remaining);
+            BigDecimal available = listed.getQtyRemaining();
+            if (piece) {
+                available = RawQuantityRules.wholeUsable(available);
+            }
+            BigDecimal take = available.min(remaining);
             if (take.signum() <= 0) {
                 continue;
             }
@@ -373,6 +388,77 @@ public class RawMaterialStockService {
                             + " — còn thiếu " + remaining.setScale(3, RoundingMode.HALF_UP));
         }
         return slices;
+    }
+
+    /**
+     * Dọn “bụi” thập phân trên tồn đơn vị đếm cái (túi, cái…): làm tròn xuống từng lô, trừ
+     * {@code qtyOnHand}, ghi sổ ADJUST. Nguyên nhân thường gặp: BOM từng nhân % hao (vd. 1% → trừ
+     * 2,020 cái). Chạy lại an toàn — lô đã nguyên thì bỏ qua.
+     *
+     * @return số lô đã chỉnh
+     */
+    @Transactional
+    public int scrapPieceFractionDust() {
+        int fixed = 0;
+        Instant now = Instant.now(clock);
+        for (RawMaterial listed : rawMaterialRepository.findAllByOrderByCodeAsc()) {
+            if (!RawQuantityRules.isPieceUnit(listed.getUnit())) {
+                continue;
+            }
+            RawMaterial material = rawMaterialRepository.findByIdForUpdate(listed.getId()).orElse(null);
+            if (material == null) {
+                continue;
+            }
+            boolean touched = false;
+            for (RawMaterialLot listedLot : rawMaterialLotRepository.findFefo(material.getId(), true)) {
+                BigDecimal remaining = listedLot.getQtyRemaining();
+                if (remaining == null || !RawQuantityRules.hasFraction(remaining)) {
+                    continue;
+                }
+                BigDecimal whole = RawQuantityRules.wholeUsable(remaining);
+                BigDecimal dust = remaining.subtract(whole);
+                if (dust.signum() <= 0) {
+                    continue;
+                }
+                RawMaterialLot lot = rawMaterialLotRepository
+                        .findByIdForUpdate(listedLot.getId())
+                        .orElse(null);
+                if (lot == null) {
+                    continue;
+                }
+                lot.setQtyRemaining(whole);
+                rawMaterialLotRepository.save(lot);
+                BigDecimal balance = material.getQtyOnHand().subtract(dust).max(BigDecimal.ZERO);
+                material.setQtyOnHand(balance);
+                rawMaterialRepository.save(material);
+                writeLedger(
+                        material,
+                        lot,
+                        RawLedgerEntryType.ADJUST,
+                        dust.negate(),
+                        balance,
+                        REF_PIECE_FRACTION,
+                        lot.getId(),
+                        null,
+                        "Bỏ phần thập phân tồn đếm cái (hao BOM / dữ liệu cũ)",
+                        now);
+                costingMovementService.recordOutbound(
+                        CostItemType.RAW_MATERIAL, material.getId(), dust, REF_PIECE_FRACTION, lot.getId());
+                fixed++;
+                touched = true;
+                log.info(
+                        "Scrapped piece fraction on {} lot {} dust={}",
+                        material.getCode(),
+                        lot.getLotCode(),
+                        dust);
+            }
+            if (touched || RawQuantityRules.hasFraction(material.getQtyOnHand())) {
+                BigDecimal inLots = rawMaterialLotRepository.sumRemaining(material.getId());
+                material.setQtyOnHand(inLots == null ? BigDecimal.ZERO : inLots);
+                rawMaterialRepository.save(material);
+            }
+        }
+        return fixed;
     }
 
     /**

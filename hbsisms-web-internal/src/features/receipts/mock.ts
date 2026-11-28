@@ -177,6 +177,10 @@ mock('POST', '/goods-receipts', ({ body, userId }) => {
     seen.add(material.id);
     const qty = Number(line.qty);
     if (!(qty > 0)) fail(400, 'Số lượng dự kiến phải lớn hơn 0');
+    const continuous = ['kg', 'g', 'gram', 'l', 'lit', 'ml'].includes(String(material.unit ?? '').toLowerCase());
+    if (!continuous && !Number.isInteger(qty)) {
+      fail(400, `${material.name}: đơn vị đếm cái không được nhập số thập phân — nhập số nguyên`);
+    }
     return { id: lineSeq++, rawMaterialId: material.id, qtyExpected: qty, qtyReceived: null, lotCode: null, mfgDate: null, expDate: null, unitPrice: null };
   });
   items = lines.map((l) => ({ name: lineView(l).rawMaterialName, qty: l.qtyExpected, unit: lineView(l).unit }));
@@ -258,6 +262,11 @@ mock('POST', '/goods-receipts/:id/complete', ({ params, body, userId }) => {
     const qty = Number(input.qtyReceived);
     if (!(qty >= 0)) fail(400, 'Số lượng thực nhận không được âm');
     if (qty > 0) {
+      const material = db.rawMaterials.find((m) => m.id === line.rawMaterialId);
+      const continuous = ['kg', 'g', 'gram', 'l', 'lit', 'ml'].includes(String(material?.unit ?? '').toLowerCase());
+      if (!continuous && !Number.isInteger(qty)) {
+        fail(400, `${name}: đơn vị đếm cái không được nhập số thập phân — nhập số nguyên`);
+      }
       if (!(Number(input.unitPrice) > 0)) fail(400, `Vui lòng nhập đơn giá nhập lớn hơn 0 cho ${name}`);
       if (input.mfgDate && input.expDate && input.expDate < input.mfgDate) fail(400, `HSD của ${name} không được trước ngày sản xuất`);
       if (input.expDate && input.expDate < today) fail(400, `HSD của ${name} đã qua - không nhập kho lô hết hạn`);

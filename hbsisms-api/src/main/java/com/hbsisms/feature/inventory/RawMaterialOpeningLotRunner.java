@@ -33,5 +33,13 @@ public class RawMaterialOpeningLotRunner implements ApplicationRunner {
         } catch (Exception ex) {
             log.warn("Could not create raw material opening lots: {}", ex.getMessage());
         }
+        try {
+            int fixed = rawMaterialStockService.scrapPieceFractionDust();
+            if (fixed > 0) {
+                log.info("Scrapped piece-fraction dust on {} raw lot(s)", fixed);
+            }
+        } catch (Exception ex) {
+            log.warn("Could not scrap piece-fraction dust: {}", ex.getMessage());
+        }
     }
 }

@@ -782,6 +782,7 @@ public class GoodsReceiptService {
             if (!material.isActive()) {
                 throw ApiException.conflict(material.getName() + " đã ngừng dùng");
             }
+            RawQuantityRules.requireWholeIfPiece(material.getUnit(), line.qty(), material.getName());
             materials.add(material);
         }
         return materials;
